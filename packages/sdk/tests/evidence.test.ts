@@ -15,7 +15,7 @@ function mockTimestampedResult(
 			message: { time: BigInt(time) },
 			uid,
 		},
-		timestampTxHash: "0xtx" + uid,
+		timestampTxHash: `0xtx${uid}`,
 		onchainTimestamp,
 		timestampReceipt: {} as TransactionReceipt,
 	};

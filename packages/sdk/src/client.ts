@@ -118,7 +118,14 @@ export class OpenGardenClient {
 
 		await this.nameSchema(uid, name);
 
-		return { name, uid, txHash: tx.receipt!.hash };
+		const receipt = tx.receipt;
+		if (!receipt) {
+			throw new OpenGardenError(
+				OpenGardenErrorCode.SIGNER_ERROR,
+				"Transaction receipt unavailable after wait()",
+			);
+		}
+		return { name, uid, txHash: receipt.hash };
 	}
 
 	private async nameSchema(schemaUID: string, name: string): Promise<void> {
@@ -192,7 +199,14 @@ export class OpenGardenClient {
 		});
 
 		const uid = await tx.wait();
-		return { uid, txHash: tx.receipt!.hash, receipt: tx.receipt! };
+		const receipt = tx.receipt;
+		if (!receipt) {
+			throw new OpenGardenError(
+				OpenGardenErrorCode.SIGNER_ERROR,
+				"Transaction receipt unavailable after wait()",
+			);
+		}
+		return { uid, txHash: receipt.hash, receipt };
 	}
 
 	async publishIntervention(
@@ -214,7 +228,14 @@ export class OpenGardenClient {
 		});
 
 		const uid = await tx.wait();
-		return { uid, txHash: tx.receipt!.hash, receipt: tx.receipt! };
+		const receipt = tx.receipt;
+		if (!receipt) {
+			throw new OpenGardenError(
+				OpenGardenErrorCode.SIGNER_ERROR,
+				"Transaction receipt unavailable after wait()",
+			);
+		}
+		return { uid, txHash: receipt.hash, receipt };
 	}
 
 	async mintMilestone(
@@ -236,7 +257,14 @@ export class OpenGardenClient {
 		});
 
 		const uid = await tx.wait();
-		return { uid, txHash: tx.receipt!.hash, receipt: tx.receipt! };
+		const receipt = tx.receipt;
+		if (!receipt) {
+			throw new OpenGardenError(
+				OpenGardenErrorCode.SIGNER_ERROR,
+				"Transaction receipt unavailable after wait()",
+			);
+		}
+		return { uid, txHash: receipt.hash, receipt };
 	}
 
 	// --- Timestamped Off-Chain Writes ---
@@ -266,6 +294,13 @@ export class OpenGardenClient {
 
 		const timestampTx = await this.eas.timestamp(signedAttestation.uid);
 		const onchainTimestamp = await timestampTx.wait();
+		const timestampReceipt = timestampTx.receipt;
+		if (!timestampReceipt) {
+			throw new OpenGardenError(
+				OpenGardenErrorCode.SIGNER_ERROR,
+				"Transaction receipt unavailable after wait()",
+			);
+		}
 
 		return {
 			uid: signedAttestation.uid,
@@ -273,9 +308,9 @@ export class OpenGardenClient {
 				string,
 				unknown
 			>,
-			timestampTxHash: timestampTx.receipt!.hash,
+			timestampTxHash: timestampReceipt.hash,
 			onchainTimestamp,
-			timestampReceipt: timestampTx.receipt!,
+			timestampReceipt,
 		};
 	}
 

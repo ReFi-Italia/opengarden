@@ -19,10 +19,7 @@ import type {
 	SchemaUIDs,
 	StorageAdapter,
 } from "../src/types/config";
-import type {
-	OnChainAttestationResult,
-	TimestampedOffChainResult,
-} from "../src/types/results";
+import type { TimestampedOffChainResult } from "../src/types/results";
 
 const PRIVATE_KEY = process.env.OPENGARDEN_TEST_PRIVATE_KEY;
 const RPC_URL =
@@ -105,9 +102,10 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 		const chain = CHAINS[CHAIN_NAME];
 		if (!chain) throw new Error(`Unknown chain: ${CHAIN_NAME}`);
 
+		if (!PRIVATE_KEY) throw new Error("PRIVATE_KEY not set");
 		const cachedUIDs = loadSchemaUIDs();
 		const provider = new ethers.JsonRpcProvider(RPC_URL);
-		const signer = new ethers.Wallet(PRIVATE_KEY!, provider);
+		const signer = new ethers.Wallet(PRIVATE_KEY, provider);
 		walletAddress = await signer.getAddress();
 		storage = createMemoryStorage();
 
@@ -437,9 +435,10 @@ describe.skipIf(skip)("E2E: indexBundleAttestations", () => {
 		const chain = CHAINS[CHAIN_NAME];
 		if (!chain) throw new Error(`Unknown chain: ${CHAIN_NAME}`);
 
+		if (!PRIVATE_KEY) throw new Error("PRIVATE_KEY not set");
 		const cachedUIDs = loadSchemaUIDs();
 		const provider = new ethers.JsonRpcProvider(RPC_URL);
-		const signer = new ethers.Wallet(PRIVATE_KEY!, provider);
+		const signer = new ethers.Wallet(PRIVATE_KEY, provider);
 		walletAddress = await signer.getAddress();
 
 		indexerClient = new OpenGardenClient({

@@ -86,15 +86,17 @@ for (const name of names) {
 		});
 		await tx.wait();
 		console.log(`  ${name}: ${uid} (registered)`);
-	} catch (err: any) {
+	} catch (err: unknown) {
 		// AlreadyExists revert means it's registered
-		if (
-			err.message?.includes("AlreadyExists") ||
-			err.reason?.includes("AlreadyExists")
-		) {
+		const message = err instanceof Error ? err.message : String(err);
+		const reason =
+			err != null && typeof err === "object" && "reason" in err
+				? String((err as { reason: unknown }).reason)
+				: "";
+		if (message.includes("AlreadyExists") || reason.includes("AlreadyExists")) {
 			console.log(`  ${name}: ${uid} (already registered)`);
 		} else {
-			console.error(`  ${name}: FAILED — ${err.message}`);
+			console.error(`  ${name}: FAILED — ${message}`);
 		}
 	}
 

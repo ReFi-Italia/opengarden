@@ -3,12 +3,8 @@ import { getGraphqlUrl, getStoreUrl, submitToIndexer } from "../src/indexer";
 
 describe("getGraphqlUrl", () => {
 	it("returns graphql URL for known chains", () => {
-		expect(getGraphqlUrl(10n)).toBe(
-			"https://optimism.easscan.org/graphql",
-		);
-		expect(getGraphqlUrl(8453n)).toBe(
-			"https://base.easscan.org/graphql",
-		);
+		expect(getGraphqlUrl(10n)).toBe("https://optimism.easscan.org/graphql");
+		expect(getGraphqlUrl(8453n)).toBe("https://base.easscan.org/graphql");
 	});
 
 	it("returns undefined for unknown chains", () => {
@@ -21,12 +17,8 @@ describe("getStoreUrl", () => {
 		expect(getStoreUrl(10n)).toBe(
 			"https://optimism.easscan.org/offchain/store",
 		);
-		expect(getStoreUrl(8453n)).toBe(
-			"https://base.easscan.org/offchain/store",
-		);
-		expect(getStoreUrl(42220n)).toBe(
-			"https://celo.easscan.org/offchain/store",
-		);
+		expect(getStoreUrl(8453n)).toBe("https://base.easscan.org/offchain/store");
+		expect(getStoreUrl(42220n)).toBe("https://celo.easscan.org/offchain/store");
 	});
 
 	it("returns undefined for unknown chains", () => {

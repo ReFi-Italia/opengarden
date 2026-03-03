@@ -119,8 +119,9 @@ for (const [name, uid] of Object.entries(schemaUIDs)) {
 		await tx.wait();
 		console.log(`  ${name}: named`);
 		named++;
-	} catch (err: any) {
-		console.error(`  ${name}: FAILED — ${err.message}`);
+	} catch (err: unknown) {
+		const message = err instanceof Error ? err.message : String(err);
+		console.error(`  ${name}: FAILED — ${message}`);
 	}
 
 	await new Promise((r) => setTimeout(r, 1_500));

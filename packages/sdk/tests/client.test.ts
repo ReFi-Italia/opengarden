@@ -1,8 +1,10 @@
+import type { TransactionReceipt } from "ethers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OpenGardenClient } from "../src/client";
 import { OPTIMISM_MAINNET, SCHEMA_NAME_UID } from "../src/constants";
 import { OpenGardenError, OpenGardenErrorCode } from "../src/errors";
 import type { ChainConfig } from "../src/types/config";
+import type { TimestampedOffChainResult } from "../src/types/results";
 
 const TEST_CHAIN: ChainConfig = OPTIMISM_MAINNET;
 
@@ -129,7 +131,7 @@ describe("OpenGardenClient storage validation", () => {
 describe("OpenGardenClient schema naming", () => {
 	const FAKE_SCHEMA_UID =
 		"0x0000000000000000000000000000000000000000000000000000000000000abc";
-	const FAKE_TX_RECEIPT = { hash: "0xtxhash" };
+	const FAKE_TX_RECEIPT = { hash: "0xtxhash" } as unknown as TransactionReceipt;
 
 	function createSchemaClient() {
 		const attestCalls: any[] = [];
@@ -261,9 +263,9 @@ describe("OpenGardenClient schema naming", () => {
 });
 
 describe("OpenGardenClient indexBundleAttestations", () => {
-	const FAKE_TX_RECEIPT = { hash: "0xtxhash" };
+	const FAKE_TX_RECEIPT = { hash: "0xtxhash" } as unknown as TransactionReceipt;
 
-	function makeFakeResult(uid: string): any {
+	function makeFakeResult(uid: string): TimestampedOffChainResult {
 		return {
 			uid,
 			signedAttestation: { uid, message: { time: 1000000n } },
@@ -429,9 +431,9 @@ describe("OpenGardenClient indexBundleAttestations", () => {
 });
 
 describe("OpenGardenClient finalizeIntervention", () => {
-	const FAKE_TX_RECEIPT = { hash: "0xtxhash" };
+	const FAKE_TX_RECEIPT = { hash: "0xtxhash" } as unknown as TransactionReceipt;
 
-	function makeFakeResult(uid: string): any {
+	function makeFakeResult(uid: string): TimestampedOffChainResult {
 		return {
 			uid,
 			signedAttestation: { uid, message: { time: 1000000n } },
