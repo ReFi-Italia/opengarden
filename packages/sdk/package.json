@@ -1,0 +1,44 @@
+{
+  "name": "@opengarden/sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for OpenGarden Protocol — blockchain-verified urban gardening impact",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "unbuild",
+    "check": "tsc --noEmit",
+    "test": "vitest run --exclude tests/e2e.test.ts",
+    "test:e2e": "vitest run tests/e2e.test.ts --bail 1 --sequence.concurrent false",
+    "test:watch": "vitest --exclude tests/e2e.test.ts",
+    "create-wallet": "tsx scripts/create-test-wallet.ts",
+    "register-schemas": "tsx scripts/register-schemas.ts"
+  },
+  "dependencies": {
+    "@ethereum-attestation-service/eas-sdk": "^2.9.0"
+  },
+  "peerDependencies": {
+    "ethers": "^6.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "dotenv": "^17.3.1",
+    "ethers": "^6.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.4.0",
+    "unbuild": "^3.0.0",
+    "vitest": "^1.0.0"
+  },
+  "license": "MIT"
+}
