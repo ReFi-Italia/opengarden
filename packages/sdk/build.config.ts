@@ -1,10 +1,10 @@
-import { defineBuildConfig } from 'unbuild';
+import { defineBuildConfig } from "unbuild";
 
 export default defineBuildConfig({
-  entries: ['src/index'],
-  declaration: true,
-  rollup: {
-    emitCJS: true,
-  },
-  externals: ['ethers', '@ethereum-attestation-service/eas-sdk'],
+	entries: ["src/index"],
+	declaration: true,
+	rollup: {
+		emitCJS: true,
+	},
+	externals: ["ethers", "@ethereum-attestation-service/eas-sdk"],
 });
