@@ -423,6 +423,14 @@ export class OpenGardenClient {
 	async finalizeIntervention(
 		input: FinalizeInterventionInput,
 	): Promise<FinalizeInterventionResult> {
+		// Execution date bracketing (lower bound): T_schedule ≤ executionDate
+		if (input.scheduled.onchainTimestamp > input.executionDate) {
+			throw new OpenGardenError(
+				OpenGardenErrorCode.INVALID_INPUT,
+				`Execution date (${input.executionDate}) must not be before the scheduled timestamp (${input.scheduled.onchainTimestamp})`,
+			);
+		}
+
 		const bundle = this.buildEvidenceBundle(input);
 		const evidenceBundleHash = await this.uploadEvidenceBundle(bundle);
 		const indexedCount = await this.indexBundleAttestations(input);
@@ -664,17 +672,50 @@ export class OpenGardenClient {
 
 		const expectedCount = intervention.offchainCount;
 
-		// Verify temporal ordering
+		// Verify strict temporal ordering (same-block timestamps fail)
 		const timestamps = presentAttestations.map(
 			(key) => bundle.attestations[key].onchainTimestamp,
 		);
 		let temporalOrderValid = true;
 		for (let i = 1; i < timestamps.length; i++) {
-			if (timestamps[i] < timestamps[i - 1]) {
+			if (timestamps[i] <= timestamps[i - 1]) {
 				temporalOrderValid = false;
 				break;
 			}
 		}
+
+		// Verify healthcheck temporal ordering per spec Section 4.2
+		let healthcheckOrderValid = true;
+		if (bundle.attestations.healthcheckBefore) {
+			if (
+				bundle.attestations.healthcheckBefore.onchainTimestamp >=
+				bundle.attestations.checkin.onchainTimestamp
+			) {
+				healthcheckOrderValid = false;
+			}
+		}
+		if (bundle.attestations.healthcheckAfter) {
+			if (
+				bundle.attestations.healthcheckAfter.onchainTimestamp <=
+				bundle.attestations.checkout.onchainTimestamp
+			) {
+				healthcheckOrderValid = false;
+			}
+		}
+
+		// Verify execution date bracketing: T_schedule ≤ executionDate ≤ T_publication
+		const scheduledTimestamp = BigInt(
+			bundle.attestations.scheduled.onchainTimestamp,
+		);
+		const executionDate = intervention.executionDate;
+		const publicationTimestamp = intervention.time;
+		const executionDateBracketed =
+			scheduledTimestamp <= executionDate &&
+			executionDate <= publicationTimestamp;
+
+		// Verify validation approval
+		const validationApproved =
+			bundle.attestations.validation.approved === true;
 
 		// Verify on-chain timestamps match
 		let timestampsVerified = true;
@@ -692,15 +733,23 @@ export class OpenGardenClient {
 			}
 		}
 
+		const valid =
+			attestationCount === expectedCount &&
+			temporalOrderValid &&
+			timestampsVerified &&
+			healthcheckOrderValid &&
+			executionDateBracketed &&
+			validationApproved;
+
 		return {
-			valid:
-				attestationCount === expectedCount &&
-				temporalOrderValid &&
-				timestampsVerified,
+			valid,
 			attestationCount,
 			expectedCount,
 			temporalOrderValid,
 			timestampsVerified,
+			healthcheckOrderValid,
+			executionDateBracketed,
+			validationApproved,
 		};
 	}
 }

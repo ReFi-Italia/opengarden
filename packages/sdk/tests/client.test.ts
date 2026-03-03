@@ -1,9 +1,19 @@
 import type { TransactionReceipt } from "ethers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OpenGardenClient } from "../src/client";
-import { OPTIMISM_MAINNET, SCHEMA_NAME_UID } from "../src/constants";
+import {
+	OPTIMISM_MAINNET,
+	SCHEMA_NAME_UID,
+	ZERO_BYTES32,
+} from "../src/constants";
 import { OpenGardenError, OpenGardenErrorCode } from "../src/errors";
+import {
+	encodeAreaRegistration,
+	encodeGardenerMilestone,
+	encodePublishedIntervention,
+} from "../src/schemas/encoders";
 import type { ChainConfig } from "../src/types/config";
+import type { EvidenceBundle } from "../src/types/evidence";
 import type { TimestampedOffChainResult } from "../src/types/results";
 
 const TEST_CHAIN: ChainConfig = OPTIMISM_MAINNET;
@@ -564,5 +574,743 @@ describe("OpenGardenClient finalizeIntervention", () => {
 		expect(attestData).toBeDefined();
 
 		vi.unstubAllGlobals();
+	});
+
+	it("throws INVALID_INPUT when executionDate is before scheduled timestamp", async () => {
+		const storageMock = {
+			upload: vi.fn().mockResolvedValue("0xbundlehash"),
+			download: vi.fn(),
+		};
+
+		const client = new OpenGardenClient({
+			signer: createMockSigner(),
+			chain: TEST_CHAIN,
+			schemaUIDs: { PublishedIntervention: "0xschema" },
+			storage: storageMock,
+		});
+
+		await expect(
+			client.finalizeIntervention({
+				interventionId: "INT-001",
+				areaUID: "0xarea",
+				scheduled: {
+					...makeFakeResult("0xsched"),
+					onchainTimestamp: 2000000n,
+				},
+				checkin: makeFakeResult("0xcheckin"),
+				checkout: makeFakeResult("0xcheckout"),
+				report: makeFakeResult("0xreport"),
+				validation: {
+					...makeFakeResult("0xvalidation"),
+					approved: true,
+					qualityScore: 9,
+				},
+				gardener: "0x0000000000000000000000000000000000000001",
+				interventionType: 1,
+				executionDate: 1000000n,
+				healthBefore: 3,
+				healthAfter: 8,
+				commissionRef:
+					"0x0000000000000000000000000000000000000000000000000000000000000000",
+				crewSize: 2,
+				isLead: true,
+			}),
+		).rejects.toThrow(OpenGardenError);
+
+		try {
+			await client.finalizeIntervention({
+				interventionId: "INT-001",
+				areaUID: "0xarea",
+				scheduled: {
+					...makeFakeResult("0xsched"),
+					onchainTimestamp: 2000000n,
+				},
+				checkin: makeFakeResult("0xcheckin"),
+				checkout: makeFakeResult("0xcheckout"),
+				report: makeFakeResult("0xreport"),
+				validation: {
+					...makeFakeResult("0xvalidation"),
+					approved: true,
+					qualityScore: 9,
+				},
+				gardener: "0x0000000000000000000000000000000000000001",
+				interventionType: 1,
+				executionDate: 1000000n,
+				healthBefore: 3,
+				healthAfter: 8,
+				commissionRef:
+					"0x0000000000000000000000000000000000000000000000000000000000000000",
+				crewSize: 2,
+				isLead: true,
+			});
+		} catch (e) {
+			expect((e as OpenGardenError).code).toBe(
+				OpenGardenErrorCode.INVALID_INPUT,
+			);
+		}
+	});
+});
+
+// --- Read method tests ---
+
+describe("OpenGardenClient getArea", () => {
+	const FAKE_AREA_UID =
+		"0x000000000000000000000000000000000000000000000000000000000000abcd";
+
+	function createReadClient() {
+		const client = new OpenGardenClient({
+			signer: createMockSigner(),
+			chain: TEST_CHAIN,
+		});
+		return client;
+	}
+
+	function makeEncodedArea() {
+		return encodeAreaRegistration({
+			areaId: "RM-PIGN-042",
+			latitude: 41.89,
+			longitude: 12.4964,
+			areaType: 0,
+			name: "Pigneto Park",
+			municipality: "Roma",
+			metadataHash:
+				"0x0000000000000000000000000000000000000000000000000000000000000001",
+		});
+	}
+
+	it("returns decoded area for valid uid", async () => {
+		const client = createReadClient();
+		const encodedData = makeEncodedArea();
+
+		(client as any).eas = {
+			getAttestation: async () => ({
+				uid: FAKE_AREA_UID,
+				data: encodedData,
+				attester: "0x0000000000000000000000000000000000000001",
+				time: 1700000000n,
+			}),
+		};
+
+		const area = await client.getArea(FAKE_AREA_UID);
+
+		expect(area.uid).toBe(FAKE_AREA_UID);
+		expect(area.areaId).toBe("RM-PIGN-042");
+		expect(area.name).toBe("Pigneto Park");
+		expect(area.municipality).toBe("Roma");
+		expect(area.attester).toBe("0x0000000000000000000000000000000000000001");
+		expect(area.time).toBe(1700000000n);
+	});
+
+	it("throws ATTESTATION_NOT_FOUND for ZERO_BYTES32 uid", async () => {
+		const client = createReadClient();
+
+		(client as any).eas = {
+			getAttestation: async () => ({
+				uid: ZERO_BYTES32,
+				data: "0x",
+				attester: "0x0000000000000000000000000000000000000000",
+				time: 0n,
+			}),
+		};
+
+		await expect(client.getArea(FAKE_AREA_UID)).rejects.toThrow(
+			OpenGardenError,
+		);
+
+		try {
+			await client.getArea(FAKE_AREA_UID);
+		} catch (e) {
+			expect((e as OpenGardenError).code).toBe(
+				OpenGardenErrorCode.ATTESTATION_NOT_FOUND,
+			);
+		}
+	});
+});
+
+describe("OpenGardenClient getIntervention", () => {
+	const FAKE_INTERVENTION_UID =
+		"0x000000000000000000000000000000000000000000000000000000000000beef";
+
+	function createReadClient() {
+		return new OpenGardenClient({
+			signer: createMockSigner(),
+			chain: TEST_CHAIN,
+		});
+	}
+
+	function makeEncodedIntervention() {
+		return encodePublishedIntervention({
+			areaUID:
+				"0x000000000000000000000000000000000000000000000000000000000000abcd",
+			interventionId: "INT-001",
+			gardener: "0x0000000000000000000000000000000000000001",
+			interventionType: 1,
+			executionDate: 1000000n,
+			healthBefore: 3,
+			healthAfter: 8,
+			commissionRef:
+				"0x0000000000000000000000000000000000000000000000000000000000000000",
+			evidenceBundleHash:
+				"0x0000000000000000000000000000000000000000000000000000000000000002",
+			offchainCount: 5,
+			crewSize: 2,
+			isLead: true,
+		});
+	}
+
+	it("returns decoded intervention for valid uid", async () => {
+		const client = createReadClient();
+		const encodedData = makeEncodedIntervention();
+
+		(client as any).eas = {
+			getAttestation: async () => ({
+				uid: FAKE_INTERVENTION_UID,
+				data: encodedData,
+				attester: "0x0000000000000000000000000000000000000001",
+				recipient: "0x0000000000000000000000000000000000000001",
+				time: 1700000000n,
+			}),
+		};
+
+		const intervention = await client.getIntervention(FAKE_INTERVENTION_UID);
+
+		expect(intervention.uid).toBe(FAKE_INTERVENTION_UID);
+		expect(intervention.interventionId).toBe("INT-001");
+		expect(intervention.healthBefore).toBe(3);
+		expect(intervention.healthAfter).toBe(8);
+		expect(intervention.offchainCount).toBe(5);
+		expect(intervention.crewSize).toBe(2);
+		expect(intervention.isLead).toBe(true);
+		expect(intervention.time).toBe(1700000000n);
+	});
+
+	it("throws ATTESTATION_NOT_FOUND for ZERO_BYTES32 uid", async () => {
+		const client = createReadClient();
+
+		(client as any).eas = {
+			getAttestation: async () => ({
+				uid: ZERO_BYTES32,
+				data: "0x",
+				attester: "0x0000000000000000000000000000000000000000",
+				recipient: "0x0000000000000000000000000000000000000000",
+				time: 0n,
+			}),
+		};
+
+		await expect(
+			client.getIntervention(FAKE_INTERVENTION_UID),
+		).rejects.toThrow(OpenGardenError);
+
+		try {
+			await client.getIntervention(FAKE_INTERVENTION_UID);
+		} catch (e) {
+			expect((e as OpenGardenError).code).toBe(
+				OpenGardenErrorCode.ATTESTATION_NOT_FOUND,
+			);
+		}
+	});
+});
+
+describe("OpenGardenClient getAreaInterventions", () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+		vi.unstubAllGlobals();
+	});
+
+	function createClient(chain?: ChainConfig) {
+		return new OpenGardenClient({
+			signer: createMockSigner(),
+			chain: chain ?? TEST_CHAIN,
+			schemaUIDs: { PublishedIntervention: "0xschema" },
+		});
+	}
+
+	function makeEncodedIntervention() {
+		return encodePublishedIntervention({
+			areaUID:
+				"0x000000000000000000000000000000000000000000000000000000000000abcd",
+			interventionId: "INT-001",
+			gardener: "0x0000000000000000000000000000000000000001",
+			interventionType: 1,
+			executionDate: 1000000n,
+			healthBefore: 3,
+			healthAfter: 8,
+			commissionRef:
+				"0x0000000000000000000000000000000000000000000000000000000000000000",
+			evidenceBundleHash:
+				"0x0000000000000000000000000000000000000000000000000000000000000002",
+			offchainCount: 5,
+			crewSize: 2,
+			isLead: true,
+		});
+	}
+
+	it("returns decoded interventions from GraphQL response", async () => {
+		const encodedData = makeEncodedIntervention();
+		const fetchMock = vi.fn().mockResolvedValue({
+			json: async () => ({
+				data: {
+					attestations: [
+						{
+							id: "0xintervention1",
+							attester: "0x0000000000000000000000000000000000000001",
+							recipient: "0x0000000000000000000000000000000000000001",
+							time: "1700000000",
+							data: encodedData,
+							refUID: "0xarea",
+						},
+					],
+				},
+			}),
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const client = createClient();
+		const interventions = await client.getAreaInterventions("0xarea");
+
+		expect(interventions).toHaveLength(1);
+		expect(interventions[0].uid).toBe("0xintervention1");
+		expect(interventions[0].interventionId).toBe("INT-001");
+		expect(interventions[0].time).toBe(1700000000n);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("returns empty array when no attestations found", async () => {
+		const fetchMock = vi.fn().mockResolvedValue({
+			json: async () => ({ data: { attestations: [] } }),
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const client = createClient();
+		const interventions = await client.getAreaInterventions("0xarea");
+
+		expect(interventions).toHaveLength(0);
+	});
+
+	it("throws INVALID_INPUT for unknown chain without GraphQL endpoint", () => {
+		const unknownChain: ChainConfig = {
+			chainId: 99999n,
+			easAddress: "0x4200000000000000000000000000000000000021",
+			schemaRegistryAddress: "0x4200000000000000000000000000000000000020",
+		};
+
+		const client = createClient(unknownChain);
+
+		expect(client.getAreaInterventions("0xarea")).rejects.toThrow(
+			OpenGardenError,
+		);
+	});
+});
+
+describe("OpenGardenClient getGardenerMilestones", () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+		vi.unstubAllGlobals();
+	});
+
+	function createClient() {
+		return new OpenGardenClient({
+			signer: createMockSigner(),
+			chain: TEST_CHAIN,
+			schemaUIDs: { GardenerMilestone: "0xschema" },
+		});
+	}
+
+	function makeEncodedMilestone() {
+		return encodeGardenerMilestone({
+			recipient: "0x0000000000000000000000000000000000000001",
+			milestoneLevel: 3,
+			totalInterventions: 50,
+			totalValidated: 48,
+			avgHealthImprovement: 4,
+			skillTier: "expert",
+			achievedAt: 1700000000n,
+			evidenceRoot:
+				"0x0000000000000000000000000000000000000000000000000000000000000001",
+		});
+	}
+
+	it("returns decoded milestones from GraphQL response", async () => {
+		const encodedData = makeEncodedMilestone();
+		const fetchMock = vi.fn().mockResolvedValue({
+			json: async () => ({
+				data: {
+					attestations: [
+						{
+							id: "0xmilestone1",
+							attester: "0x0000000000000000000000000000000000000001",
+							recipient: "0x0000000000000000000000000000000000000001",
+							time: "1700000000",
+							data: encodedData,
+						},
+					],
+				},
+			}),
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const client = createClient();
+		const milestones = await client.getGardenerMilestones(
+			"0x0000000000000000000000000000000000000001",
+		);
+
+		expect(milestones).toHaveLength(1);
+		expect(milestones[0].uid).toBe("0xmilestone1");
+		expect(milestones[0].milestoneLevel).toBe(3);
+		expect(milestones[0].totalInterventions).toBe(50);
+		expect(milestones[0].skillTier).toBe("expert");
+		expect(milestones[0].time).toBe(1700000000n);
+	});
+
+	it("returns empty array when no milestones found", async () => {
+		const fetchMock = vi.fn().mockResolvedValue({
+			json: async () => ({ data: { attestations: [] } }),
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const client = createClient();
+		const milestones = await client.getGardenerMilestones(
+			"0x0000000000000000000000000000000000000001",
+		);
+
+		expect(milestones).toHaveLength(0);
+	});
+});
+
+describe("OpenGardenClient verifyEvidenceBundle", () => {
+	const FAKE_INTERVENTION_UID =
+		"0x000000000000000000000000000000000000000000000000000000000000beef";
+
+	function makeEncodedIntervention(overrides?: {
+		executionDate?: bigint;
+		offchainCount?: number;
+		evidenceBundleHash?: string;
+	}) {
+		return encodePublishedIntervention({
+			areaUID:
+				"0x000000000000000000000000000000000000000000000000000000000000abcd",
+			interventionId: "INT-001",
+			gardener: "0x0000000000000000000000000000000000000001",
+			interventionType: 1,
+			executionDate: overrides?.executionDate ?? 200n,
+			healthBefore: 3,
+			healthAfter: 8,
+			commissionRef:
+				"0x0000000000000000000000000000000000000000000000000000000000000000",
+			evidenceBundleHash:
+				overrides?.evidenceBundleHash ??
+				"0x0000000000000000000000000000000000000000000000000000000000000002",
+			offchainCount: overrides?.offchainCount ?? 5,
+			crewSize: 2,
+			isLead: true,
+		});
+	}
+
+	function makeValidBundle(overrides?: Partial<EvidenceBundle>): EvidenceBundle {
+		return {
+			interventionId: "INT-001",
+			areaUID: "0xarea",
+			attestations: {
+				scheduled: {
+					uid: "0xsched",
+					contentHash: "0xsched",
+					claimedTimestamp: 100,
+					onchainTimestamp: 100,
+				},
+				checkin: {
+					uid: "0xcheckin",
+					contentHash: "0xcheckin",
+					claimedTimestamp: 200,
+					onchainTimestamp: 200,
+				},
+				checkout: {
+					uid: "0xcheckout",
+					contentHash: "0xcheckout",
+					claimedTimestamp: 300,
+					onchainTimestamp: 300,
+				},
+				report: {
+					uid: "0xreport",
+					contentHash: "0xreport",
+					claimedTimestamp: 400,
+					onchainTimestamp: 400,
+				},
+				validation: {
+					uid: "0xvalidation",
+					contentHash: "0xvalidation",
+					claimedTimestamp: 500,
+					onchainTimestamp: 500,
+					approved: true,
+					qualityScore: 9,
+				},
+			},
+			photos: {},
+			bundleVersion: "1.0",
+			...overrides,
+		};
+	}
+
+	function createVerifyClient(
+		bundle: EvidenceBundle,
+		interventionOverrides?: {
+			executionDate?: bigint;
+			time?: bigint;
+			offchainCount?: number;
+		},
+		timestampMap?: Record<string, number>,
+	) {
+		const storageMock = {
+			upload: vi.fn(),
+			download: vi.fn().mockResolvedValue(
+				new TextEncoder().encode(JSON.stringify(bundle)),
+			),
+		};
+
+		const client = new OpenGardenClient({
+			signer: createMockSigner(),
+			chain: TEST_CHAIN,
+			storage: storageMock,
+		});
+
+		const tsMap = timestampMap ?? {
+			"0xsched": 100,
+			"0xcheckin": 200,
+			"0xcheckout": 300,
+			"0xreport": 400,
+			"0xvalidation": 500,
+		};
+
+		const encodedData = makeEncodedIntervention({
+			executionDate: interventionOverrides?.executionDate ?? 200n,
+			offchainCount: interventionOverrides?.offchainCount ?? 5,
+		});
+
+		(client as any).eas = {
+			getAttestation: async () => ({
+				uid: FAKE_INTERVENTION_UID,
+				data: encodedData,
+				attester: "0x0000000000000000000000000000000000000001",
+				recipient: "0x0000000000000000000000000000000000000001",
+				time: interventionOverrides?.time ?? 600n,
+			}),
+			getTimestamp: async (uid: string) => BigInt(tsMap[uid] ?? 0),
+		};
+
+		return { client, storageMock };
+	}
+
+	it("valid bundle passes all checks", async () => {
+		const bundle = makeValidBundle();
+		const { client } = createVerifyClient(bundle);
+
+		const result = await client.verifyEvidenceBundle(FAKE_INTERVENTION_UID);
+
+		expect(result.valid).toBe(true);
+		expect(result.attestationCount).toBe(5);
+		expect(result.expectedCount).toBe(5);
+		expect(result.temporalOrderValid).toBe(true);
+		expect(result.timestampsVerified).toBe(true);
+		expect(result.healthcheckOrderValid).toBe(true);
+		expect(result.executionDateBracketed).toBe(true);
+		expect(result.validationApproved).toBe(true);
+	});
+
+	it("mismatched attestation count fails", async () => {
+		const bundle = makeValidBundle();
+		const { client } = createVerifyClient(bundle, { offchainCount: 7 });
+
+		const result = await client.verifyEvidenceBundle(FAKE_INTERVENTION_UID);
+
+		expect(result.valid).toBe(false);
+		expect(result.attestationCount).toBe(5);
+		expect(result.expectedCount).toBe(7);
+	});
+
+	it("out-of-order timestamps fails", async () => {
+		const bundle = makeValidBundle({
+			attestations: {
+				...makeValidBundle().attestations,
+				checkin: {
+					uid: "0xcheckin",
+					contentHash: "0xcheckin",
+					claimedTimestamp: 200,
+					onchainTimestamp: 500,
+				},
+				checkout: {
+					uid: "0xcheckout",
+					contentHash: "0xcheckout",
+					claimedTimestamp: 300,
+					onchainTimestamp: 150,
+				},
+			},
+		});
+		const { client } = createVerifyClient(bundle, undefined, {
+			"0xsched": 100,
+			"0xcheckin": 500,
+			"0xcheckout": 150,
+			"0xreport": 400,
+			"0xvalidation": 500,
+		});
+
+		const result = await client.verifyEvidenceBundle(FAKE_INTERVENTION_UID);
+
+		expect(result.valid).toBe(false);
+		expect(result.temporalOrderValid).toBe(false);
+	});
+
+	it("equal timestamps (same block) fails strict ordering", async () => {
+		const bundle = makeValidBundle({
+			attestations: {
+				...makeValidBundle().attestations,
+				checkin: {
+					uid: "0xcheckin",
+					contentHash: "0xcheckin",
+					claimedTimestamp: 200,
+					onchainTimestamp: 200,
+				},
+				checkout: {
+					uid: "0xcheckout",
+					contentHash: "0xcheckout",
+					claimedTimestamp: 200,
+					onchainTimestamp: 200,
+				},
+			},
+		});
+		const { client } = createVerifyClient(bundle, undefined, {
+			"0xsched": 100,
+			"0xcheckin": 200,
+			"0xcheckout": 200,
+			"0xreport": 400,
+			"0xvalidation": 500,
+		});
+
+		const result = await client.verifyEvidenceBundle(FAKE_INTERVENTION_UID);
+
+		expect(result.valid).toBe(false);
+		expect(result.temporalOrderValid).toBe(false);
+	});
+
+	it("healthcheck temporal ordering violation fails", async () => {
+		const bundle = makeValidBundle({
+			attestations: {
+				...makeValidBundle().attestations,
+				healthcheckBefore: {
+					uid: "0xhcbefore",
+					score: 3,
+					onchainTimestamp: 250,
+				},
+				healthcheckAfter: {
+					uid: "0xhcafter",
+					score: 8,
+					onchainTimestamp: 250,
+				},
+			},
+		});
+		const { client } = createVerifyClient(bundle, { offchainCount: 7 });
+
+		const result = await client.verifyEvidenceBundle(FAKE_INTERVENTION_UID);
+
+		expect(result.valid).toBe(false);
+		expect(result.healthcheckOrderValid).toBe(false);
+	});
+
+	it("execution date before schedule fails bracketing", async () => {
+		const bundle = makeValidBundle({
+			attestations: {
+				...makeValidBundle().attestations,
+				scheduled: {
+					uid: "0xsched",
+					contentHash: "0xsched",
+					claimedTimestamp: 100,
+					onchainTimestamp: 300,
+				},
+			},
+		});
+		const { client } = createVerifyClient(
+			bundle,
+			{ executionDate: 200n, time: 600n },
+			{
+				"0xsched": 300,
+				"0xcheckin": 200,
+				"0xcheckout": 300,
+				"0xreport": 400,
+				"0xvalidation": 500,
+			},
+		);
+
+		const result = await client.verifyEvidenceBundle(FAKE_INTERVENTION_UID);
+
+		expect(result.valid).toBe(false);
+		expect(result.executionDateBracketed).toBe(false);
+	});
+
+	it("execution date after publication fails bracketing", async () => {
+		const bundle = makeValidBundle();
+		const { client } = createVerifyClient(bundle, {
+			executionDate: 700n,
+			time: 600n,
+		});
+
+		const result = await client.verifyEvidenceBundle(FAKE_INTERVENTION_UID);
+
+		expect(result.valid).toBe(false);
+		expect(result.executionDateBracketed).toBe(false);
+	});
+
+	it("validation.approved === false fails", async () => {
+		const bundle = makeValidBundle({
+			attestations: {
+				...makeValidBundle().attestations,
+				validation: {
+					uid: "0xvalidation",
+					contentHash: "0xvalidation",
+					claimedTimestamp: 500,
+					onchainTimestamp: 500,
+					approved: false,
+					qualityScore: 2,
+				},
+			},
+		});
+		const { client } = createVerifyClient(bundle);
+
+		const result = await client.verifyEvidenceBundle(FAKE_INTERVENTION_UID);
+
+		expect(result.valid).toBe(false);
+		expect(result.validationApproved).toBe(false);
+	});
+
+	it("throws STORAGE_NOT_CONFIGURED without storage adapter", async () => {
+		const client = new OpenGardenClient({
+			signer: createMockSigner(),
+			chain: TEST_CHAIN,
+		});
+
+		await expect(
+			client.verifyEvidenceBundle(FAKE_INTERVENTION_UID),
+		).rejects.toThrow(OpenGardenError);
+
+		try {
+			await client.verifyEvidenceBundle(FAKE_INTERVENTION_UID);
+		} catch (e) {
+			expect((e as OpenGardenError).code).toBe(
+				OpenGardenErrorCode.STORAGE_NOT_CONFIGURED,
+			);
+		}
+	});
+
+	it("on-chain timestamp mismatch detected", async () => {
+		const bundle = makeValidBundle();
+		const { client } = createVerifyClient(bundle, undefined, {
+			"0xsched": 100,
+			"0xcheckin": 200,
+			"0xcheckout": 300,
+			"0xreport": 400,
+			"0xvalidation": 999,
+		});
+
+		const result = await client.verifyEvidenceBundle(FAKE_INTERVENTION_UID);
+
+		expect(result.valid).toBe(false);
+		expect(result.timestampsVerified).toBe(false);
 	});
 });

@@ -50,4 +50,7 @@ export interface EvidenceBundleVerification {
 	expectedCount: number;
 	temporalOrderValid: boolean;
 	timestampsVerified: boolean;
+	healthcheckOrderValid: boolean;
+	executionDateBracketed: boolean;
+	validationApproved: boolean;
 }
