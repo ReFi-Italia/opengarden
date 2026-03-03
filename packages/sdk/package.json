@@ -23,7 +23,8 @@
     "test:e2e": "vitest run tests/e2e.test.ts --bail 1 --sequence.concurrent false",
     "test:watch": "vitest --exclude tests/e2e.test.ts",
     "create-wallet": "tsx scripts/create-test-wallet.ts",
-    "register-schemas": "tsx scripts/register-schemas.ts"
+    "register-schemas": "tsx scripts/register-schemas.ts",
+    "name-schemas": "tsx scripts/name-schemas.ts"
   },
   "dependencies": {
     "@ethereum-attestation-service/eas-sdk": "^2.9.0"

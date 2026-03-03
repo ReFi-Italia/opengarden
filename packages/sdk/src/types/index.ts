@@ -23,6 +23,7 @@ export type {
 
 export type {
   OnChainAttestationResult,
+  PublishedInterventionResult,
   TimestampedOffChainResult,
   OffChainAttestationResult,
   SchemaRegistrationResult,

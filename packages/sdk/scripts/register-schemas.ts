@@ -8,12 +8,17 @@
  * Output: JSON map of schema name → UID (paste into .env as OPENGARDEN_SCHEMA_UIDS)
  */
 import 'dotenv/config';
+import { createRequire } from 'node:module';
 import { ethers } from 'ethers';
-import { SchemaRegistry } from '@ethereum-attestation-service/eas-sdk';
 import { OPTIMISM_SEPOLIA, BASE_SEPOLIA, ZERO_ADDRESS } from '../src/constants';
 import { SCHEMA_DEFINITIONS } from '../src/schemas/definitions';
 import type { SchemaName } from '../src/types/enums';
 import type { ChainConfig } from '../src/types/config';
+
+// Force CJS resolution — the EAS SDK ESM build has extensionless imports
+// that break under Node 22's strict ESM resolver.
+const require = createRequire(import.meta.url);
+const { SchemaRegistry } = require('@ethereum-attestation-service/eas-sdk');
 
 const PRIVATE_KEY = process.env.OPENGARDEN_TEST_PRIVATE_KEY;
 const RPC_URL = process.env.OPENGARDEN_TEST_RPC_URL || 'https://sepolia.optimism.io';

@@ -19,6 +19,10 @@ export interface OffChainAttestationResult {
   signedAttestation: Record<string, unknown>;
 }
 
+export interface PublishedInterventionResult extends OnChainAttestationResult {
+  indexedCount: number;
+}
+
 export interface SchemaRegistrationResult {
   name: string;
   uid: string;

@@ -19,7 +19,7 @@ import {
   ZERO_BYTES32,
 } from '../src/constants';
 import type { ChainConfig, StorageAdapter } from '../src/types/config';
-import type { TimestampedOffChainResult } from '../src/types/results';
+import type { TimestampedOffChainResult, PublishedInterventionResult } from '../src/types/results';
 
 import type { SchemaUIDs } from '../src/types/config';
 
@@ -408,5 +408,109 @@ describe.skipIf(skip)('E2E: full intervention lifecycle', () => {
     expect(verification.timestampsVerified).toBe(true);
     expect(verification.valid).toBe(true);
     console.log(`  Bundle verified: count=${verification.attestationCount}, temporal=${verification.temporalOrderValid}, timestamps=${verification.timestampsVerified}`);
+  }, 60_000);
+});
+
+describe.skipIf(skip)('E2E: off-chain indexer submission', () => {
+  let indexerClient: OpenGardenClient;
+  let walletAddress: string;
+  let areaUID: string;
+  let scheduleResult: TimestampedOffChainResult;
+  let publishResult: PublishedInterventionResult;
+
+  beforeAll(async () => {
+    const chain = CHAINS[CHAIN_NAME];
+    if (!chain) throw new Error(`Unknown chain: ${CHAIN_NAME}`);
+
+    const cachedUIDs = loadSchemaUIDs();
+    const provider = new ethers.JsonRpcProvider(RPC_URL);
+    const signer = new ethers.Wallet(PRIVATE_KEY!, provider);
+    walletAddress = await signer.getAddress();
+
+    indexerClient = new OpenGardenClient({
+      signer,
+      chain,
+      schemaUIDs: cachedUIDs,
+      indexOffchain: true,
+    });
+
+    console.log(`  Indexer test — wallet: ${walletAddress}, indexOffchain: true`);
+  }, 30_000);
+
+  it('registers an area for the indexer test', async () => {
+    const result = await indexerClient.registerArea({
+      areaId: 'E2E-IDX-001',
+      latitude: 41.8902,
+      longitude: 12.4922,
+      areaType: 0,
+      name: 'E2E Indexer Test Garden',
+      municipality: 'RM-TEST',
+      metadataHash: ZERO_BYTES32,
+    });
+
+    areaUID = result.uid;
+    expect(areaUID).toBeTruthy();
+    console.log(`  Indexer area UID: ${areaUID}`);
+    await delay(STEP_DELAY_MS);
+  }, 60_000);
+
+  it('creates off-chain attestations that queue for indexing', async () => {
+    scheduleResult = await indexerClient.scheduleIntervention({
+      areaUID,
+      interventionId: 'E2E-IDX-INT-001',
+      interventionType: 0,
+      assignedGardener: walletAddress,
+      crewSize: 1,
+      scheduledDate: now(),
+      estimatedMinutes: 30,
+      description: 'E2E indexer test — scheduled',
+      commissionRef: ZERO_BYTES32,
+    });
+
+    expect(scheduleResult.uid).toBeTruthy();
+    console.log(`  Queued schedule UID: ${scheduleResult.uid}`);
+    await delay(STEP_DELAY_MS);
+  }, 60_000);
+
+  it('publishIntervention flushes pending attestations to easscan', async () => {
+    publishResult = await indexerClient.publishIntervention({
+      areaUID,
+      interventionId: 'E2E-IDX-INT-001',
+      gardener: walletAddress,
+      interventionType: 0,
+      executionDate: now(),
+      healthBefore: 4,
+      healthAfter: 7,
+      commissionRef: ZERO_BYTES32,
+      evidenceBundleHash: ZERO_BYTES32,
+      offchainCount: 1,
+      crewSize: 1,
+      isLead: true,
+    });
+
+    expect(publishResult.uid).toBeTruthy();
+    expect(publishResult.indexedCount).toBe(1);
+    console.log(`  Published UID: ${publishResult.uid}, indexedCount: ${publishResult.indexedCount}`);
+    await delay(STEP_DELAY_MS);
+  }, 60_000);
+
+  it('subsequent publish has empty queue (indexedCount: 0)', async () => {
+    const result = await indexerClient.publishIntervention({
+      areaUID,
+      interventionId: 'E2E-IDX-INT-002',
+      gardener: walletAddress,
+      interventionType: 0,
+      executionDate: now(),
+      healthBefore: 4,
+      healthAfter: 7,
+      commissionRef: ZERO_BYTES32,
+      evidenceBundleHash: ZERO_BYTES32,
+      offchainCount: 0,
+      crewSize: 1,
+      isLead: true,
+    });
+
+    expect(result.indexedCount).toBe(0);
+    console.log(`  Second publish indexedCount: ${result.indexedCount} (queue was drained)`);
   }, 60_000);
 });

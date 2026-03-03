@@ -24,6 +24,7 @@ export type {
 
 export type {
   OnChainAttestationResult,
+  PublishedInterventionResult,
   TimestampedOffChainResult,
   OffChainAttestationResult,
   SchemaRegistrationResult,
@@ -48,6 +49,7 @@ export type {
 export {
   ZERO_ADDRESS,
   ZERO_BYTES32,
+  SCHEMA_NAME_UID,
   CELO_MAINNET,
   CELO_ALFAJORES,
   OPTIMISM_MAINNET,

@@ -1,4 +1,4 @@
-import { EAS, SchemaRegistry } from '@ethereum-attestation-service/eas-sdk';
+import { EAS, SchemaEncoder, SchemaRegistry } from '@ethereum-attestation-service/eas-sdk';
 import type { Signer } from 'ethers';
 import type { SchemaName } from './types/enums';
 import type { OpenGardenConfig, SchemaUIDs, StorageAdapter } from './types/config';
@@ -16,13 +16,14 @@ import type {
 } from './types/schemas';
 import type {
   OnChainAttestationResult,
+  PublishedInterventionResult,
   TimestampedOffChainResult,
   OffChainAttestationResult,
   SchemaRegistrationResult,
 } from './types/results';
 import type { Area, Intervention, Milestone, EvidenceBundleVerification } from './types/attestation';
 import type { EvidenceBundle, EvidenceBundleBuilderInput } from './types/evidence';
-import { ZERO_ADDRESS, ZERO_BYTES32 } from './constants';
+import { ZERO_ADDRESS, ZERO_BYTES32, SCHEMA_NAME_UID } from './constants';
 import { OpenGardenError, OpenGardenErrorCode } from './errors';
 import { SCHEMA_STRINGS, SCHEMA_DEFINITIONS } from './schemas/definitions';
 import {
@@ -50,6 +51,14 @@ const EASSCAN_GRAPHQL_URLS: Record<string, string> = {
   '84532': 'https://base-sepolia.easscan.org/graphql',
 };
 
+const EASSCAN_STORE_URLS: Record<string, string> = {
+  '42220': 'https://celo.easscan.org/offchain/store',
+  '10': 'https://optimism.easscan.org/offchain/store',
+  '8453': 'https://base.easscan.org/offchain/store',
+  '11155420': 'https://optimism-sepolia.easscan.org/offchain/store',
+  '84532': 'https://base-sepolia.easscan.org/offchain/store',
+};
+
 export class OpenGardenClient {
   private readonly eas: EAS;
   private readonly registry: SchemaRegistry;
@@ -58,6 +67,9 @@ export class OpenGardenClient {
   private readonly schemaUIDs: Partial<SchemaUIDs>;
   private readonly graphqlUrl: string | undefined;
   private readonly chainId: bigint;
+  private readonly indexOffchain: boolean;
+  private readonly storeUrl: string | undefined;
+  private pendingIndexQueue: Array<Record<string, unknown>> = [];
 
   constructor(config: OpenGardenConfig) {
     if (!config.signer) {
@@ -69,6 +81,8 @@ export class OpenGardenClient {
     this.schemaUIDs = { ...config.schemaUIDs };
     this.chainId = config.chain.chainId;
     this.graphqlUrl = EASSCAN_GRAPHQL_URLS[this.chainId.toString()];
+    this.indexOffchain = config.indexOffchain ?? false;
+    this.storeUrl = EASSCAN_STORE_URLS[this.chainId.toString()];
 
     this.eas = new EAS(config.chain.easAddress);
     this.eas.connect(this.signer);
@@ -99,7 +113,35 @@ export class OpenGardenClient {
     });
     const uid = await tx.wait();
     this.schemaUIDs[name] = uid;
+
+    await this.nameSchema(uid, name);
+
     return { name, uid, txHash: tx.receipt!.hash };
+  }
+
+  private async nameSchema(schemaUID: string, name: string): Promise<void> {
+    try {
+      const encoder = new SchemaEncoder('bytes32 schemaId, string name');
+      const encodedData = encoder.encodeData([
+        { name: 'schemaId', value: schemaUID, type: 'bytes32' },
+        { name: 'name', value: name, type: 'string' },
+      ]);
+
+      const tx = await this.eas.attest({
+        schema: SCHEMA_NAME_UID,
+        data: {
+          recipient: ZERO_ADDRESS,
+          data: encodedData,
+          expirationTime: 0n,
+          revocable: true,
+          refUID: ZERO_BYTES32,
+          value: 0n,
+        },
+      });
+      await tx.wait();
+    } catch {
+      // Naming schema may not be deployed on this chain — skip silently.
+    }
   }
 
   getSchemaUIDs(): Partial<SchemaUIDs> {
@@ -127,6 +169,32 @@ export class OpenGardenClient {
     return this.graphqlUrl;
   }
 
+  private async submitToIndexer(signedAttestation: Record<string, unknown>): Promise<boolean> {
+    if (!this.indexOffchain || !this.storeUrl) return false;
+
+    try {
+      const signer = await this.signer.getAddress();
+      const pkg = JSON.stringify(
+        { sig: signedAttestation, signer },
+        (_key, value) => (typeof value === 'bigint' ? value.toString() : value),
+      );
+      const response = await fetch(this.storeUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: 'eas.txt', textJson: pkg }),
+      });
+      if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        console.warn(`easscan indexer returned ${response.status}: ${body}`);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.warn('easscan indexer submission failed', err);
+      return false;
+    }
+  }
+
   // --- On-Chain Writes ---
 
   async registerArea(data: AreaRegistrationInput): Promise<OnChainAttestationResult> {
@@ -149,7 +217,7 @@ export class OpenGardenClient {
     return { uid, txHash: tx.receipt!.hash, receipt: tx.receipt! };
   }
 
-  async publishIntervention(data: PublishedInterventionInput): Promise<OnChainAttestationResult> {
+  async publishIntervention(data: PublishedInterventionInput): Promise<PublishedInterventionResult> {
     const schemaUID = this.requireSchemaUID('PublishedIntervention');
     const encodedData = encodePublishedIntervention(data);
 
@@ -166,7 +234,18 @@ export class OpenGardenClient {
     });
 
     const uid = await tx.wait();
-    return { uid, txHash: tx.receipt!.hash, receipt: tx.receipt! };
+
+    let indexedCount = 0;
+    if (this.indexOffchain && this.storeUrl && this.pendingIndexQueue.length > 0) {
+      const pending = this.pendingIndexQueue;
+      this.pendingIndexQueue = [];
+      for (const sig of pending) {
+        const ok = await this.submitToIndexer(sig);
+        if (ok) indexedCount++;
+      }
+    }
+
+    return { uid, txHash: tx.receipt!.hash, receipt: tx.receipt!, indexedCount };
   }
 
   async mintMilestone(data: GardenerMilestoneInput): Promise<OnChainAttestationResult> {
@@ -216,6 +295,10 @@ export class OpenGardenClient {
 
     const timestampTx = await this.eas.timestamp(signedAttestation.uid);
     const onchainTimestamp = await timestampTx.wait();
+
+    if (this.indexOffchain) {
+      this.pendingIndexQueue.push(signedAttestation as unknown as Record<string, unknown>);
+    }
 
     return {
       uid: signedAttestation.uid,

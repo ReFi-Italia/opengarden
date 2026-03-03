@@ -20,4 +20,5 @@ export interface OpenGardenConfig {
   chain: ChainConfig;
   schemaUIDs?: Partial<SchemaUIDs>;
   storage?: StorageAdapter;
+  indexOffchain?: boolean;
 }
