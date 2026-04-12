@@ -176,10 +176,6 @@ Created when the organization plans a new intervention. One ScheduledInterventio
 > Revocable: Yes. If an intervention is cancelled or rescheduled, the original attestation is revoked and a new one created. This maintains a clean audit trail of planning decisions.
 > RefUID: AreaRegistration UID (areaUID field provides the same linkage within the attestation data).
 
-> **Why the lead is not a data field**
->
-> The lead's wallet is captured via the EAS `recipient` metadata, not duplicated into the schema data. The off-chain gardener attestations (checkin/checkout/report) follow the same pattern — gardener identity comes from the `attester` signature, never from a data field. Crew members other than the lead are not individually named in the schedule; they appear in the PublishedIntervention's evidence bundle via their own signed checkin/checkout/report attestations.
-
 > **Temporal Anchoring**
 >
 > This is the most critical attestation to timestamp on-chain. The on-chain timestamp of the ScheduledIntervention proves that planning preceded execution. A PublishedIntervention whose `executionDate` predates its schedule's on-chain timestamp is provably backfilled. See [Section 4.2](#42-temporal-ordering-rules).

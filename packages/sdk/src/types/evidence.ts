@@ -47,17 +47,15 @@ export interface EvidenceBundle {
 	bundleVersion: "2.0";
 }
 
-export interface CrewMemberAttestations {
-	checkin: TimestampedOffChainResult;
-	checkout: TimestampedOffChainResult;
-	report: TimestampedOffChainResult;
-}
-
 export interface EvidenceBundleBuilderInput {
 	interventionId: string;
 	areaUID: string;
 	scheduled: TimestampedOffChainResult;
-	crew: CrewMemberAttestations[];
+	crew: Array<{
+		checkin: TimestampedOffChainResult;
+		checkout: TimestampedOffChainResult;
+		report: TimestampedOffChainResult;
+	}>;
 	validation: TimestampedOffChainResult & {
 		approved: boolean;
 		qualityScore: number;

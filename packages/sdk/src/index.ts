@@ -38,7 +38,6 @@ export type {
 export type { SchemaName } from "./types/enums";
 export { AreaType, InterventionType, MilestoneLevel } from "./types/enums";
 export type {
-	CrewMemberAttestations,
 	EvidenceBundle,
 	EvidenceBundleAttestation,
 	EvidenceBundleBuilderInput,

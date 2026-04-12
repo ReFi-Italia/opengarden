@@ -664,6 +664,13 @@ export class OpenGardenClient {
 			new TextDecoder().decode(bundleBytes),
 		) as EvidenceBundle;
 
+		if (bundle.bundleVersion !== "2.0") {
+			throw new OpenGardenError(
+				OpenGardenErrorCode.BUNDLE_VERIFICATION_FAILED,
+				`Unsupported bundleVersion: ${bundle.bundleVersion ?? "missing"} (expected "2.0")`,
+			);
+		}
+
 		const { checkins, checkouts, reports } = bundle.attestations;
 
 		const attestationCount =

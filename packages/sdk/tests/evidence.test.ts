@@ -1,5 +1,6 @@
 import type { TransactionReceipt } from "ethers";
 import { describe, expect, it } from "vitest";
+import { OpenGardenError, OpenGardenErrorCode } from "../src/errors";
 import { buildEvidenceBundle } from "../src/evidence";
 import type { EvidenceBundleBuilderInput } from "../src/types/evidence";
 import type { TimestampedOffChainResult } from "../src/types/results";
@@ -142,5 +143,58 @@ describe("buildEvidenceBundle", () => {
 			score: 8,
 			onchainTimestamp: 5000,
 		});
+	});
+
+	it("throws INVALID_INPUT when a gardener attestation has no signer or attester", () => {
+		const resultWithoutAttester: TimestampedOffChainResult = {
+			uid: "0xciA",
+			signedAttestation: { message: { time: 2000n } },
+			timestampTxHash: "0xtx",
+			onchainTimestamp: 2018n,
+			timestampReceipt: {} as TransactionReceipt,
+		};
+		const input: EvidenceBundleBuilderInput = {
+			...soloInput,
+			crew: [
+				{
+					checkin: resultWithoutAttester,
+					checkout: mockTimestampedResult("0xcoA", 3000, 3012n, "0xAlice"),
+					report: mockTimestampedResult("0xrpA", 3100, 3120n, "0xAlice"),
+				},
+			],
+		};
+		expect(() => buildEvidenceBundle(input)).toThrow(OpenGardenError);
+		try {
+			buildEvidenceBundle(input);
+		} catch (e) {
+			expect((e as OpenGardenError).code).toBe(
+				OpenGardenErrorCode.INVALID_INPUT,
+			);
+			expect((e as Error).message).toContain("checkin");
+			expect((e as Error).message).toContain("0xciA");
+		}
+	});
+
+	it("accepts message.attester as a fallback identity source", () => {
+		const resultWithMessageAttester: TimestampedOffChainResult = {
+			uid: "0xciA",
+			signedAttestation: {
+				message: { time: 2000n, attester: "0xBobFromMessage" },
+			},
+			timestampTxHash: "0xtx",
+			onchainTimestamp: 2018n,
+			timestampReceipt: {} as TransactionReceipt,
+		};
+		const bundle = buildEvidenceBundle({
+			...soloInput,
+			crew: [
+				{
+					checkin: resultWithMessageAttester,
+					checkout: mockTimestampedResult("0xcoA", 3000, 3012n, "0xBob"),
+					report: mockTimestampedResult("0xrpA", 3100, 3120n, "0xBob"),
+				},
+			],
+		});
+		expect(bundle.attestations.checkins[0].attester).toBe("0xBobFromMessage");
 	});
 });

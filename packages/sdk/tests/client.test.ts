@@ -279,7 +279,11 @@ describe("OpenGardenClient indexBundleAttestations", () => {
 	function makeFakeResult(uid: string): TimestampedOffChainResult {
 		return {
 			uid,
-			signedAttestation: { uid, message: { time: 1000000n } },
+			signedAttestation: {
+				uid,
+				signer: "0x0000000000000000000000000000000000000001",
+				message: { time: 1000000n },
+			},
 			timestampTxHash: "0xtimestamp",
 			onchainTimestamp: 123456n,
 			timestampReceipt: FAKE_TX_RECEIPT,
@@ -449,7 +453,11 @@ describe("OpenGardenClient finalizeIntervention", () => {
 	function makeFakeResult(uid: string): TimestampedOffChainResult {
 		return {
 			uid,
-			signedAttestation: { uid, message: { time: 1000000n } },
+			signedAttestation: {
+				uid,
+				signer: "0x0000000000000000000000000000000000000001",
+				message: { time: 1000000n },
+			},
 			timestampTxHash: "0xtimestamp",
 			onchainTimestamp: 123456n,
 			timestampReceipt: FAKE_TX_RECEIPT,
@@ -1417,5 +1425,37 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 
 		expect(result.valid).toBe(false);
 		expect(result.timestampsVerified).toBe(false);
+	});
+
+	it("rejects a bundle with unsupported bundleVersion", async () => {
+		const bundle = makeValidBundle({
+			bundleVersion: "1.0" as unknown as "2.0",
+		});
+		const { client } = createVerifyClient(bundle);
+
+		await expect(
+			client.verifyEvidenceBundle(FAKE_INTERVENTION_UID),
+		).rejects.toThrow(OpenGardenError);
+
+		try {
+			await client.verifyEvidenceBundle(FAKE_INTERVENTION_UID);
+		} catch (e) {
+			expect((e as OpenGardenError).code).toBe(
+				OpenGardenErrorCode.BUNDLE_VERIFICATION_FAILED,
+			);
+			expect((e as Error).message).toContain("1.0");
+		}
+	});
+
+	it("rejects a bundle with missing bundleVersion", async () => {
+		const bundle = makeValidBundle();
+		// Strip bundleVersion to simulate a malformed / ancient bundle.
+		const malformed = { ...bundle };
+		delete (malformed as Partial<EvidenceBundle>).bundleVersion;
+		const { client } = createVerifyClient(malformed as EvidenceBundle);
+
+		await expect(
+			client.verifyEvidenceBundle(FAKE_INTERVENTION_UID),
+		).rejects.toThrow(/missing/);
 	});
 });
