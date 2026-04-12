@@ -1,40 +1,25 @@
-import type { TransactionReceipt } from "ethers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OpenGardenClient } from "../src/client";
-import {
-	OPTIMISM_MAINNET,
-	SCHEMA_NAME_UID,
-	ZERO_ADDRESS,
-	ZERO_BYTES32,
-} from "../src/constants";
+import { SCHEMA_NAME_UID, ZERO_ADDRESS, ZERO_BYTES32 } from "../src/constants";
 import { OpenGardenError, OpenGardenErrorCode } from "../src/errors";
 import {
+	decodePublishedIntervention,
 	encodeAreaRegistration,
 	encodeGardenerMilestone,
 	encodePublishedIntervention,
 } from "../src/schemas/encoders";
 import type { ChainConfig } from "../src/types/config";
 import type { EvidenceBundle } from "../src/types/evidence";
-import type { TimestampedOffChainResult } from "../src/types/results";
+import {
+	createMockSigner,
+	createTestClient,
+	DEFAULT_TEST_CHAIN,
+	FAKE_TX_RECEIPT,
+	MOCK_SIGNER_ADDRESS,
+	makeFakeTimestampedResult,
+} from "./_helpers";
 
-const TEST_CHAIN: ChainConfig = OPTIMISM_MAINNET;
-
-function createMockSigner() {
-	const provider = {
-		resolveName: async () => null,
-		getNetwork: async () => ({ chainId: 10n, name: "optimism" }),
-	};
-	return {
-		getAddress: async () => "0x0000000000000000000000000000000000000001",
-		signTransaction: async () => "0x",
-		signMessage: async () => "0x",
-		provider,
-		estimateGas: async () => 0n,
-		call: async () => "0x",
-		resolveName: async () => null,
-		sendTransaction: async () => ({}),
-	} as any;
-}
+const TEST_CHAIN = DEFAULT_TEST_CHAIN;
 
 describe("OpenGardenClient construction", () => {
 	it("throws SIGNER_ERROR when signer is missing", () => {
@@ -142,14 +127,10 @@ describe("OpenGardenClient storage validation", () => {
 describe("OpenGardenClient schema naming", () => {
 	const FAKE_SCHEMA_UID =
 		"0x0000000000000000000000000000000000000000000000000000000000000abc";
-	const FAKE_TX_RECEIPT = { hash: "0xtxhash" } as unknown as TransactionReceipt;
 
 	function createSchemaClient() {
 		const attestCalls: any[] = [];
-		const client = new OpenGardenClient({
-			signer: createMockSigner(),
-			chain: TEST_CHAIN,
-		});
+		const client = createTestClient();
 
 		(client as any).registry = {
 			register: async () => ({
@@ -274,43 +255,26 @@ describe("OpenGardenClient schema naming", () => {
 });
 
 describe("OpenGardenClient indexBundleAttestations", () => {
-	const FAKE_TX_RECEIPT = { hash: "0xtxhash" } as unknown as TransactionReceipt;
-
-	function makeFakeResult(uid: string): TimestampedOffChainResult {
-		return {
-			uid,
-			signedAttestation: {
-				uid,
-				signer: "0x0000000000000000000000000000000000000001",
-				message: { time: 1000000n },
-			},
-			timestampTxHash: "0xtimestamp",
-			onchainTimestamp: 123456n,
-			timestampReceipt: FAKE_TX_RECEIPT,
-		};
-	}
-
 	const BUNDLE_INPUT = {
 		interventionId: "INT-001",
 		areaUID: "0xarea",
-		scheduled: makeFakeResult("0xsched"),
+		scheduled: makeFakeTimestampedResult("0xsched"),
 		crew: [
 			{
-				checkin: makeFakeResult("0xcheckin"),
-				checkout: makeFakeResult("0xcheckout"),
-				report: makeFakeResult("0xreport"),
+				checkin: makeFakeTimestampedResult("0xcheckin"),
+				checkout: makeFakeTimestampedResult("0xcheckout"),
+				report: makeFakeTimestampedResult("0xreport"),
 			},
 		],
 		validation: {
-			...makeFakeResult("0xvalidation"),
+			...makeFakeTimestampedResult("0xvalidation"),
 			approved: true,
 			qualityScore: 9,
 		},
 	};
 
 	function createClient(chain?: ChainConfig) {
-		return new OpenGardenClient({
-			signer: createMockSigner(),
+		return createTestClient({
 			chain: chain ?? TEST_CHAIN,
 			schemaUIDs: { PublishedIntervention: "0xschema" },
 		});
@@ -337,7 +301,7 @@ describe("OpenGardenClient indexBundleAttestations", () => {
 		const envelope = JSON.parse(init.body);
 		expect(envelope.filename).toBe("eas.txt");
 		const pkg = JSON.parse(envelope.textJson);
-		expect(pkg.signer).toBe("0x0000000000000000000000000000000000000001");
+		expect(pkg.signer).toBe(MOCK_SIGNER_ADDRESS);
 		expect(pkg.sig).toBeDefined();
 
 		vi.unstubAllGlobals();
@@ -448,21 +412,7 @@ describe("OpenGardenClient indexBundleAttestations", () => {
 });
 
 describe("OpenGardenClient finalizeIntervention", () => {
-	const FAKE_TX_RECEIPT = { hash: "0xtxhash" } as unknown as TransactionReceipt;
-
-	function makeFakeResult(uid: string): TimestampedOffChainResult {
-		return {
-			uid,
-			signedAttestation: {
-				uid,
-				signer: "0x0000000000000000000000000000000000000001",
-				message: { time: 1000000n },
-			},
-			timestampTxHash: "0xtimestamp",
-			onchainTimestamp: 123456n,
-			timestampReceipt: FAKE_TX_RECEIPT,
-		};
-	}
+	const makeFakeResult = makeFakeTimestampedResult;
 
 	afterEach(() => {
 		vi.restoreAllMocks();
@@ -519,7 +469,6 @@ describe("OpenGardenClient finalizeIntervention", () => {
 		expect(storageMock.upload).toHaveBeenCalledTimes(1);
 		expect(result.bundle.bundleVersion).toBe("2.0");
 		expect(result.evidenceBundleHash).toBe("0xbundlehash");
-		// 1 scheduled + 3 per gardener + 1 validation = 5 off-chain attestations
 		expect(result.indexedCount).toBe(5);
 		expect(result.publication.uid).toBe("0xpublishuid");
 		expect(fetchMock).toHaveBeenCalledTimes(5);
@@ -587,14 +536,14 @@ describe("OpenGardenClient finalizeIntervention", () => {
 			executionDate: 1000000n,
 			healthBefore: 3,
 			healthAfter: 8,
-			commissionRef:
-				"0x0000000000000000000000000000000000000000000000000000000000000000",
+			commissionRef: ZERO_BYTES32,
 			crewSize: 2,
 		});
 
-		// offchainCount = 2 + 3*2 (crew of 2) + 2 (healthchecks) = 10
 		const attestData = attestCalls[0].data.data;
-		expect(attestData).toBeDefined();
+		const decoded = decodePublishedIntervention(attestData);
+		expect(decoded.offchainCount).toBe(10);
+		expect(decoded.crewSize).toBe(2);
 
 		vi.unstubAllGlobals();
 	});
@@ -660,13 +609,7 @@ describe("OpenGardenClient getArea", () => {
 	const FAKE_AREA_UID =
 		"0x000000000000000000000000000000000000000000000000000000000000abcd";
 
-	function createReadClient() {
-		const client = new OpenGardenClient({
-			signer: createMockSigner(),
-			chain: TEST_CHAIN,
-		});
-		return client;
-	}
+	const createReadClient = () => createTestClient();
 
 	function makeEncodedArea() {
 		return encodeAreaRegistration({
@@ -689,7 +632,7 @@ describe("OpenGardenClient getArea", () => {
 			getAttestation: async () => ({
 				uid: FAKE_AREA_UID,
 				data: encodedData,
-				attester: "0x0000000000000000000000000000000000000001",
+				attester: MOCK_SIGNER_ADDRESS,
 				time: 1700000000n,
 			}),
 		};
@@ -700,7 +643,7 @@ describe("OpenGardenClient getArea", () => {
 		expect(area.areaId).toBe("RM-PIGN-042");
 		expect(area.name).toBe("Pigneto Park");
 		expect(area.municipality).toBe("Roma");
-		expect(area.attester).toBe("0x0000000000000000000000000000000000000001");
+		expect(area.attester).toBe(MOCK_SIGNER_ADDRESS);
 		expect(area.time).toBe(1700000000n);
 	});
 
@@ -734,12 +677,7 @@ describe("OpenGardenClient getIntervention", () => {
 	const FAKE_INTERVENTION_UID =
 		"0x000000000000000000000000000000000000000000000000000000000000beef";
 
-	function createReadClient() {
-		return new OpenGardenClient({
-			signer: createMockSigner(),
-			chain: TEST_CHAIN,
-		});
-	}
+	const createReadClient = () => createTestClient();
 
 	function makeEncodedIntervention() {
 		return encodePublishedIntervention({
@@ -750,8 +688,7 @@ describe("OpenGardenClient getIntervention", () => {
 			executionDate: 1000000n,
 			healthBefore: 3,
 			healthAfter: 8,
-			commissionRef:
-				"0x0000000000000000000000000000000000000000000000000000000000000000",
+			commissionRef: ZERO_BYTES32,
 			evidenceBundleHash:
 				"0x0000000000000000000000000000000000000000000000000000000000000002",
 			offchainCount: 8,
@@ -767,7 +704,7 @@ describe("OpenGardenClient getIntervention", () => {
 			getAttestation: async () => ({
 				uid: FAKE_INTERVENTION_UID,
 				data: encodedData,
-				attester: "0x0000000000000000000000000000000000000001",
+				attester: MOCK_SIGNER_ADDRESS,
 				recipient: ZERO_ADDRESS,
 				time: 1700000000n,
 			}),
@@ -818,13 +755,11 @@ describe("OpenGardenClient getAreaInterventions", () => {
 		vi.unstubAllGlobals();
 	});
 
-	function createClient(chain?: ChainConfig) {
-		return new OpenGardenClient({
-			signer: createMockSigner(),
+	const createClient = (chain?: ChainConfig) =>
+		createTestClient({
 			chain: chain ?? TEST_CHAIN,
 			schemaUIDs: { PublishedIntervention: "0xschema" },
 		});
-	}
 
 	function makeEncodedIntervention() {
 		return encodePublishedIntervention({
@@ -835,8 +770,7 @@ describe("OpenGardenClient getAreaInterventions", () => {
 			executionDate: 1000000n,
 			healthBefore: 3,
 			healthAfter: 8,
-			commissionRef:
-				"0x0000000000000000000000000000000000000000000000000000000000000000",
+			commissionRef: ZERO_BYTES32,
 			evidenceBundleHash:
 				"0x0000000000000000000000000000000000000000000000000000000000000002",
 			offchainCount: 5,
@@ -852,8 +786,8 @@ describe("OpenGardenClient getAreaInterventions", () => {
 					attestations: [
 						{
 							id: "0xintervention1",
-							attester: "0x0000000000000000000000000000000000000001",
-							recipient: "0x0000000000000000000000000000000000000001",
+							attester: MOCK_SIGNER_ADDRESS,
+							recipient: MOCK_SIGNER_ADDRESS,
 							time: "1700000000",
 							data: encodedData,
 							refUID: "0xarea",
@@ -907,17 +841,12 @@ describe("OpenGardenClient getGardenerMilestones", () => {
 		vi.unstubAllGlobals();
 	});
 
-	function createClient() {
-		return new OpenGardenClient({
-			signer: createMockSigner(),
-			chain: TEST_CHAIN,
-			schemaUIDs: { GardenerMilestone: "0xschema" },
-		});
-	}
+	const createClient = () =>
+		createTestClient({ schemaUIDs: { GardenerMilestone: "0xschema" } });
 
 	function makeEncodedMilestone() {
 		return encodeGardenerMilestone({
-			recipient: "0x0000000000000000000000000000000000000001",
+			recipient: MOCK_SIGNER_ADDRESS,
 			milestoneLevel: 3,
 			totalInterventions: 50,
 			totalValidated: 48,
@@ -937,8 +866,8 @@ describe("OpenGardenClient getGardenerMilestones", () => {
 					attestations: [
 						{
 							id: "0xmilestone1",
-							attester: "0x0000000000000000000000000000000000000001",
-							recipient: "0x0000000000000000000000000000000000000001",
+							attester: MOCK_SIGNER_ADDRESS,
+							recipient: MOCK_SIGNER_ADDRESS,
 							time: "1700000000",
 							data: encodedData,
 						},
@@ -949,9 +878,7 @@ describe("OpenGardenClient getGardenerMilestones", () => {
 		vi.stubGlobal("fetch", fetchMock);
 
 		const client = createClient();
-		const milestones = await client.getGardenerMilestones(
-			"0x0000000000000000000000000000000000000001",
-		);
+		const milestones = await client.getGardenerMilestones(MOCK_SIGNER_ADDRESS);
 
 		expect(milestones).toHaveLength(1);
 		expect(milestones[0].uid).toBe("0xmilestone1");
@@ -968,9 +895,7 @@ describe("OpenGardenClient getGardenerMilestones", () => {
 		vi.stubGlobal("fetch", fetchMock);
 
 		const client = createClient();
-		const milestones = await client.getGardenerMilestones(
-			"0x0000000000000000000000000000000000000001",
-		);
+		const milestones = await client.getGardenerMilestones(MOCK_SIGNER_ADDRESS);
 
 		expect(milestones).toHaveLength(0);
 	});
@@ -1100,7 +1025,7 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 			getAttestation: async () => ({
 				uid: FAKE_INTERVENTION_UID,
 				data: encodedData,
-				attester: "0x0000000000000000000000000000000000000001",
+				attester: MOCK_SIGNER_ADDRESS,
 				recipient: ZERO_ADDRESS,
 				time: interventionOverrides?.time ?? 600n,
 			}),
@@ -1449,7 +1374,6 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 
 	it("rejects a bundle with missing bundleVersion", async () => {
 		const bundle = makeValidBundle();
-		// Strip bundleVersion to simulate a malformed / ancient bundle.
 		const malformed = { ...bundle };
 		delete (malformed as Partial<EvidenceBundle>).bundleVersion;
 		const { client } = createVerifyClient(malformed as EvidenceBundle);

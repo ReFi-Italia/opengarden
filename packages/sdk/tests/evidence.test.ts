@@ -1,9 +1,9 @@
-import type { TransactionReceipt } from "ethers";
 import { describe, expect, it } from "vitest";
 import { OpenGardenError, OpenGardenErrorCode } from "../src/errors";
 import { buildEvidenceBundle } from "../src/evidence";
 import type { EvidenceBundleBuilderInput } from "../src/types/evidence";
 import type { TimestampedOffChainResult } from "../src/types/results";
+import { FAKE_TX_RECEIPT, makeFakeTimestampedResult } from "./_helpers";
 
 function mockTimestampedResult(
 	uid: string,
@@ -11,17 +11,11 @@ function mockTimestampedResult(
 	onchainTimestamp: bigint,
 	attester?: string,
 ): TimestampedOffChainResult {
-	return {
-		uid,
-		signedAttestation: {
-			message: { time: BigInt(time) },
-			uid,
-			signer: attester ?? `0xsigner-${uid}`,
-		},
-		timestampTxHash: `0xtx${uid}`,
+	return makeFakeTimestampedResult(uid, {
+		time: BigInt(time),
 		onchainTimestamp,
-		timestampReceipt: {} as TransactionReceipt,
-	};
+		attester,
+	});
 }
 
 function mockHealthcheck(uid: string, score: number, onchainTimestamp: bigint) {
@@ -151,7 +145,7 @@ describe("buildEvidenceBundle", () => {
 			signedAttestation: { message: { time: 2000n } },
 			timestampTxHash: "0xtx",
 			onchainTimestamp: 2018n,
-			timestampReceipt: {} as TransactionReceipt,
+			timestampReceipt: FAKE_TX_RECEIPT,
 		};
 		const input: EvidenceBundleBuilderInput = {
 			...soloInput,
@@ -183,7 +177,7 @@ describe("buildEvidenceBundle", () => {
 			},
 			timestampTxHash: "0xtx",
 			onchainTimestamp: 2018n,
-			timestampReceipt: {} as TransactionReceipt,
+			timestampReceipt: FAKE_TX_RECEIPT,
 		};
 		const bundle = buildEvidenceBundle({
 			...soloInput,

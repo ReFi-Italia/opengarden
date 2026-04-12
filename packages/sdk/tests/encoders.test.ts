@@ -17,6 +17,7 @@ import {
 	encodePublishedIntervention,
 	encodeScheduledIntervention,
 } from "../src/schemas/encoders";
+import { MOCK_SIGNER_ADDRESS } from "./_helpers";
 
 describe("AreaRegistration encoder", () => {
 	const input = {
@@ -80,7 +81,7 @@ describe("PublishedIntervention encoder", () => {
 
 describe("GardenerMilestone encoder", () => {
 	const input = {
-		recipient: "0x0000000000000000000000000000000000000001",
+		recipient: MOCK_SIGNER_ADDRESS,
 		milestoneLevel: 2,
 		totalInterventions: 15,
 		totalValidated: 14,
@@ -108,7 +109,7 @@ describe("ScheduledIntervention encoder", () => {
 			areaUID: ZERO_BYTES32,
 			interventionId: "INT-2026-0002",
 			interventionType: 1,
-			crewLead: "0x0000000000000000000000000000000000000001",
+			crewLead: MOCK_SIGNER_ADDRESS,
 			crewSize: 3,
 			scheduledDate: 1709337600n,
 			estimatedMinutes: 120,

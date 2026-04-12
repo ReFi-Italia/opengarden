@@ -13,7 +13,12 @@ import "dotenv/config";
 import { ethers } from "ethers";
 import { beforeAll, describe, expect, it } from "vitest";
 import { OpenGardenClient } from "../src/client";
-import { BASE_SEPOLIA, OPTIMISM_SEPOLIA, ZERO_BYTES32 } from "../src/constants";
+import {
+	BASE_SEPOLIA,
+	OPTIMISM_SEPOLIA,
+	ZERO_ADDRESS,
+	ZERO_BYTES32,
+} from "../src/constants";
 import type {
 	ChainConfig,
 	SchemaUIDs,
@@ -347,7 +352,6 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 			healthAfter: 8,
 			commissionRef: ZERO_BYTES32,
 			evidenceBundleHash,
-			// 1 scheduled + 3 (solo crew) + 1 validation + 2 healthchecks = 7
 			offchainCount: 7,
 			crewSize: 1,
 		});
@@ -414,10 +418,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 		expect(intervention.healthAfter).toBe(8);
 		expect(intervention.crewSize).toBe(1);
 		expect(intervention.offchainCount).toBe(7);
-		// Job record — recipient is always ZERO_ADDRESS
-		expect(intervention.recipient).toBe(
-			"0x0000000000000000000000000000000000000000",
-		);
+		expect(intervention.recipient).toBe(ZERO_ADDRESS);
 		console.log(
 			`  Intervention read back: ${intervention.interventionId}, health ${intervention.healthBefore} → ${intervention.healthAfter}`,
 		);

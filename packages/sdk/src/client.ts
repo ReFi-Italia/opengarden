@@ -38,7 +38,6 @@ import type {
 import type { SchemaName } from "./types/enums";
 import type {
 	EvidenceBundle,
-	EvidenceBundleAttestation,
 	EvidenceBundleBuilderInput,
 	FinalizeInterventionInput,
 	FinalizeInterventionResult,
@@ -415,12 +414,11 @@ export class OpenGardenClient {
 		if (input.healthcheckAfter)
 			attestations.push(input.healthcheckAfter.signedAttestation);
 
-		let indexedCount = 0;
-		for (const sig of attestations) {
-			const ok = await submitToIndexer(this.storeUrl, sig, signerAddress);
-			if (ok) indexedCount++;
-		}
-		return indexedCount;
+		const storeUrl = this.storeUrl;
+		const results = await Promise.all(
+			attestations.map((sig) => submitToIndexer(storeUrl, sig, signerAddress)),
+		);
+		return results.filter(Boolean).length;
 	}
 
 	async finalizeIntervention(
@@ -433,7 +431,6 @@ export class OpenGardenClient {
 			);
 		}
 
-		// Execution date bracketing (lower bound): T_schedule ≤ executionDate
 		if (input.scheduled.onchainTimestamp > input.executionDate) {
 			throw new OpenGardenError(
 				OpenGardenErrorCode.INVALID_INPUT,
@@ -445,7 +442,6 @@ export class OpenGardenClient {
 		const evidenceBundleHash = await this.uploadEvidenceBundle(bundle);
 		const indexedCount = await this.indexBundleAttestations(input);
 
-		// 1 scheduled + 3 per crew member (checkin/checkout/report) + 1 validation
 		let offchainCount = 2 + 3 * input.crew.length;
 		if (input.healthcheckBefore) offchainCount++;
 		if (input.healthcheckAfter) offchainCount++;
@@ -671,38 +667,48 @@ export class OpenGardenClient {
 			);
 		}
 
-		const { checkins, checkouts, reports } = bundle.attestations;
+		const {
+			checkins,
+			checkouts,
+			reports,
+			healthcheckBefore,
+			healthcheckAfter,
+		} = bundle.attestations;
 
 		const attestationCount =
-			1 + // scheduled
+			2 +
 			checkins.length +
 			checkouts.length +
 			reports.length +
-			1 + // validation
-			(bundle.attestations.healthcheckBefore ? 1 : 0) +
-			(bundle.attestations.healthcheckAfter ? 1 : 0);
+			(healthcheckBefore ? 1 : 0) +
+			(healthcheckAfter ? 1 : 0);
 
 		const expectedCount = intervention.offchainCount;
 
-		// Verify temporal ordering per spec Section 4.2:
+		const crewCount = checkins.length;
+		const minCheckin = crewCount
+			? Math.min(...checkins.map((c) => c.onchainTimestamp))
+			: 0;
+		const maxCheckout = crewCount
+			? Math.max(...checkouts.map((c) => c.onchainTimestamp))
+			: 0;
+		const maxReport = crewCount
+			? Math.max(...reports.map((r) => r.onchainTimestamp))
+			: 0;
+
+		// Per spec §4.2:
 		//   T_schedule < min(T_checkin[*])
 		//   for each i: T_checkin[i] < T_checkout[i] < T_report[i]
 		//   max(T_report[*]) < T_validation
 		let temporalOrderValid =
-			checkins.length > 0 &&
-			checkins.length === checkouts.length &&
-			checkouts.length === reports.length;
+			crewCount > 0 &&
+			crewCount === checkouts.length &&
+			crewCount === reports.length &&
+			bundle.attestations.scheduled.onchainTimestamp < minCheckin &&
+			maxReport < bundle.attestations.validation.onchainTimestamp;
 
 		if (temporalOrderValid) {
-			const scheduledTs = bundle.attestations.scheduled.onchainTimestamp;
-			const minCheckin = Math.min(...checkins.map((c) => c.onchainTimestamp));
-			if (scheduledTs >= minCheckin) {
-				temporalOrderValid = false;
-			}
-		}
-
-		if (temporalOrderValid) {
-			for (let i = 0; i < checkins.length; i++) {
+			for (let i = 0; i < crewCount; i++) {
 				const ci = checkins[i].onchainTimestamp;
 				const co = checkouts[i].onchainTimestamp;
 				const rp = reports[i].onchainTimestamp;
@@ -713,33 +719,14 @@ export class OpenGardenClient {
 			}
 		}
 
-		if (temporalOrderValid) {
-			const maxReport = Math.max(...reports.map((r) => r.onchainTimestamp));
-			if (maxReport >= bundle.attestations.validation.onchainTimestamp) {
-				temporalOrderValid = false;
-			}
-		}
-
-		// Verify healthcheck temporal ordering per spec Section 4.2
 		let healthcheckOrderValid = true;
-		if (bundle.attestations.healthcheckBefore) {
-			const minCheckin = Math.min(...checkins.map((c) => c.onchainTimestamp));
-			if (
-				bundle.attestations.healthcheckBefore.onchainTimestamp >= minCheckin
-			) {
-				healthcheckOrderValid = false;
-			}
+		if (healthcheckBefore && healthcheckBefore.onchainTimestamp >= minCheckin) {
+			healthcheckOrderValid = false;
 		}
-		if (bundle.attestations.healthcheckAfter) {
-			const maxCheckout = Math.max(...checkouts.map((c) => c.onchainTimestamp));
-			if (
-				bundle.attestations.healthcheckAfter.onchainTimestamp <= maxCheckout
-			) {
-				healthcheckOrderValid = false;
-			}
+		if (healthcheckAfter && healthcheckAfter.onchainTimestamp <= maxCheckout) {
+			healthcheckOrderValid = false;
 		}
 
-		// Verify execution date bracketing: T_schedule ≤ executionDate ≤ T_publication
 		const scheduledTimestamp = BigInt(
 			bundle.attestations.scheduled.onchainTimestamp,
 		);
@@ -749,30 +736,31 @@ export class OpenGardenClient {
 			scheduledTimestamp <= executionDate &&
 			executionDate <= publicationTimestamp;
 
-		// Verify validation approval
 		const validationApproved = bundle.attestations.validation.approved === true;
 
-		// Verify on-chain timestamps match the bundle's claimed values
-		let timestampsVerified = true;
-		const flatAttestations: EvidenceBundleAttestation[] = [
+		const timestampedAttestations: Array<{
+			uid: string;
+			onchainTimestamp: number;
+		}> = [
 			bundle.attestations.scheduled,
 			...checkins,
 			...checkouts,
 			...reports,
 			bundle.attestations.validation,
 		];
-		for (const att of flatAttestations) {
-			try {
-				const onchainTs = await this.eas.getTimestamp(att.uid);
-				if (Number(onchainTs) !== att.onchainTimestamp) {
-					timestampsVerified = false;
-					break;
-				}
-			} catch {
-				timestampsVerified = false;
-				break;
-			}
-		}
+		if (healthcheckBefore) timestampedAttestations.push(healthcheckBefore);
+		if (healthcheckAfter) timestampedAttestations.push(healthcheckAfter);
+
+		const onchainTimestamps = await Promise.all(
+			timestampedAttestations.map((att) =>
+				this.eas.getTimestamp(att.uid).catch(() => null),
+			),
+		);
+		const timestampsVerified = onchainTimestamps.every(
+			(ts, i) =>
+				ts !== null &&
+				Number(ts) === timestampedAttestations[i].onchainTimestamp,
+		);
 
 		const valid =
 			attestationCount === expectedCount &&
