@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OpenGardenClient } from "../src/client";
-import { SCHEMA_NAME_UID, ZERO_ADDRESS, ZERO_BYTES32 } from "../src/constants";
+import {
+	EVIDENCE_BUNDLE_VERSION,
+	SCHEMA_NAME_UID,
+	ZERO_ADDRESS,
+	ZERO_BYTES32,
+} from "../src/constants";
 import { OpenGardenError, OpenGardenErrorCode } from "../src/errors";
 import {
 	decodePublishedIntervention,
@@ -467,7 +472,7 @@ describe("OpenGardenClient finalizeIntervention", () => {
 		});
 
 		expect(storageMock.upload).toHaveBeenCalledTimes(1);
-		expect(result.bundle.bundleVersion).toBe("2.0");
+		expect(result.bundle.bundleVersion).toBe(EVIDENCE_BUNDLE_VERSION);
 		expect(result.evidenceBundleHash).toBe("0xbundlehash");
 		expect(result.indexedCount).toBe(5);
 		expect(result.publication.uid).toBe("0xpublishuid");
@@ -979,7 +984,7 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 				},
 			},
 			photos: {},
-			bundleVersion: "2.0",
+			bundleVersion: EVIDENCE_BUNDLE_VERSION,
 			...overrides,
 		};
 	}
@@ -1354,7 +1359,7 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 
 	it("rejects a bundle with unsupported bundleVersion", async () => {
 		const bundle = makeValidBundle({
-			bundleVersion: "1.0" as unknown as "2.0",
+			bundleVersion: "9.9.9" as unknown as typeof EVIDENCE_BUNDLE_VERSION,
 		});
 		const { client } = createVerifyClient(bundle);
 
@@ -1368,7 +1373,7 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 			expect((e as OpenGardenError).code).toBe(
 				OpenGardenErrorCode.BUNDLE_VERIFICATION_FAILED,
 			);
-			expect((e as Error).message).toContain("1.0");
+			expect((e as Error).message).toContain("9.9.9");
 		}
 	});
 

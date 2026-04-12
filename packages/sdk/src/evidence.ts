@@ -1,3 +1,4 @@
+import { EVIDENCE_BUNDLE_VERSION } from "./constants";
 import { OpenGardenError, OpenGardenErrorCode } from "./errors";
 import type {
 	EvidenceBundle,
@@ -76,7 +77,7 @@ export function buildEvidenceBundle(
 			reportPhotos: input.photos?.reportPhotos,
 			afterPhotos: input.photos?.afterPhotos,
 		},
-		bundleVersion: "2.0",
+		bundleVersion: EVIDENCE_BUNDLE_VERSION,
 	};
 
 	if (input.healthcheckBefore) {

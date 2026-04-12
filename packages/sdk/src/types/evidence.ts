@@ -1,3 +1,4 @@
+import type { EVIDENCE_BUNDLE_VERSION } from "../constants";
 import type {
 	OnChainAttestationResult,
 	TimestampedOffChainResult,
@@ -44,7 +45,7 @@ export interface EvidenceBundle {
 		reportPhotos?: string;
 		afterPhotos?: string;
 	};
-	bundleVersion: "2.0";
+	bundleVersion: typeof EVIDENCE_BUNDLE_VERSION;
 }
 
 export interface EvidenceBundleBuilderInput {

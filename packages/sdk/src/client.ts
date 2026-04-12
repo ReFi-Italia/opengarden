@@ -4,7 +4,12 @@ import {
 	SchemaRegistry,
 } from "@ethereum-attestation-service/eas-sdk";
 import type { Signer } from "ethers";
-import { SCHEMA_NAME_UID, ZERO_ADDRESS, ZERO_BYTES32 } from "./constants";
+import {
+	EVIDENCE_BUNDLE_VERSION,
+	SCHEMA_NAME_UID,
+	ZERO_ADDRESS,
+	ZERO_BYTES32,
+} from "./constants";
 import { OpenGardenError, OpenGardenErrorCode } from "./errors";
 import { buildEvidenceBundle as buildBundle } from "./evidence";
 import { getGraphqlUrl, getStoreUrl, submitToIndexer } from "./indexer";
@@ -660,10 +665,10 @@ export class OpenGardenClient {
 			new TextDecoder().decode(bundleBytes),
 		) as EvidenceBundle;
 
-		if (bundle.bundleVersion !== "2.0") {
+		if (bundle.bundleVersion !== EVIDENCE_BUNDLE_VERSION) {
 			throw new OpenGardenError(
 				OpenGardenErrorCode.BUNDLE_VERIFICATION_FAILED,
-				`Unsupported bundleVersion: ${bundle.bundleVersion ?? "missing"} (expected "2.0")`,
+				`Unsupported bundleVersion: ${bundle.bundleVersion ?? "missing"} (expected "${EVIDENCE_BUNDLE_VERSION}")`,
 			);
 		}
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { EVIDENCE_BUNDLE_VERSION } from "../src/constants";
 import { OpenGardenError, OpenGardenErrorCode } from "../src/errors";
 import { buildEvidenceBundle } from "../src/evidence";
 import type { EvidenceBundleBuilderInput } from "../src/types/evidence";
@@ -48,9 +49,9 @@ describe("buildEvidenceBundle", () => {
 		},
 	};
 
-	it("sets bundleVersion to 2.0", () => {
+	it("sets bundleVersion to the current constant", () => {
 		const bundle = buildEvidenceBundle(soloInput);
-		expect(bundle.bundleVersion).toBe("2.0");
+		expect(bundle.bundleVersion).toBe(EVIDENCE_BUNDLE_VERSION);
 	});
 
 	it("includes interventionId and areaUID", () => {

@@ -15,6 +15,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { OpenGardenClient } from "../src/client";
 import {
 	BASE_SEPOLIA,
+	EVIDENCE_BUNDLE_VERSION,
 	OPTIMISM_SEPOLIA,
 	ZERO_ADDRESS,
 	ZERO_BYTES32,
@@ -330,7 +331,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 			healthcheckAfter: { ...healthcheckAfterResult, score: 8 },
 		});
 
-		expect(bundle.bundleVersion).toBe("2.0");
+		expect(bundle.bundleVersion).toBe(EVIDENCE_BUNDLE_VERSION);
 		expect(bundle.attestations.scheduled.uid).toBe(scheduleResult.uid);
 		expect(bundle.attestations.checkins).toHaveLength(1);
 		expect(bundle.attestations.reports).toHaveLength(1);

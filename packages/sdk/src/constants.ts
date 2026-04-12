@@ -4,6 +4,8 @@ export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 export const ZERO_BYTES32 =
 	"0x0000000000000000000000000000000000000000000000000000000000000000";
 
+export const EVIDENCE_BUNDLE_VERSION = "0.1.0" as const;
+
 // Well-known EAS schema for naming schemas: "bytes32 schemaId, string name"
 // See https://docs.attest.org/docs/tutorials/naming-your-schema
 export const SCHEMA_NAME_UID =

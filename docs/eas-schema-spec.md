@@ -468,7 +468,7 @@ The `scheduled` and `validation` entries are always single (one per job). The `c
     "reportPhotos": "ipfs://Qm.../work-evidence/",
     "afterPhotos": "ipfs://Qm.../completion/"
   },
-  "bundleVersion": "2.0"
+  "bundleVersion": "0.1.0"
 }
 ```
 
@@ -482,7 +482,7 @@ The `scheduled` and `validation` entries are always single (one per job). The `c
 
 > **Bundle Version**
 >
-> Version `2.0` introduces the array-shaped `checkins`, `checkouts`, `reports` fields and is required for any intervention touched by the crew-handling redesign. Consumers MUST reject bundles declaring `bundleVersion` values they don't understand.
+> The bundle format is versioned with semver. The current version is `0.1.0`. Consumers MUST reject bundles whose `bundleVersion` they don't understand. Pre-1.0 versions are unstable — breaking changes may land in a 0.x.y bump.
 
 > **Verification Flow**
 >
