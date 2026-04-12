@@ -112,6 +112,97 @@ describe("OpenGardenClient schema validation", () => {
 	});
 });
 
+describe("OpenGardenClient endpoint overrides", () => {
+	const CUSTOM_AREA_UID =
+		"0x000000000000000000000000000000000000000000000000000000000000abcd";
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+		vi.unstubAllGlobals();
+	});
+
+	it("uses an explicit graphqlUrl override for read queries", async () => {
+		const fetchMock = vi.fn().mockResolvedValue({
+			json: async () => ({ data: { attestations: [] } }),
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const client = new OpenGardenClient({
+			signer: createMockSigner(),
+			chain: TEST_CHAIN,
+			schemaUIDs: { PublishedIntervention: "0xschema" },
+			graphqlUrl: "https://self-hosted-indexer.example.com/graphql",
+		});
+
+		await client.getAreaInterventions(CUSTOM_AREA_UID);
+
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(fetchMock.mock.calls[0][0]).toBe(
+			"https://self-hosted-indexer.example.com/graphql",
+		);
+	});
+
+	it("uses an explicit storeUrl override for bundle indexing", async () => {
+		const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+		vi.stubGlobal("fetch", fetchMock);
+
+		const client = new OpenGardenClient({
+			signer: createMockSigner(),
+			chain: TEST_CHAIN,
+			schemaUIDs: { PublishedIntervention: "0xschema" },
+			storeUrl: "https://self-hosted-store.example.com/offchain/store",
+		});
+
+		const results = await client.indexBundleAttestations({
+			interventionId: "INT-001",
+			areaUID: "0xarea",
+			scheduled: makeFakeTimestampedResult("0xsched"),
+			crew: [
+				{
+					checkin: makeFakeTimestampedResult("0xcheckin"),
+					checkout: makeFakeTimestampedResult("0xcheckout"),
+					report: makeFakeTimestampedResult("0xreport"),
+				},
+			],
+			validation: {
+				...makeFakeTimestampedResult("0xvalidation"),
+				approved: true,
+				qualityScore: 9,
+			},
+		});
+
+		expect(results).toHaveLength(5);
+		expect(fetchMock.mock.calls[0][0]).toBe(
+			"https://self-hosted-store.example.com/offchain/store",
+		);
+	});
+
+	it("override works for chains with no built-in default", async () => {
+		const fetchMock = vi.fn().mockResolvedValue({
+			json: async () => ({ data: { attestations: [] } }),
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const unknownChain: ChainConfig = {
+			chainId: 99999n,
+			easAddress: "0x4200000000000000000000000000000000000021",
+			schemaRegistryAddress: "0x4200000000000000000000000000000000000020",
+		};
+
+		const client = new OpenGardenClient({
+			signer: createMockSigner(),
+			chain: unknownChain,
+			schemaUIDs: { PublishedIntervention: "0xschema" },
+			graphqlUrl: "https://private.example.com/graphql",
+		});
+
+		await client.getAreaInterventions(CUSTOM_AREA_UID);
+		expect(fetchMock.mock.calls[0][0]).toBe(
+			"https://private.example.com/graphql",
+		);
+	});
+});
+
 describe("OpenGardenClient storage validation", () => {
 	it("throws STORAGE_NOT_CONFIGURED when uploading without adapter", async () => {
 		const client = new OpenGardenClient({

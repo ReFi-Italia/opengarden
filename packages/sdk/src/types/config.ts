@@ -20,4 +20,17 @@ export interface OpenGardenConfig {
 	chain: ChainConfig;
 	schemaUIDs?: Partial<SchemaUIDs>;
 	storage?: StorageAdapter;
+	/**
+	 * Override the EAS GraphQL endpoint used for read queries. Defaults to the
+	 * EASScan endpoint for the configured chain, or `undefined` if the chain
+	 * has no known default.
+	 */
+	graphqlUrl?: string;
+	/**
+	 * Override the off-chain attestation store endpoint used by
+	 * `indexBundleAttestations` / `submitToIndexer`. Defaults to the EASScan
+	 * offchain store for the configured chain, or `undefined` if the chain
+	 * has no known default.
+	 */
+	storeUrl?: string;
 }

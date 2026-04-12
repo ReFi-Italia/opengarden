@@ -107,8 +107,8 @@ export class OpenGardenClient {
 		this.storage = config.storage;
 		this.schemaUIDs = { ...config.schemaUIDs };
 		this.chainId = config.chain.chainId;
-		this.graphqlUrl = getGraphqlUrl(this.chainId);
-		this.storeUrl = getStoreUrl(this.chainId);
+		this.graphqlUrl = config.graphqlUrl ?? getGraphqlUrl(this.chainId);
+		this.storeUrl = config.storeUrl ?? getStoreUrl(this.chainId);
 
 		this.eas = new EAS(config.chain.easAddress);
 		this.eas.connect(this.signer);
