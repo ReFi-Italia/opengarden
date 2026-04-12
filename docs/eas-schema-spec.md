@@ -64,7 +64,7 @@ Registered once per work area. Serves as the canonical geographic anchor that al
 | **areaType** | `uint8` | 0 = unspecified, 1 = public green space, 2 = private garden, 3 = institutional grounds, 4 = roadside/median |
 | **name** | `string` | Human-readable area name (e.g. "Giardino Via Appia 12") |
 | **municipality** | `string` | Municipality or district code for institutional mapping |
-| **metadataHash** | `bytes32` | IPFS CID hash of extended metadata JSON (boundaries, photos, surface area m²) |
+| **metadataHash** | `bytes32` | IPFS CID hash of extended metadata JSON (boundaries, photos, surface area m²). `ZERO_BYTES32` if no extended metadata |
 
 > **Attestation Metadata**
 >
@@ -89,9 +89,9 @@ Created only after an intervention is fully executed and validated by the organi
 | **interventionId** | `string` | Internal intervention identifier (e.g. "INT-2026-0187") |
 | **interventionType** | `uint8` | 0 = unspecified, 1 = routine maintenance, 2 = restoration, 3 = emergency, 4 = seasonal, 5 = new planting |
 | **executionDate** | `uint64` | Unix timestamp of when work was completed |
-| **healthBefore** | `uint8` | Area health score before intervention (1–10 scale) |
-| **healthAfter** | `uint8` | Area health score after intervention (1–10 scale) |
-| **commissionRef** | `bytes32` | Keccak256 hash of commissioning entity identifier (corporate sponsor ID, municipal contract number, or grant ID) |
+| **healthBefore** | `uint8` | Area health score before intervention (1–10 scale; `0` = unmeasured) |
+| **healthAfter** | `uint8` | Area health score after intervention (1–10 scale; `0` = unmeasured) |
+| **commissionRef** | `bytes32` | Keccak256 hash of commissioning entity identifier (corporate sponsor ID, municipal contract number, or grant ID). `ZERO_BYTES32` for volunteer / unsponsored work |
 | **evidenceBundleHash** | `bytes32` | IPFS CID hash of the evidence bundle JSON containing all off-chain attestation UIDs, their content hashes, and their on-chain timestamps |
 | **offchainCount** | `uint8` | Number of off-chain attestations bundled (enables completeness verification). For crew jobs this includes one checkin, one checkout, and one report *per crew member* |
 | **crewSize** | `uint8` | Total number of gardeners on this intervention (1 for solo jobs) |
@@ -125,10 +125,10 @@ A non-transferable credential minted when a gardener crosses a meaningful thresh
 | **milestoneLevel** | `uint8` | Progressive level: 1 = Apprentice (5 validated), 2 = Gardener (15), 3 = Senior (40), 4 = Master (100) |
 | **totalInterventions** | `uint16` | Cumulative count of interventions the gardener personally signed a GardenerReport for at time of minting |
 | **totalValidated** | `uint16` | Subset of the above whose parent PublishedIntervention carries an approved AdminValidation |
-| **avgHealthImprovement** | `uint8` | Average `healthAfter − healthBefore` delta across the validated interventions the gardener contributed to |
+| **avgHealthImprovement** | `uint8` | Average `healthAfter − healthBefore` delta across the validated interventions the gardener contributed to. `0` if the gardener has no validated interventions with measured health scores |
 | **skillTier** | `string` | Human-readable credential label (e.g. "Certified Urban Gardener — Level 3") |
 | **achievedAt** | `uint64` | Unix timestamp when milestone was reached |
-| **evidenceRoot** | `bytes32` | Merkle root of the PublishedIntervention UIDs the gardener contributed to (one leaf per intervention). The organization computes this at mint time by scanning its evidence bundles for GardenerReports signed by the recipient wallet |
+| **evidenceRoot** | `bytes32` | Merkle root of the PublishedIntervention UIDs the gardener contributed to (one leaf per intervention). The organization computes this at mint time by scanning its evidence bundles for GardenerReports signed by the recipient wallet. `ZERO_BYTES32` for credentials migrated from pre-chain reputation systems |
 
 > **Attestation Metadata**
 >
@@ -165,9 +165,9 @@ Created when the organization plans a new intervention. One ScheduledInterventio
 | **interventionType** | `uint8` | Same enum as PublishedIntervention (0–5) |
 | **crewSize** | `uint8` | Total number of gardeners assigned (1 for solo jobs) |
 | **scheduledDate** | `uint64` | Planned execution date as Unix timestamp |
-| **estimatedMinutes** | `uint16` | Expected duration in minutes |
+| **estimatedMinutes** | `uint16` | Expected duration in minutes (`0` = unspecified) |
 | **description** | `string` | Free-text description of required work |
-| **commissionRef** | `bytes32` | Hash of commissioning entity (matches PublishedIntervention field) |
+| **commissionRef** | `bytes32` | Hash of commissioning entity (matches PublishedIntervention field). `ZERO_BYTES32` for volunteer / unsponsored work |
 
 > **Attestation Metadata**
 >
@@ -256,9 +256,9 @@ The organization's quality assessment of the completed work. This is the gate be
 |---|---|---|
 | **scheduleUID** | `bytes32` | Off-chain UID of the ScheduledIntervention being validated |
 | **approved** | `bool` | Whether the work meets quality standards |
-| **qualityScore** | `uint8` | Quality assessment (1–10 scale) |
+| **qualityScore** | `uint8` | Quality assessment (1–10 scale; `0` = unscored, for binary approve/reject workflows) |
 | **feedback** | `string` | Written feedback to the crew (visible via the evidence bundle, not surfaced individually on-chain) |
-| **validatorId** | `bytes32` | Hashed identifier of the staff member who performed validation |
+| **validatorId** | `bytes32` | Hashed identifier of the staff member who performed validation. `ZERO_BYTES32` for organizational validation without individual attribution |
 
 > **Attestation Metadata**
 >
@@ -276,7 +276,7 @@ Optional community-level signal. Citizens can confirm visible improvement in the
 | Field | Type | Description |
 |---|---|---|
 | **areaUID** | `bytes32` | EAS UID of the AreaRegistration (citizen rates the area, not a specific intervention) |
-| **rating** | `uint8` | Citizen satisfaction (1–5 scale, simple enough for casual engagement) |
+| **rating** | `uint8` | Citizen satisfaction (1–5 scale, simple enough for casual engagement; `0` = no rating, comment-only feedback) |
 | **comment** | `string` | Optional free-text comment |
 | **photoHash** | `bytes32` | Optional IPFS CID of citizen-submitted photo (ZERO_BYTES32 if none) |
 
@@ -306,7 +306,7 @@ A condition assessment of an area. May be standalone — performed for trend mon
 | **photoHash** | `bytes32` | IPFS CID of condition documentation photos |
 | **assessorNotes** | `string` | Professional assessment notes |
 | **interventionNeeded** | `bool` | Whether the assessor recommends scheduling an intervention |
-| **assessorId** | `bytes32` | Hashed identifier of the staff member who performed the assessment |
+| **assessorId** | `bytes32` | Hashed identifier of the staff member who performed the assessment. `ZERO_BYTES32` for organizational assessment without individual attribution |
 
 > **Attestation Metadata**
 >
