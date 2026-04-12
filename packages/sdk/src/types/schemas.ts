@@ -1,3 +1,4 @@
+import type { SponsorRef } from "../sponsor";
 import type { AreaType, InterventionType, MilestoneLevel } from "./enums";
 
 export interface AreaRegistrationInput {
@@ -18,8 +19,8 @@ export interface PublishedInterventionInput {
 	executionDate: Date | bigint;
 	healthBefore: number;
 	healthAfter: number;
-	/** Plain commissioning identifier (sponsor ID, contract number, grant ID); `null` for volunteer/unsponsored work. Hashed internally per spec §9.1. */
-	commissionId: string | null;
+	/** Plain commissioning identifier, structured `SponsorRef`, or `null` for volunteer/unsponsored work. Hashed internally per spec §9.1; structured refs are canonicalized via `serializeSponsorRef` before hashing. */
+	commissionId: string | SponsorRef | null;
 	evidenceBundleHash: string;
 	offchainCount: number;
 	crewSize: number;
@@ -45,8 +46,8 @@ export interface ScheduledInterventionInput {
 	scheduledDate: Date | bigint;
 	estimatedMinutes: number;
 	description: string;
-	/** Plain commissioning identifier (must match the PublishedIntervention for the same job); `null` for volunteer/unsponsored work. Hashed internally per spec §9.1. */
-	commissionId: string | null;
+	/** Plain commissioning identifier, structured `SponsorRef`, or `null` for volunteer/unsponsored work. Must match the PublishedIntervention for the same job. Hashed internally per spec §9.1; structured refs are canonicalized via `serializeSponsorRef` before hashing. */
+	commissionId: string | SponsorRef | null;
 }
 
 export interface GardenerCheckinInput {

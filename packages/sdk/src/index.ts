@@ -34,6 +34,9 @@ export {
 	validateFinalizeInput,
 } from "./preflight";
 export type { SchemaDefinition } from "./schemas/definitions";
+// Sponsor reference helpers
+export type { SponsorRef } from "./sponsor";
+export { serializeSponsorRef } from "./sponsor";
 // Schema definitions
 export { SCHEMA_DEFINITIONS, SCHEMA_STRINGS } from "./schemas/definitions";
 export type {

@@ -1,5 +1,6 @@
 import { SchemaEncoder } from "@ethereum-attestation-service/eas-sdk";
 import { ZERO_BYTES32 } from "../constants";
+import { type SponsorRef, serializeSponsorRef } from "../sponsor";
 import type { AreaType, InterventionType, MilestoneLevel } from "../types/enums";
 import type {
 	AdminValidationInput,
@@ -35,6 +36,15 @@ import {
 
 function hashOrZero(id: string | null): string {
 	return id === null ? ZERO_BYTES32 : hashIdentifier(id);
+}
+
+function hashCommissionIdOrZero(
+	id: string | SponsorRef | null,
+): string {
+	if (id === null) return ZERO_BYTES32;
+	if (typeof id === "string") return hashIdentifier(id);
+	const serialized = serializeSponsorRef(id);
+	return serialized === null ? ZERO_BYTES32 : hashIdentifier(serialized);
 }
 
 // --- Encoders ---
@@ -79,7 +89,7 @@ export function encodePublishedIntervention(
 		{ name: "healthAfter", value: input.healthAfter, type: "uint8" },
 		{
 			name: "commissionRef",
-			value: hashOrZero(input.commissionId),
+			value: hashCommissionIdOrZero(input.commissionId),
 			type: "bytes32",
 		},
 		{
@@ -136,7 +146,7 @@ export function encodeScheduledIntervention(
 		{ name: "description", value: input.description, type: "string" },
 		{
 			name: "commissionRef",
-			value: hashOrZero(input.commissionId),
+			value: hashCommissionIdOrZero(input.commissionId),
 			type: "bytes32",
 		},
 		{ name: "crewSize", value: input.crewSize, type: "uint8" },
