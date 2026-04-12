@@ -17,6 +17,7 @@ import {
 	encodePublishedIntervention,
 	encodeScheduledIntervention,
 } from "../src/schemas/encoders";
+import { AreaType, InterventionType } from "../src/types/enums";
 import { MOCK_SIGNER_ADDRESS } from "./_helpers";
 
 describe("AreaRegistration encoder", () => {
@@ -24,7 +25,7 @@ describe("AreaRegistration encoder", () => {
 		areaId: "RM-PIGN-042",
 		latitude: 41.89,
 		longitude: 12.4964,
-		areaType: 0,
+		areaType: AreaType.PublicGreenSpace,
 		name: "Giardino Via Appia 12",
 		municipality: "RM-I",
 		metadataHash: ZERO_BYTES32,
@@ -40,7 +41,7 @@ describe("AreaRegistration encoder", () => {
 		expect(decoded.areaId).toBe("RM-PIGN-042");
 		expect(decoded.latitude).toBeCloseTo(41.89, 4);
 		expect(decoded.longitude).toBeCloseTo(12.4964, 4);
-		expect(decoded.areaType).toBe(0);
+		expect(decoded.areaType).toBe(AreaType.PublicGreenSpace);
 		expect(decoded.name).toBe("Giardino Via Appia 12");
 		expect(decoded.municipality).toBe("RM-I");
 	});
@@ -56,7 +57,7 @@ describe("PublishedIntervention encoder", () => {
 	const input = {
 		areaUID: ZERO_BYTES32,
 		interventionId: "INT-2026-0001",
-		interventionType: 0,
+		interventionType: InterventionType.RoutineMaintenance,
 		executionDate: 1709251200n,
 		healthBefore: 3,
 		healthAfter: 8,
@@ -70,7 +71,7 @@ describe("PublishedIntervention encoder", () => {
 		const encoded = encodePublishedIntervention(input);
 		const decoded = decodePublishedIntervention(encoded);
 		expect(decoded.interventionId).toBe("INT-2026-0001");
-		expect(decoded.interventionType).toBe(0);
+		expect(decoded.interventionType).toBe(InterventionType.RoutineMaintenance);
 		expect(decoded.executionDate).toBe(1709251200n);
 		expect(decoded.healthBefore).toBe(3);
 		expect(decoded.healthAfter).toBe(8);

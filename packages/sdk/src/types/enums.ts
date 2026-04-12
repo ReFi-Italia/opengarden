@@ -1,16 +1,18 @@
 export enum AreaType {
-	PublicGreenSpace = 0,
-	PrivateGarden = 1,
-	InstitutionalGrounds = 2,
-	RoadsideMedian = 3,
+	Unspecified = 0,
+	PublicGreenSpace = 1,
+	PrivateGarden = 2,
+	InstitutionalGrounds = 3,
+	RoadsideMedian = 4,
 }
 
 export enum InterventionType {
-	RoutineMaintenance = 0,
-	Restoration = 1,
-	Emergency = 2,
-	Seasonal = 3,
-	NewPlanting = 4,
+	Unspecified = 0,
+	RoutineMaintenance = 1,
+	Restoration = 2,
+	Emergency = 3,
+	Seasonal = 4,
+	NewPlanting = 5,
 }
 
 export enum MilestoneLevel {

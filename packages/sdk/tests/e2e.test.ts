@@ -24,6 +24,7 @@ import type {
 	SchemaUIDs,
 	StorageAdapter,
 } from "../src/types/config";
+import { AreaType, InterventionType } from "../src/types/enums";
 import type { TimestampedOffChainResult } from "../src/types/results";
 import { hashIdentifier } from "../src/utils";
 
@@ -170,7 +171,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 			areaId: "E2E-TEST-001",
 			latitude: 41.8902,
 			longitude: 12.4922,
-			areaType: 0,
+			areaType: AreaType.PublicGreenSpace,
 			name: "E2E Test Garden",
 			municipality: "RM-TEST",
 			metadataHash: ZERO_BYTES32,
@@ -189,7 +190,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 		scheduleResult = await client.scheduleIntervention({
 			areaUID,
 			interventionId: "E2E-INT-001",
-			interventionType: 0,
+			interventionType: InterventionType.RoutineMaintenance,
 			crewLead: walletAddress,
 			crewSize: 1,
 			scheduledDate: now(),
@@ -346,7 +347,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 		const result = await client.publishIntervention({
 			areaUID,
 			interventionId: "E2E-INT-001",
-			interventionType: 0,
+			interventionType: InterventionType.RoutineMaintenance,
 			executionDate: now(),
 			healthBefore: 3,
 			healthAfter: 8,
@@ -467,7 +468,7 @@ describe.skipIf(skip)("E2E: indexBundleAttestations", () => {
 			areaId: "E2E-IDX-001",
 			latitude: 41.8902,
 			longitude: 12.4922,
-			areaType: 0,
+			areaType: AreaType.PublicGreenSpace,
 			name: "E2E Indexer Test Garden",
 			municipality: "RM-TEST",
 			metadataHash: ZERO_BYTES32,
@@ -483,7 +484,7 @@ describe.skipIf(skip)("E2E: indexBundleAttestations", () => {
 		scheduleResult = await indexerClient.scheduleIntervention({
 			areaUID,
 			interventionId: "E2E-IDX-INT-001",
-			interventionType: 0,
+			interventionType: InterventionType.RoutineMaintenance,
 			crewLead: walletAddress,
 			crewSize: 1,
 			scheduledDate: now(),

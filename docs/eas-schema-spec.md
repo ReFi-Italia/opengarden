@@ -61,7 +61,7 @@ Registered once per work area. Serves as the canonical geographic anchor that al
 | **areaId** | `string` | Internal unique identifier for the area (e.g. "RM-PIGN-042") |
 | **latitude** | `int32` | GPS latitude in microdegrees (lat × 1,000,000). Signed for S hemisphere. |
 | **longitude** | `int32` | GPS longitude in microdegrees (lng × 1,000,000). Signed for W hemisphere. |
-| **areaType** | `uint8` | 0 = public green space, 1 = private garden, 2 = institutional grounds, 3 = roadside/median |
+| **areaType** | `uint8` | 0 = unspecified, 1 = public green space, 2 = private garden, 3 = institutional grounds, 4 = roadside/median |
 | **name** | `string` | Human-readable area name (e.g. "Giardino Via Appia 12") |
 | **municipality** | `string` | Municipality or district code for institutional mapping |
 | **metadataHash** | `bytes32` | IPFS CID hash of extended metadata JSON (boundaries, photos, surface area m²) |
@@ -87,7 +87,7 @@ Created only after an intervention is fully executed and validated by the organi
 |---|---|---|
 | **areaUID** | `bytes32` | EAS UID of the AreaRegistration attestation this intervention belongs to |
 | **interventionId** | `string` | Internal intervention identifier (e.g. "INT-2026-0187") |
-| **interventionType** | `uint8` | 0 = routine maintenance, 1 = restoration, 2 = emergency, 3 = seasonal, 4 = new planting |
+| **interventionType** | `uint8` | 0 = unspecified, 1 = routine maintenance, 2 = restoration, 3 = emergency, 4 = seasonal, 5 = new planting |
 | **executionDate** | `uint64` | Unix timestamp of when work was completed |
 | **healthBefore** | `uint8` | Area health score before intervention (1–10 scale) |
 | **healthAfter** | `uint8` | Area health score after intervention (1–10 scale) |
@@ -162,7 +162,7 @@ Created when the organization plans a new intervention. One ScheduledInterventio
 |---|---|---|
 | **areaUID** | `bytes32` | EAS UID of the target AreaRegistration |
 | **interventionId** | `string` | Internal ID, will carry through to PublishedIntervention if completed |
-| **interventionType** | `uint8` | Same enum as PublishedIntervention (0–4) |
+| **interventionType** | `uint8` | Same enum as PublishedIntervention (0–5) |
 | **crewSize** | `uint8` | Total number of gardeners assigned (1 for solo jobs) |
 | **scheduledDate** | `uint64` | Planned execution date as Unix timestamp |
 | **estimatedMinutes** | `uint16` | Expected duration in minutes |
