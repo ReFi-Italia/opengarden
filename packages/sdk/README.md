@@ -1,4 +1,4 @@
-# @opengarden/sdk
+# @refi-italia/opengarden
 
 TypeScript SDK for the OpenGarden Protocol — blockchain-verified urban gardening impact. Wraps the [Ethereum Attestation Service (EAS)](https://attest.org) to manage the full intervention lifecycle — from scheduling work to publishing verified impact records on-chain.
 
@@ -15,7 +15,7 @@ TypeScript SDK for the OpenGarden Protocol — blockchain-verified urban gardeni
 ## Install
 
 ```bash
-pnpm add @opengarden/sdk ethers
+pnpm add @refi-italia/opengarden ethers
 ```
 
 `ethers` v6 is a peer dependency.
@@ -24,7 +24,7 @@ pnpm add @opengarden/sdk ethers
 
 ```ts
 import { ethers } from 'ethers';
-import { OpenGardenClient, OPTIMISM_MAINNET, ZERO_BYTES32 } from '@opengarden/sdk';
+import { OpenGardenClient, OPTIMISM_MAINNET, ZERO_BYTES32 } from '@refi-italia/opengarden';
 
 const provider = new ethers.JsonRpcProvider('https://mainnet.optimism.io');
 const signer = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
@@ -134,8 +134,8 @@ const result = await client.verifyEvidenceBundle(interventionUID);
 Evidence bundle upload/download requires a storage adapter. The SDK doesn't bundle one — bring your own:
 
 ```ts
-import { OpenGardenClient, OPTIMISM_MAINNET } from '@opengarden/sdk';
-import type { StorageAdapter } from '@opengarden/sdk';
+import { OpenGardenClient, OPTIMISM_MAINNET } from '@refi-italia/opengarden';
+import type { StorageAdapter } from '@refi-italia/opengarden';
 
 const ipfsStorage: StorageAdapter = {
   async upload(data) {

@@ -1,6 +1,6 @@
 {
-	"name": "@opengarden/sdk",
-	"version": "0.1.0",
+	"name": "@refi-italia/opengarden",
+	"version": "0.0.0",
 	"description": "TypeScript SDK for OpenGarden Protocol — blockchain-verified urban gardening impact",
 	"type": "module",
 	"main": "./dist/index.cjs",
@@ -16,6 +16,14 @@
 	"files": [
 		"dist"
 	],
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/ReFi-Italia/opengarden.git",
+		"directory": "packages/sdk"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
 	"scripts": {
 		"build": "unbuild",
 		"check": "tsc --noEmit",

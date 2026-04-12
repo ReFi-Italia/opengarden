@@ -28,17 +28,17 @@ The protocol is optimized for four audiences:
 
 | Package | Description |
 |---|---|
-| [`@opengarden/sdk`](packages/sdk) | TypeScript SDK — single `OpenGardenClient` class covering the full attestation lifecycle |
+| [`@refi-italia/opengarden`](packages/sdk) | TypeScript SDK — single `OpenGardenClient` class covering the full attestation lifecycle |
 
 ### Quick start
 
 ```bash
 pnpm install
-pnpm --filter @opengarden/sdk build
+pnpm --filter @refi-italia/opengarden build
 ```
 
 ```ts
-import { OpenGardenClient, OPTIMISM_MAINNET } from '@opengarden/sdk';
+import { OpenGardenClient, OPTIMISM_MAINNET } from '@refi-italia/opengarden';
 
 const client = new OpenGardenClient({ signer, chain: OPTIMISM_MAINNET });
 await client.registerAllSchemas();
