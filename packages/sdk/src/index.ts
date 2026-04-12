@@ -21,6 +21,18 @@ export { OpenGardenError, OpenGardenErrorCode } from "./errors";
 export { buildEvidenceBundle } from "./evidence";
 // Indexer
 export { getGraphqlUrl, getStoreUrl, submitToIndexer } from "./indexer";
+// Preflight validation & inspection helpers
+export type {
+	AttestationMetadata,
+	FinalizeInputIssue,
+} from "./preflight";
+export {
+	assertAttesterMatches,
+	assertRefUIDMatches,
+	extractAttestationMetadata,
+	FinalizeInputIssueCode,
+	validateFinalizeInput,
+} from "./preflight";
 export type { SchemaDefinition } from "./schemas/definitions";
 // Schema definitions
 export { SCHEMA_DEFINITIONS, SCHEMA_STRINGS } from "./schemas/definitions";

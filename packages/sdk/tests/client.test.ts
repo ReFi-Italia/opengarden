@@ -448,16 +448,16 @@ describe("OpenGardenClient finalizeIntervention", () => {
 		const result = await client.finalizeIntervention({
 			interventionId: "INT-001",
 			areaUID: "0xarea",
-			scheduled: makeFakeResult("0xsched"),
+			scheduled: makeFakeResult("0xsched", { onchainTimestamp: 100n }),
 			crew: [
 				{
-					checkin: makeFakeResult("0xcheckin"),
-					checkout: makeFakeResult("0xcheckout"),
-					report: makeFakeResult("0xreport"),
+					checkin: makeFakeResult("0xcheckin", { onchainTimestamp: 200n }),
+					checkout: makeFakeResult("0xcheckout", { onchainTimestamp: 300n }),
+					report: makeFakeResult("0xreport", { onchainTimestamp: 400n }),
 				},
 			],
 			validation: {
-				...makeFakeResult("0xvalidation"),
+				...makeFakeResult("0xvalidation", { onchainTimestamp: 500n }),
 				approved: true,
 				qualityScore: 9,
 			},
@@ -509,30 +509,30 @@ describe("OpenGardenClient finalizeIntervention", () => {
 		await client.finalizeIntervention({
 			interventionId: "INT-001",
 			areaUID: "0xarea",
-			scheduled: makeFakeResult("0xsched"),
+			scheduled: makeFakeResult("0xsched", { onchainTimestamp: 100n }),
 			crew: [
 				{
-					checkin: makeFakeResult("0xcheckinA"),
-					checkout: makeFakeResult("0xcheckoutA"),
-					report: makeFakeResult("0xreportA"),
+					checkin: makeFakeResult("0xcheckinA", { onchainTimestamp: 200n }),
+					checkout: makeFakeResult("0xcheckoutA", { onchainTimestamp: 300n }),
+					report: makeFakeResult("0xreportA", { onchainTimestamp: 400n }),
 				},
 				{
-					checkin: makeFakeResult("0xcheckinB"),
-					checkout: makeFakeResult("0xcheckoutB"),
-					report: makeFakeResult("0xreportB"),
+					checkin: makeFakeResult("0xcheckinB", { onchainTimestamp: 210n }),
+					checkout: makeFakeResult("0xcheckoutB", { onchainTimestamp: 310n }),
+					report: makeFakeResult("0xreportB", { onchainTimestamp: 410n }),
 				},
 			],
 			validation: {
-				...makeFakeResult("0xvalidation"),
+				...makeFakeResult("0xvalidation", { onchainTimestamp: 500n }),
 				approved: true,
 				qualityScore: 9,
 			},
 			healthcheckBefore: {
-				...makeFakeResult("0xhcbefore"),
+				...makeFakeResult("0xhcbefore", { onchainTimestamp: 150n }),
 				score: 3,
 			},
 			healthcheckAfter: {
-				...makeFakeResult("0xhcafter"),
+				...makeFakeResult("0xhcafter", { onchainTimestamp: 450n }),
 				score: 8,
 			},
 			interventionType: 1,

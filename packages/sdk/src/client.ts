@@ -13,6 +13,7 @@ import {
 import { OpenGardenError, OpenGardenErrorCode } from "./errors";
 import { buildEvidenceBundle as buildBundle } from "./evidence";
 import { getGraphqlUrl, getStoreUrl, submitToIndexer } from "./indexer";
+import { validateFinalizeInput } from "./preflight";
 import { SCHEMA_DEFINITIONS } from "./schemas/definitions";
 import {
 	decodeAreaRegistration,
@@ -430,21 +431,18 @@ export class OpenGardenClient {
 	async finalizeIntervention(
 		input: FinalizeInterventionInput,
 	): Promise<FinalizeInterventionResult> {
-		if (input.crew.length === 0) {
+		const issues = validateFinalizeInput(input);
+		if (issues.length > 0) {
+			const summary = issues
+				.map((i) => `- [${i.code}] ${i.message}`)
+				.join("\n");
 			throw new OpenGardenError(
 				OpenGardenErrorCode.INVALID_INPUT,
-				"Cannot finalize an intervention with no crew members",
+				`Cannot finalize intervention: ${issues.length} issue${issues.length === 1 ? "" : "s"}:\n${summary}`,
 			);
 		}
 
 		const executionDate = toUnixSeconds(input.executionDate);
-		if (input.scheduled.onchainTimestamp > executionDate) {
-			throw new OpenGardenError(
-				OpenGardenErrorCode.INVALID_INPUT,
-				`Execution date (${executionDate}) must not be before the scheduled timestamp (${input.scheduled.onchainTimestamp})`,
-			);
-		}
-
 		const bundle = this.buildEvidenceBundle(input);
 		const evidenceBundleHash = await this.uploadEvidenceBundle(bundle);
 		const indexedCount = await this.indexBundleAttestations(input);

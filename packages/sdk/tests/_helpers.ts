@@ -43,18 +43,21 @@ export interface FakeResultOptions {
 	time?: bigint;
 	onchainTimestamp?: bigint;
 	attester?: string;
+	refUID?: string;
 }
 
 export function makeFakeTimestampedResult(
 	uid: string,
 	opts: FakeResultOptions = {},
 ): TimestampedOffChainResult {
+	const message: Record<string, unknown> = { time: opts.time ?? 1000000n };
+	if (opts.refUID !== undefined) message.refUID = opts.refUID;
 	return {
 		uid,
 		signedAttestation: {
 			uid,
 			signer: opts.attester ?? MOCK_SIGNER_ADDRESS,
-			message: { time: opts.time ?? 1000000n },
+			message,
 		},
 		timestampTxHash: "0xtimestamp",
 		onchainTimestamp: opts.onchainTimestamp ?? 123456n,
