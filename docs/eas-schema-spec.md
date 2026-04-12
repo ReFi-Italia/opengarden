@@ -23,16 +23,16 @@ The system anchors three record types on-chain and keeps all operational lifecyc
 
 | Schema | Layer | Attester | Purpose |
 |---|---|---|---|
-| **AreaRegistration** | On-chain | OpenGarden | Geographic anchor |
-| **PublishedIntervention** | On-chain | OpenGarden | Verified completion record |
-| **GardenerMilestone** | On-chain (SBT) | OpenGarden | Portable credential |
-| **ScheduledIntervention** | Off-chain + timestamped | OpenGarden | Task planning |
+| **AreaRegistration** | On-chain | Organization | Geographic anchor |
+| **PublishedIntervention** | On-chain | Organization | Verified completion record |
+| **GardenerMilestone** | On-chain (SBT) | Organization | Portable credential |
+| **ScheduledIntervention** | Off-chain + timestamped | Organization | Task planning |
 | **GardenerCheckin** | Off-chain + timestamped | Gardener* | Presence proof |
 | **GardenerCheckout** | Off-chain + timestamped | Gardener* | Session closure |
 | **GardenerReport** | Off-chain + timestamped | Gardener* | Work evidence |
-| **AdminValidation** | Off-chain + timestamped | OpenGarden | Quality sign-off |
+| **AdminValidation** | Off-chain + timestamped | Organization | Quality sign-off |
 | **CitizenFeedback** | Off-chain | Citizen* | Community signal |
-| **Healthcheck** | Off-chain + timestamped | OpenGarden | Condition measurement |
+| **Healthcheck** | Off-chain + timestamped | Organization | Condition measurement |
 
 _\*Implementation deferred until the release of the Gardeners' app_
 
@@ -52,7 +52,7 @@ These schemas produce permanent, publicly verifiable records on the EAS contract
 
 ### 2.1 AreaRegistration
 
-Registered once per work area. Serves as the canonical geographic anchor that all interventions reference. Created when OpenGarden begins maintaining a new area.
+Registered once per work area. Serves as the canonical geographic anchor that all interventions reference. Created when the organization begins maintaining a new area.
 
 > **ON-CHAIN** · Revocable: No
 
@@ -69,7 +69,7 @@ Registered once per work area. Serves as the canonical geographic anchor that al
 > **Attestation Metadata**
 >
 > Recipient: ZERO_ADDRESS (no specific recipient — this is a public record).
-> Attester: OpenGarden wallet.
+> Attester: Organization wallet.
 > Revocable: No. An area registration is a permanent geographic fact.
 > RefUID: ZERO_BYTES32 (root attestation, no parent reference).
 
@@ -79,7 +79,7 @@ Registered once per work area. Serves as the canonical geographic anchor that al
 
 ### 2.2 PublishedIntervention
 
-Created only after an intervention is fully executed and validated by OpenGarden. This is the canonical impact record. It bundles all off-chain operational attestations by referencing their content hashes.
+Created only after an intervention is fully executed and validated by the organization. This is the canonical impact record. It bundles all off-chain operational attestations by referencing their content hashes.
 
 > **ON-CHAIN** · Revocable: No
 
@@ -98,23 +98,23 @@ Created only after an intervention is fully executed and validated by OpenGarden
 | **crewSize** | `uint8` | Total number of gardeners on this intervention (1 for solo jobs) |
 | **isLead** | `bool` | Whether this gardener is the crew lead (used for impact deduplication) |
 
-_\*OpenGarden address until gardeners app release_
+_\*Organization wallet address until gardeners app release_
 
 
 > **Attestation Metadata**
 >
 > Recipient: Gardener wallet address
-> Attester: OpenGarden wallet.
+> Attester: Organization wallet.
 > Revocable: No. A published intervention is a historical fact.
 > RefUID: AreaRegistration UID (creating an explicit parent–child link in the EAS graph).
 
 > **The commissionRef Field**
 >
-> This is the single most important field for the OpenGarden top two audiences (corporates and municipalities). It links every verified intervention to its funding source without exposing the funder's identity on-chain. The hash can be resolved off-chain by authorized parties. This enables per-sponsor impact reporting: "Sponsor X funded 23 interventions with average health improvement of 4.2 points."
+> This is the single most important field for the protocol's top two audiences (corporates and municipalities). It links every verified intervention to its funding source without exposing the funder's identity on-chain. The hash can be resolved off-chain by authorized parties. This enables per-sponsor impact reporting: "Sponsor X funded 23 interventions with average health improvement of 4.2 points."
 
 > **Crew Interventions**
 >
-> When multiple gardeners work the same job, OpenGarden creates one PublishedIntervention per gardener, all sharing the same `interventionId` and `evidenceBundleHash`. Each gardener is the EAS `recipient` of their own attestation. Consumers deduplicate for impact reporting by grouping on `interventionId` and counting only the record where `isLead = true`.
+> When multiple gardeners work the same job, the organization creates one PublishedIntervention per gardener, all sharing the same `interventionId` and `evidenceBundleHash`. Each gardener is the EAS `recipient` of their own attestation. Consumers deduplicate for impact reporting by grouping on `interventionId` and counting only the record where `isLead = true`.
 
 ### 2.3 GardenerMilestone (Soulbound)
 
@@ -127,7 +127,7 @@ A non-transferable credential minted when a gardener crosses a meaningful thresh
 |---|---|---|
 | **milestoneLevel** | `uint8` | Progressive level: 1 = Apprentice (5 validated), 2 = Gardener (15), 3 = Senior (40), 4 = Master (100) |
 | **totalInterventions** | `uint16` | Cumulative count of interventions completed at time of minting |
-| **totalValidated** | `uint16` | Count of interventions that passed OpenGarden validation |
+| **totalValidated** | `uint16` | Count of interventions that passed organizational validation |
 | **avgHealthImprovement** | `uint8` | Average health score delta across all interventions (0–10) |
 | **skillTier** | `string` | Human-readable credential label (e.g. "Certified Urban Gardener — Level 3") |
 | **achievedAt** | `uint64` | Unix timestamp when milestone was reached |
@@ -136,20 +136,20 @@ A non-transferable credential minted when a gardener crosses a meaningful thresh
 > **Attestation Metadata**
 >
 > Recipient: Gardener wallet address.
-> Attester: OpenGarden wallet.
+> Attester: Organization wallet.
 > Revocable: No. A credential once earned is permanent.
 > RefUID: ZERO_BYTES32 (standalone credential).
 > Non-transferable: Inherent in EAS — attestations have no transfer function.
 
 > **Why Soulbound**
 >
-> The gardener's reputation must not be tradeable. A transferable credential would undermine its meaning as proof of personal work history. EAS attestations are inherently non-transferable — there is no transfer function in the protocol. Combined with `revocable: false`, the credential is permanently bound to the recipient wallet without any additional contract logic. If a gardener loses wallet access, OpenGarden can attest a new milestone to a recovered wallet, referencing the same evidence root.
+> The gardener's reputation must not be tradeable. A transferable credential would undermine its meaning as proof of personal work history. EAS attestations are inherently non-transferable — there is no transfer function in the protocol. Combined with `revocable: false`, the credential is permanently bound to the recipient wallet without any additional contract logic. If a gardener loses wallet access, the organization can attest a new milestone to a recovered wallet, referencing the same evidence root.
 
 ---
 
 ## 3. Off-Chain Schemas
 
-These schemas produce signed, timestamped attestations stored off-chain (IPFS or OpenGarden infrastructure). They are never published individually on-chain. Instead, their content hashes are bundled into the PublishedIntervention attestation upon completion.
+These schemas produce signed, timestamped attestations stored off-chain (IPFS or organization infrastructure). They are never published individually on-chain. Instead, their content hashes are bundled into the PublishedIntervention attestation upon completion.
 
 All off-chain attestations use EAS off-chain signing (EIP-712 typed signatures) for cryptographic integrity without gas costs.
 
@@ -157,7 +157,7 @@ All off-chain attestations in the intervention lifecycle (ScheduledIntervention 
 
 ### 3.1 ScheduledIntervention
 
-Created when OpenGarden plans a new intervention. This is the task assignment. It may never reach on-chain if the intervention is cancelled or rescheduled.
+Created when the organization plans a new intervention. This is the task assignment. It may never reach on-chain if the intervention is cancelled or rescheduled.
 
 > **OFF-CHAIN** · Revocable: Yes · **Timestamped on-chain: Required**
 
@@ -176,7 +176,7 @@ Created when OpenGarden plans a new intervention. This is the task assignment. I
 > **Attestation Metadata**
 >
 > Recipient: Assigned gardener wallet.
-> Attester: OpenGarden wallet.
+> Attester: Organization wallet.
 > Revocable: Yes. If an intervention is cancelled or rescheduled, the original attestation is revoked and a new one created. This maintains a clean audit trail of planning decisions.
 > RefUID: AreaRegistration UID (areaUID field provides the same linkage within the attestation data).
 
@@ -246,13 +246,13 @@ The gardener's own account of the work performed. This is the primary evidence d
 > **Attestation Metadata**
 >
 > Recipient: ZERO_ADDRESS.
-> Attester: Gardener wallet. The report is the gardener's signed testimony, validated (or not) by OpenGarden in the next step.
+> Attester: Gardener wallet. The report is the gardener's signed testimony, validated (or not) by the organization in the next step.
 > Revocable: No. A submitted report is a permanent record.
 > RefUID: ScheduledIntervention UID (interventionUID field).
 
 ### 3.5 AdminValidation
 
-OpenGarden's quality assessment of the completed work. This is the gate between operational data and on-chain publication. Only interventions that pass validation become PublishedInterventions.
+The organization's quality assessment of the completed work. This is the gate between operational data and on-chain publication. Only interventions that pass validation become PublishedInterventions.
 
 > **OFF-CHAIN** · Revocable: Yes · **Timestamped on-chain: Required**
 
@@ -267,13 +267,13 @@ OpenGarden's quality assessment of the completed work. This is the gate between 
 > **Attestation Metadata**
 >
 > Recipient: Gardener wallet.
-> Attester: OpenGarden wallet.
+> Attester: Organization wallet.
 > Revocable: Yes. If validation is issued in error, it can be revoked and reissued. This is the only quality gate in the system and must allow correction.
 > RefUID: GardenerReport UID (reportUID field).
 
 ### 3.6 CitizenFeedback
 
-Optional community-level signal. Citizens can confirm visible improvement in their area. This is a weak signal compared to professional OpenGarden validation, but valuable for civic engagement metrics and institutional reporting.
+Optional community-level signal. Citizens can confirm visible improvement in their area. This is a weak signal compared to professional organizational validation, but valuable for civic engagement metrics and institutional reporting.
 
 > **OFF-CHAIN** · Revocable: No · Timestamped on-chain: No (not part of the intervention lifecycle)
 
@@ -310,13 +310,18 @@ A condition assessment of an area. May be standalone — performed for trend mon
 | **photoHash** | `bytes32` | IPFS CID of condition documentation photos |
 | **assessorNotes** | `string` | Professional assessment notes |
 | **interventionNeeded** | `bool` | Whether the assessor recommends scheduling an intervention |
+| **assessorId** | `bytes32` | Hashed identifier of the staff member who performed the assessment |
 
 > **Attestation Metadata**
 >
 > Recipient: ZERO_ADDRESS.
-> Attester: OpenGarden wallet.
+> Attester: Organization wallet (shared across the organization's staff).
 > Revocable: No. A health assessment is a factual measurement record.
 > RefUID: AreaRegistration UID (areaUID field).
+
+> **Why assessorId**
+>
+> The attester wallet is shared across the organization's staff, so the wallet alone cannot identify which staff member performed the assessment. `assessorId` is a privacy-preserving hash of the internal staff identifier (mirrors `validatorId` in AdminValidation). It enables individual attribution and audit trails without exposing personal data on-chain.
 
 ---
 
@@ -484,11 +489,11 @@ All schemas are registered without a resolver contract. Trust is established at 
 
 | Attester | Trust level | Schemas |
 |---|---|---|
-| **OpenGarden wallet** | Authoritative | AreaRegistration, PublishedIntervention, GardenerMilestone, ScheduledIntervention, AdminValidation, Healthcheck |
+| **Organization wallet** | Authoritative | AreaRegistration, PublishedIntervention, GardenerMilestone, ScheduledIntervention, AdminValidation, Healthcheck |
 | **Registered gardener wallet** | Verified participant | GardenerCheckin, GardenerCheckout, GardenerReport |
 | **Any wallet** | Untrusted / community signal | CitizenFeedback |
 
-OpenGarden publishes its attester address on its website and in the schema metadata on IPFS. On-chain attestations from unknown wallets are ignored by any consumer that filters by attester. Off-chain attestations use EIP-712 signatures verified against the known attester address (OpenGarden wallet, gardener registry, or open for citizens).
+Each organization adopting the OpenGarden Protocol publishes its attester address on its website and in the schema metadata on IPFS. On-chain attestations from unknown wallets are ignored by any consumer that filters by attester. Off-chain attestations use EIP-712 signatures verified against the known attester address (organization wallet, gardener registry, or open for citizens).
 
 ### 7.2 Two-Dimensional Trust
 
@@ -551,5 +556,64 @@ bytes32 areaUID, uint8 rating, string comment, bytes32 photoHash
 
 **Healthcheck** (revocable: false)
 ```
-bytes32 areaUID, bytes32 interventionUID, uint8 healthScore, bytes32 photoHash, string assessorNotes, bool interventionNeeded
+bytes32 areaUID, bytes32 interventionUID, uint8 healthScore, bytes32 photoHash, string assessorNotes, bool interventionNeeded, bytes32 assessorId
 ```
+
+---
+
+## 9. SDK Encoding Conventions
+
+Several `bytes32` fields in the schemas above are opaque hashes whose derivation is not enforced at the protocol layer — any value fits on-chain. For auditors to reproduce and verify these hashes, the SDK fixes a single canonical derivation per field. Divergent conventions break cross-organization verification. These conventions are normative for any implementation that claims compatibility with the `@refi-italia/opengarden` SDK.
+
+### 9.1 Hashed Identifiers
+
+Fields carrying a hashed reference to an internal identifier (UUID, staff ID, contract number) MUST be derived as:
+
+```
+bytes32 = keccak256(utf8Bytes(internalId))
+```
+
+The input is treated as a raw UTF-8 string with no normalization, trimming, casing change, or prefix. The caller is responsible for using the same string representation across every attestation that references the same entity.
+
+Applies to:
+
+| Schema | Field | Input |
+|---|---|---|
+| PublishedIntervention | `commissionRef` | Commissioning entity identifier (sponsor ID, municipal contract number, grant ID) |
+| ScheduledIntervention | `commissionRef` | Same as PublishedIntervention (must match for the same intervention) |
+| AdminValidation | `validatorId` | Internal staff identifier of the validating admin |
+| Healthcheck | `assessorId` | Internal staff identifier of the assessing staff member |
+
+SDK helper: `hashIdentifier(id: string): string`
+
+### 9.2 Photo and Media Bundles
+
+Fields carrying a hash of one or more media references (`photoHash`, `photosHash`, `metadataHash`) MUST be derived as follows.
+
+**Single item.** When a field references exactly one file (e.g. `GardenerCheckin.photoHash` — one arrival photo), the bytes32 is whatever content-addressed hash the organization's storage adapter returns for that file. The SDK does not constrain the algorithm — it only requires that the value be reproducible by fetching the file and rehashing it with the documented algorithm.
+
+**Multiple items.** When a field references N > 1 files (e.g. `GardenerReport.photosHash` — after-work photo bundle), the bytes32 MUST be the keccak256 of a canonical manifest:
+
+```
+manifest = {"v":1,"items":[<item>, <item>, ...]}
+bytes32  = keccak256(utf8Bytes(JSON.stringify(manifest)))
+```
+
+Canonicalization rules:
+
+1. `v` is the manifest version, currently `1`. Future versions MUST bump this and MUST be treated as a distinct manifest shape.
+2. `items` is the list of content-addressed references (IPFS CIDs, storage adapter hashes, or URLs) **sorted in JavaScript string-comparison order** before serialization. Callers pass items in any order; the SDK sorts.
+3. `JSON.stringify` is used with default settings — no custom spacing, no key reordering beyond what the object literal expresses. The manifest object has exactly two keys in the order `v`, `items`.
+4. The manifest itself SHOULD be uploaded to the organization's storage (alongside the photos) so auditors can fetch it and reproduce the hash without guessing the item set.
+
+SDK helper: `hashPhotoBundle(items: string[]): string`
+
+Applies to any media-bundle field that references multiple items. Fields that always reference a single item (`GardenerCheckin.photoHash`, `Healthcheck.photoHash`, `CitizenFeedback.photoHash`) use the single-item rule above.
+
+### 9.3 Coordinate Encoding
+
+GPS coordinates in EAS schemas are signed `int32` microdegrees (`decimal × 1,000,000`, truncated). This is a fixed-point representation chosen to keep calldata small and to eliminate floating-point ambiguity. The SDK exposes `toMicrodegrees` / `fromMicrodegrees` helpers and applies the conversion internally when encoding coordinate fields.
+
+### 9.4 Timestamps
+
+Off-chain attestation `timestamp` fields are Unix seconds (`uint64`), matching the EAS EIP-712 `time` field convention. These are **self-reported** timestamps from the signing device. The authoritative time anchor for any attestation is the on-chain timestamp established via `EAS.timestamp(uid)` — see Section 4. Consumers MUST NOT trust a self-reported `timestamp` field in isolation.

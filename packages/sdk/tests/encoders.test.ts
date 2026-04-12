@@ -199,6 +199,9 @@ describe("CitizenFeedback encoder", () => {
 });
 
 describe("Healthcheck encoder", () => {
+	const FAKE_ASSESSOR_ID =
+		"0x000000000000000000000000000000000000000000000000000000000000cafe";
+
 	it("encodes a standalone healthcheck (no linked intervention)", () => {
 		const encoded = encodeHealthcheck({
 			areaUID: ZERO_BYTES32,
@@ -207,6 +210,7 @@ describe("Healthcheck encoder", () => {
 			photoHash: ZERO_BYTES32,
 			assessorNotes: "Good condition overall, minor weeding needed",
 			interventionNeeded: false,
+			assessorId: FAKE_ASSESSOR_ID,
 		});
 		expect(encoded).toBeTruthy();
 		const encoder = new SchemaEncoder(SCHEMA_STRINGS.Healthcheck);
@@ -223,6 +227,7 @@ describe("Healthcheck encoder", () => {
 			photoHash: ZERO_BYTES32,
 			assessorNotes: "Pre-intervention assessment",
 			interventionNeeded: true,
+			assessorId: FAKE_ASSESSOR_ID,
 		});
 		expect(encoded).toBeTruthy();
 		const encoder = new SchemaEncoder(SCHEMA_STRINGS.Healthcheck);
@@ -235,5 +240,9 @@ describe("Healthcheck encoder", () => {
 		const interventionField = decoded.find((f) => f.name === "interventionUID");
 		expect(interventionField).toBeDefined();
 		expect(String(interventionField?.value.value)).toBe(linkedInterventionUID);
+
+		const assessorField = decoded.find((f) => f.name === "assessorId");
+		expect(assessorField).toBeDefined();
+		expect(String(assessorField?.value.value)).toBe(FAKE_ASSESSOR_ID);
 	});
 });

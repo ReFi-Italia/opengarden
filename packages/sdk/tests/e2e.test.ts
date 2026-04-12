@@ -20,6 +20,7 @@ import type {
 	StorageAdapter,
 } from "../src/types/config";
 import type { TimestampedOffChainResult } from "../src/types/results";
+import { hashIdentifier } from "../src/utils";
 
 const PRIVATE_KEY = process.env.OPENGARDEN_TEST_PRIVATE_KEY;
 const RPC_URL =
@@ -208,6 +209,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 			photoHash: ZERO_BYTES32,
 			assessorNotes: "E2E test — poor condition before intervention",
 			interventionNeeded: true,
+			assessorId: hashIdentifier("e2e-assessor-001"),
 		});
 
 		expect(healthcheckBeforeResult.uid).toBeTruthy();
@@ -295,6 +297,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 			photoHash: ZERO_BYTES32,
 			assessorNotes: "E2E test — good condition after intervention",
 			interventionNeeded: false,
+			assessorId: hashIdentifier("e2e-assessor-001"),
 		});
 
 		expect(healthcheckAfterResult.uid).toBeTruthy();

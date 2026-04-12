@@ -63,7 +63,13 @@ const area = await client.registerArea({ ... });
 const schedule = await client.scheduleIntervention({ areaUID: area.uid, ... });
 
 // 3. Healthcheck before (off-chain + timestamped, linked to the scheduled intervention)
-const hcBefore = await client.recordHealthcheck({ areaUID: area.uid, interventionUID: schedule.uid, healthScore: 3, ... });
+const hcBefore = await client.recordHealthcheck({
+  areaUID: area.uid,
+  interventionUID: schedule.uid,
+  healthScore: 3,
+  assessorId: hashIdentifier(staffUuid),
+  ...
+});
 
 // 4. Gardener checkin (off-chain + timestamped)
 const checkin = await client.checkin({ interventionUID: schedule.uid, ... });
@@ -78,7 +84,13 @@ const report = await client.submitReport({ interventionUID: schedule.uid, checko
 const validation = await client.validateIntervention({ reportUID: report.uid, approved: true, ... });
 
 // 8. Healthcheck after (off-chain + timestamped, linked to the scheduled intervention)
-const hcAfter = await client.recordHealthcheck({ areaUID: area.uid, interventionUID: schedule.uid, healthScore: 8, ... });
+const hcAfter = await client.recordHealthcheck({
+  areaUID: area.uid,
+  interventionUID: schedule.uid,
+  healthScore: 8,
+  assessorId: hashIdentifier(staffUuid),
+  ...
+});
 
 // 9. Build evidence bundle
 const bundle = client.buildEvidenceBundle({

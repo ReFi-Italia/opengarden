@@ -92,4 +92,5 @@ export interface HealthcheckInput {
 	photoHash: string;
 	assessorNotes: string;
 	interventionNeeded: boolean;
+	assessorId: string;
 }

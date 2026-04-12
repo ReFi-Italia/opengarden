@@ -1,5 +1,11 @@
+import { keccak256, toUtf8Bytes } from "ethers";
 import { describe, expect, it } from "vitest";
-import { fromMicrodegrees, toMicrodegrees } from "../src/utils";
+import {
+	fromMicrodegrees,
+	hashIdentifier,
+	hashPhotoBundle,
+	toMicrodegrees,
+} from "../src/utils";
 
 describe("toMicrodegrees", () => {
 	it("converts positive latitude", () => {
@@ -39,5 +45,64 @@ describe("fromMicrodegrees", () => {
 
 	it("handles zero", () => {
 		expect(fromMicrodegrees(0)).toBe(0);
+	});
+});
+
+describe("hashIdentifier", () => {
+	it("returns a 32-byte hex string", () => {
+		const hash = hashIdentifier("client-uuid-001");
+		expect(hash).toMatch(/^0x[0-9a-f]{64}$/);
+	});
+
+	it("is deterministic for the same input", () => {
+		expect(hashIdentifier("staff-42")).toBe(hashIdentifier("staff-42"));
+	});
+
+	it("produces different hashes for different inputs", () => {
+		expect(hashIdentifier("a")).not.toBe(hashIdentifier("b"));
+	});
+
+	it("matches keccak256(toUtf8Bytes(id))", () => {
+		const id = "commission-2026-017";
+		expect(hashIdentifier(id)).toBe(keccak256(toUtf8Bytes(id)));
+	});
+
+	it("throws on empty string", () => {
+		expect(() => hashIdentifier("")).toThrow(/empty/);
+	});
+});
+
+describe("hashPhotoBundle", () => {
+	it("returns a 32-byte hex string", () => {
+		const hash = hashPhotoBundle(["ipfs://Qm1", "ipfs://Qm2"]);
+		expect(hash).toMatch(/^0x[0-9a-f]{64}$/);
+	});
+
+	it("is order-independent", () => {
+		const a = hashPhotoBundle(["b", "a", "c"]);
+		const b = hashPhotoBundle(["c", "a", "b"]);
+		expect(a).toBe(b);
+	});
+
+	it("is deterministic for the same input", () => {
+		const items = ["ipfs://Qm1", "ipfs://Qm2", "ipfs://Qm3"];
+		expect(hashPhotoBundle(items)).toBe(hashPhotoBundle(items));
+	});
+
+	it("produces different hashes for different bundles", () => {
+		expect(hashPhotoBundle(["a"])).not.toBe(hashPhotoBundle(["a", "b"]));
+	});
+
+	it("reproduces the documented manifest shape", () => {
+		const items = ["ipfs://Qm-b", "ipfs://Qm-a"];
+		const manifest = JSON.stringify({
+			v: 1,
+			items: ["ipfs://Qm-a", "ipfs://Qm-b"],
+		});
+		expect(hashPhotoBundle(items)).toBe(keccak256(toUtf8Bytes(manifest)));
+	});
+
+	it("throws on empty bundle", () => {
+		expect(() => hashPhotoBundle([])).toThrow(/empty/);
 	});
 });

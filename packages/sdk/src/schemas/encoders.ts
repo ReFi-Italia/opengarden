@@ -169,6 +169,7 @@ export function encodeHealthcheck(input: HealthcheckInput): string {
 			value: input.interventionNeeded,
 			type: "bool",
 		},
+		{ name: "assessorId", value: input.assessorId, type: "bytes32" },
 	]);
 }
 
