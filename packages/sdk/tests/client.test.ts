@@ -797,9 +797,9 @@ describe("OpenGardenClient getIntervention", () => {
 			}),
 		};
 
-		await expect(
-			client.getIntervention(FAKE_INTERVENTION_UID),
-		).rejects.toThrow(OpenGardenError);
+		await expect(client.getIntervention(FAKE_INTERVENTION_UID)).rejects.toThrow(
+			OpenGardenError,
+		);
 
 		try {
 			await client.getIntervention(FAKE_INTERVENTION_UID);
@@ -1006,7 +1006,9 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 		});
 	}
 
-	function makeValidBundle(overrides?: Partial<EvidenceBundle>): EvidenceBundle {
+	function makeValidBundle(
+		overrides?: Partial<EvidenceBundle>,
+	): EvidenceBundle {
 		return {
 			interventionId: "INT-001",
 			areaUID: "0xarea",
@@ -1061,9 +1063,9 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 	) {
 		const storageMock = {
 			upload: vi.fn(),
-			download: vi.fn().mockResolvedValue(
-				new TextEncoder().encode(JSON.stringify(bundle)),
-			),
+			download: vi
+				.fn()
+				.mockResolvedValue(new TextEncoder().encode(JSON.stringify(bundle))),
 		};
 
 		const client = new OpenGardenClient({

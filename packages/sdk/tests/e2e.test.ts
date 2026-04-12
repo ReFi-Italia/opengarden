@@ -177,24 +177,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 		await delay(STEP_DELAY_MS);
 	}, 60_000);
 
-	// --- Step 3: Healthcheck before ---
-
-	it("records a healthcheck (before)", async () => {
-		healthcheckBeforeResult = await client.recordHealthcheck({
-			areaUID,
-			healthScore: 3,
-			photoHash: ZERO_BYTES32,
-			assessorNotes: "E2E test — poor condition before intervention",
-			interventionNeeded: true,
-		});
-
-		expect(healthcheckBeforeResult.uid).toBeTruthy();
-		expect(healthcheckBeforeResult.onchainTimestamp).toBeGreaterThan(0n);
-		console.log(`  Healthcheck before UID: ${healthcheckBeforeResult.uid}`);
-		await delay(STEP_DELAY_MS);
-	}, 60_000);
-
-	// --- Step 4: Schedule intervention ---
+	// --- Step 3: Schedule intervention (must precede healthcheckBefore so we can link it) ---
 
 	it("schedules an intervention", async () => {
 		scheduleResult = await client.scheduleIntervention({
@@ -212,6 +195,24 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 		expect(scheduleResult.uid).toBeTruthy();
 		expect(scheduleResult.onchainTimestamp).toBeGreaterThan(0n);
 		console.log(`  Schedule UID: ${scheduleResult.uid}`);
+		await delay(STEP_DELAY_MS);
+	}, 60_000);
+
+	// --- Step 4: Healthcheck before (linked to the scheduled intervention) ---
+
+	it("records a healthcheck (before)", async () => {
+		healthcheckBeforeResult = await client.recordHealthcheck({
+			areaUID,
+			interventionUID: scheduleResult.uid,
+			healthScore: 3,
+			photoHash: ZERO_BYTES32,
+			assessorNotes: "E2E test — poor condition before intervention",
+			interventionNeeded: true,
+		});
+
+		expect(healthcheckBeforeResult.uid).toBeTruthy();
+		expect(healthcheckBeforeResult.onchainTimestamp).toBeGreaterThan(0n);
+		console.log(`  Healthcheck before UID: ${healthcheckBeforeResult.uid}`);
 		await delay(STEP_DELAY_MS);
 	}, 60_000);
 
@@ -289,6 +290,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 	it("records a healthcheck (after)", async () => {
 		healthcheckAfterResult = await client.recordHealthcheck({
 			areaUID,
+			interventionUID: scheduleResult.uid,
 			healthScore: 8,
 			photoHash: ZERO_BYTES32,
 			assessorNotes: "E2E test — good condition after intervention",

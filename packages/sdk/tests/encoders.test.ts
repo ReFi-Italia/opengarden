@@ -199,9 +199,10 @@ describe("CitizenFeedback encoder", () => {
 });
 
 describe("Healthcheck encoder", () => {
-	it("encodes without error", () => {
+	it("encodes a standalone healthcheck (no linked intervention)", () => {
 		const encoded = encodeHealthcheck({
 			areaUID: ZERO_BYTES32,
+			interventionUID: ZERO_BYTES32,
 			healthScore: 7,
 			photoHash: ZERO_BYTES32,
 			assessorNotes: "Good condition overall, minor weeding needed",
@@ -210,5 +211,29 @@ describe("Healthcheck encoder", () => {
 		expect(encoded).toBeTruthy();
 		const encoder = new SchemaEncoder(SCHEMA_STRINGS.Healthcheck);
 		expect(encoder.isEncodedDataValid(encoded)).toBe(true);
+	});
+
+	it("encodes a healthcheck linked to an intervention", () => {
+		const linkedInterventionUID =
+			"0x000000000000000000000000000000000000000000000000000000000000beef";
+		const encoded = encodeHealthcheck({
+			areaUID: ZERO_BYTES32,
+			interventionUID: linkedInterventionUID,
+			healthScore: 3,
+			photoHash: ZERO_BYTES32,
+			assessorNotes: "Pre-intervention assessment",
+			interventionNeeded: true,
+		});
+		expect(encoded).toBeTruthy();
+		const encoder = new SchemaEncoder(SCHEMA_STRINGS.Healthcheck);
+		expect(encoder.isEncodedDataValid(encoded)).toBe(true);
+
+		const decoded = encoder.decodeData(encoded) as unknown as Array<{
+			name: string;
+			value: { value: unknown };
+		}>;
+		const interventionField = decoded.find((f) => f.name === "interventionUID");
+		expect(interventionField).toBeDefined();
+		expect(String(interventionField?.value.value)).toBe(linkedInterventionUID);
 	});
 });

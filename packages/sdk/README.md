@@ -59,11 +59,11 @@ The SDK covers the complete attestation flow defined in the [schema spec](../../
 // 1. Register area (on-chain)
 const area = await client.registerArea({ ... });
 
-// 2. Healthcheck before (off-chain + timestamped)
-const hcBefore = await client.recordHealthcheck({ areaUID: area.uid, healthScore: 3, ... });
-
-// 3. Schedule intervention (off-chain + timestamped)
+// 2. Schedule intervention (off-chain + timestamped) — created first so healthchecks can link to it
 const schedule = await client.scheduleIntervention({ areaUID: area.uid, ... });
+
+// 3. Healthcheck before (off-chain + timestamped, linked to the scheduled intervention)
+const hcBefore = await client.recordHealthcheck({ areaUID: area.uid, interventionUID: schedule.uid, healthScore: 3, ... });
 
 // 4. Gardener checkin (off-chain + timestamped)
 const checkin = await client.checkin({ interventionUID: schedule.uid, ... });
@@ -77,8 +77,8 @@ const report = await client.submitReport({ interventionUID: schedule.uid, checko
 // 7. Admin validation (off-chain + timestamped)
 const validation = await client.validateIntervention({ reportUID: report.uid, approved: true, ... });
 
-// 8. Healthcheck after (off-chain + timestamped)
-const hcAfter = await client.recordHealthcheck({ areaUID: area.uid, healthScore: 8, ... });
+// 8. Healthcheck after (off-chain + timestamped, linked to the scheduled intervention)
+const hcAfter = await client.recordHealthcheck({ areaUID: area.uid, interventionUID: schedule.uid, healthScore: 8, ... });
 
 // 9. Build evidence bundle
 const bundle = client.buildEvidenceBundle({

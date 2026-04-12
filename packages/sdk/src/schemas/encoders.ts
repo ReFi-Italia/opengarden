@@ -160,6 +160,7 @@ export function encodeHealthcheck(input: HealthcheckInput): string {
 	const encoder = new SchemaEncoder(SCHEMA_STRINGS.Healthcheck);
 	return encoder.encodeData([
 		{ name: "areaUID", value: input.areaUID, type: "bytes32" },
+		{ name: "interventionUID", value: input.interventionUID, type: "bytes32" },
 		{ name: "healthScore", value: input.healthScore, type: "uint8" },
 		{ name: "photoHash", value: input.photoHash, type: "bytes32" },
 		{ name: "assessorNotes", value: input.assessorNotes, type: "string" },

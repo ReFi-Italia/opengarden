@@ -297,7 +297,7 @@ Optional community-level signal. Citizens can confirm visible improvement in the
 
 ### 3.7 Healthcheck
 
-A periodic condition assessment of an area, performed independently of any specific intervention. Used for trend monitoring and baseline measurement. The healthBefore and healthAfter scores in PublishedIntervention are drawn from Healthcheck attestations.
+A condition assessment of an area. May be standalone — performed for trend monitoring and baseline measurement, independent of any specific intervention — or explicitly linked to an intervention via `interventionUID`. When linked, the healthBefore and healthAfter scores in PublishedIntervention are drawn from these Healthcheck attestations.
 
 > **OFF-CHAIN** · Revocable: No · **Timestamped on-chain: Required**
 
@@ -305,6 +305,7 @@ A periodic condition assessment of an area, performed independently of any speci
 | Field | Type | Description |
 |---|---|---|
 | **areaUID** | `bytes32` | EAS UID of the AreaRegistration being assessed |
+| **interventionUID** | `bytes32` | EAS UID of the linked ScheduledIntervention (ZERO_BYTES32 for standalone monitoring) |
 | **healthScore** | `uint8` | Condition score (1–10 scale) |
 | **photoHash** | `bytes32` | IPFS CID of condition documentation photos |
 | **assessorNotes** | `string` | Professional assessment notes |
@@ -348,7 +349,7 @@ The claimed `executionDate` in PublishedIntervention MUST fall within the bracke
 T_schedule ≤ executionDate ≤ T_publication
 ```
 
-For linked Healthcheck attestations: `T_healthcheckBefore < T_checkin` and `T_healthcheckAfter > T_checkout`.
+For Healthcheck attestations linked to an intervention via `interventionUID`: `T_healthcheckBefore < T_checkin` and `T_healthcheckAfter > T_checkout`. The explicit `interventionUID` field makes the linkage auditable; the temporal bracket prevents post-hoc fabrication.
 
 A PublishedIntervention whose `executionDate` predates `T_schedule` is provably backfilled.
 
@@ -463,6 +464,7 @@ EAS attestations can reference each other via the refUID field, creating a direc
 | AdminValidation | → | GardenerReport | reportUID field |
 | CitizenFeedback | → | AreaRegistration | areaUID field |
 | Healthcheck | → | AreaRegistration | areaUID field |
+| Healthcheck | → | ScheduledIntervention | interventionUID field (when linked) |
 | GardenerMilestone | → | (standalone) | evidenceRoot field |
 
 > **Graph Traversal**
@@ -549,5 +551,5 @@ bytes32 areaUID, uint8 rating, string comment, bytes32 photoHash
 
 **Healthcheck** (revocable: false)
 ```
-bytes32 areaUID, uint8 healthScore, bytes32 photoHash, string assessorNotes, bool interventionNeeded
+bytes32 areaUID, bytes32 interventionUID, uint8 healthScore, bytes32 photoHash, string assessorNotes, bool interventionNeeded
 ```

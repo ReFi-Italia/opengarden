@@ -27,7 +27,7 @@ export const SCHEMA_STRINGS: Record<SchemaName, string> = {
 	CitizenFeedback:
 		"bytes32 areaUID, uint8 rating, string comment, bytes32 photoHash",
 	Healthcheck:
-		"bytes32 areaUID, uint8 healthScore, bytes32 photoHash, string assessorNotes, bool interventionNeeded",
+		"bytes32 areaUID, bytes32 interventionUID, uint8 healthScore, bytes32 photoHash, string assessorNotes, bool interventionNeeded",
 };
 
 export const SCHEMA_DEFINITIONS: Record<SchemaName, SchemaDefinition> = {

@@ -87,6 +87,7 @@ export interface CitizenFeedbackInput {
 
 export interface HealthcheckInput {
 	areaUID: string;
+	interventionUID: string;
 	healthScore: number;
 	photoHash: string;
 	assessorNotes: string;

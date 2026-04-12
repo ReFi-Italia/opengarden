@@ -714,8 +714,7 @@ export class OpenGardenClient {
 			executionDate <= publicationTimestamp;
 
 		// Verify validation approval
-		const validationApproved =
-			bundle.attestations.validation.approved === true;
+		const validationApproved = bundle.attestations.validation.approved === true;
 
 		// Verify on-chain timestamps match
 		let timestampsVerified = true;
