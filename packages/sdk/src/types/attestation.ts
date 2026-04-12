@@ -1,4 +1,5 @@
 import type { AreaType, InterventionType, MilestoneLevel } from "./enums";
+import type { VerificationCheck } from "../verification";
 
 export interface ScheduledIntervention {
 	uid: string;
@@ -95,4 +96,6 @@ export interface EvidenceBundleVerification {
 	healthcheckOrderValid: boolean;
 	executionDateBracketed: boolean;
 	validationApproved: boolean;
+	/** Flat per-check breakdown, in the order the SDK runs them. Useful for rendering "X of N integrity checks passed" UX. */
+	checks: VerificationCheck[];
 }

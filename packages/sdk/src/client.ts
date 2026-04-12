@@ -5,7 +5,6 @@ import {
 } from "@ethereum-attestation-service/eas-sdk";
 import type { Signer } from "ethers";
 import {
-	EVIDENCE_BUNDLE_VERSION,
 	SCHEMA_NAME_UID,
 	ZERO_ADDRESS,
 	ZERO_BYTES32,
@@ -15,6 +14,16 @@ import { buildEvidenceBundle as buildBundle } from "./evidence";
 import { getGraphqlUrl, getStoreUrl, submitToIndexer } from "./indexer";
 import { validateFinalizeInput } from "./preflight";
 import { SCHEMA_DEFINITIONS } from "./schemas/definitions";
+import {
+	type VerificationCheck,
+	verifyBundleCompleteness,
+	verifyBundleExecutionDateBracket,
+	verifyBundleHealthcheckBracket,
+	verifyBundleOnChainTimestamps,
+	verifyBundleTemporalOrder,
+	verifyBundleValidationApproved,
+	verifyBundleVersion,
+} from "./verification";
 import {
 	decodeAreaRegistration,
 	decodeCitizenFeedback,
@@ -834,125 +843,49 @@ export class OpenGardenClient {
 			new TextDecoder().decode(bundleBytes),
 		) as EvidenceBundle;
 
-		if (bundle.bundleVersion !== EVIDENCE_BUNDLE_VERSION) {
+		const versionCheck = verifyBundleVersion(bundle);
+		if (!versionCheck.valid) {
 			throw new OpenGardenError(
 				OpenGardenErrorCode.BUNDLE_VERIFICATION_FAILED,
-				`Unsupported bundleVersion: ${bundle.bundleVersion ?? "missing"} (expected "${EVIDENCE_BUNDLE_VERSION}")`,
+				versionCheck.message ?? "Bundle version mismatch",
 			);
 		}
 
-		const {
-			checkins,
-			checkouts,
-			reports,
-			healthcheckBefore,
-			healthcheckAfter,
-		} = bundle.attestations;
-
-		const attestationCount =
-			2 +
-			checkins.length +
-			checkouts.length +
-			reports.length +
-			(healthcheckBefore ? 1 : 0) +
-			(healthcheckAfter ? 1 : 0);
-
-		const expectedCount = intervention.offchainCount;
-
-		const crewCount = checkins.length;
-		const minCheckin = crewCount
-			? Math.min(...checkins.map((c) => c.onchainTimestamp))
-			: 0;
-		const maxCheckout = crewCount
-			? Math.max(...checkouts.map((c) => c.onchainTimestamp))
-			: 0;
-		const maxReport = crewCount
-			? Math.max(...reports.map((r) => r.onchainTimestamp))
-			: 0;
-
-		// Per spec §4.2:
-		//   T_schedule < min(T_checkin[*])
-		//   for each i: T_checkin[i] < T_checkout[i] < T_report[i]
-		//   max(T_report[*]) < T_validation
-		let temporalOrderValid =
-			crewCount > 0 &&
-			crewCount === checkouts.length &&
-			crewCount === reports.length &&
-			bundle.attestations.scheduled.onchainTimestamp < minCheckin &&
-			maxReport < bundle.attestations.validation.onchainTimestamp;
-
-		if (temporalOrderValid) {
-			for (let i = 0; i < crewCount; i++) {
-				const ci = checkins[i].onchainTimestamp;
-				const co = checkouts[i].onchainTimestamp;
-				const rp = reports[i].onchainTimestamp;
-				if (!(ci < co && co < rp)) {
-					temporalOrderValid = false;
-					break;
-				}
-			}
-		}
-
-		let healthcheckOrderValid = true;
-		if (healthcheckBefore && healthcheckBefore.onchainTimestamp >= minCheckin) {
-			healthcheckOrderValid = false;
-		}
-		if (healthcheckAfter && healthcheckAfter.onchainTimestamp <= maxCheckout) {
-			healthcheckOrderValid = false;
-		}
-
-		const scheduledTimestamp = BigInt(
-			bundle.attestations.scheduled.onchainTimestamp,
+		const completeness = verifyBundleCompleteness(
+			bundle,
+			intervention.offchainCount,
 		);
-		const executionDate = intervention.executionDate;
-		const publicationTimestamp = intervention.time;
-		const executionDateBracketed =
-			scheduledTimestamp <= executionDate &&
-			executionDate <= publicationTimestamp;
+		const temporal = verifyBundleTemporalOrder(bundle);
+		const healthcheckBracket = verifyBundleHealthcheckBracket(bundle);
+		const executionBracket = verifyBundleExecutionDateBracket(
+			bundle,
+			intervention,
+		);
+		const validation = verifyBundleValidationApproved(bundle);
+		const timestamps = await verifyBundleOnChainTimestamps(bundle, (u) =>
+			this.eas.getTimestamp(u),
+		);
 
-		const validationApproved = bundle.attestations.validation.approved === true;
-
-		const timestampedAttestations: Array<{
-			uid: string;
-			onchainTimestamp: number;
-		}> = [
-			bundle.attestations.scheduled,
-			...checkins,
-			...checkouts,
-			...reports,
-			bundle.attestations.validation,
+		const checks: VerificationCheck[] = [
+			completeness,
+			temporal,
+			healthcheckBracket,
+			executionBracket,
+			validation,
+			timestamps,
 		];
-		if (healthcheckBefore) timestampedAttestations.push(healthcheckBefore);
-		if (healthcheckAfter) timestampedAttestations.push(healthcheckAfter);
-
-		const onchainTimestamps = await Promise.all(
-			timestampedAttestations.map((att) =>
-				this.eas.getTimestamp(att.uid).catch(() => null),
-			),
-		);
-		const timestampsVerified = onchainTimestamps.every(
-			(ts, i) =>
-				ts !== null &&
-				Number(ts) === timestampedAttestations[i].onchainTimestamp,
-		);
-
-		const valid =
-			attestationCount === expectedCount &&
-			temporalOrderValid &&
-			timestampsVerified &&
-			healthcheckOrderValid &&
-			executionDateBracketed &&
-			validationApproved;
+		const valid = checks.every((c) => c.valid);
 
 		return {
 			valid,
-			attestationCount,
-			expectedCount,
-			temporalOrderValid,
-			timestampsVerified,
-			healthcheckOrderValid,
-			executionDateBracketed,
-			validationApproved,
+			attestationCount: completeness.attestationCount,
+			expectedCount: completeness.expectedCount,
+			temporalOrderValid: temporal.valid,
+			timestampsVerified: timestamps.valid,
+			healthcheckOrderValid: healthcheckBracket.valid,
+			executionDateBracketed: executionBracket.valid,
+			validationApproved: validation.valid,
+			checks,
 		};
 	}
 }

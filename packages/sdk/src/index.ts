@@ -69,6 +69,22 @@ export type {
 	SchemaRegistrationResult,
 	TimestampedOffChainResult,
 } from "./types/results";
+// Verification helpers
+export type {
+	CompletenessCheck,
+	TimestampFetcher,
+	VerificationCheck,
+} from "./verification";
+export {
+	VerificationCheckCode,
+	verifyBundleCompleteness,
+	verifyBundleExecutionDateBracket,
+	verifyBundleHealthcheckBracket,
+	verifyBundleOnChainTimestamps,
+	verifyBundleTemporalOrder,
+	verifyBundleValidationApproved,
+	verifyBundleVersion,
+} from "./verification";
 export type {
 	AdminValidationInput,
 	AreaRegistrationInput,
