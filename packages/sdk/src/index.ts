@@ -38,9 +38,12 @@ export type { SchemaDefinition } from "./schemas/definitions";
 export { SCHEMA_DEFINITIONS, SCHEMA_STRINGS } from "./schemas/definitions";
 export type {
 	Area,
+	CitizenFeedback,
 	EvidenceBundleVerification,
+	Healthcheck,
 	Intervention,
 	Milestone,
+	ScheduledIntervention,
 } from "./types/attestation";
 export type {
 	ChainConfig,

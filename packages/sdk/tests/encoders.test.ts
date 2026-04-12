@@ -4,8 +4,11 @@ import { ZERO_BYTES32 } from "../src/constants";
 import { SCHEMA_STRINGS } from "../src/schemas/definitions";
 import {
 	decodeAreaRegistration,
+	decodeCitizenFeedback,
 	decodeGardenerMilestone,
+	decodeHealthcheck,
 	decodePublishedIntervention,
+	decodeScheduledIntervention,
 	encodeAdminValidation,
 	encodeAreaRegistration,
 	encodeCitizenFeedback,
@@ -120,21 +123,30 @@ describe("GardenerMilestone encoder", () => {
 });
 
 describe("ScheduledIntervention encoder", () => {
-	it("encodes without error", () => {
+	it("encodes and decodes roundtrip", () => {
 		const encoded = encodeScheduledIntervention({
 			areaUID: ZERO_BYTES32,
 			interventionId: "INT-2026-0002",
-			interventionType: 1,
+			interventionType: InterventionType.Restoration,
 			crewLead: MOCK_SIGNER_ADDRESS,
 			crewSize: 3,
 			scheduledDate: 1709337600n,
 			estimatedMinutes: 120,
 			description: "Restoration of flower beds",
-			commissionId: null,
+			commissionId: "sponsor-city-hall",
 		});
 		expect(encoded).toBeTruthy();
 		const encoder = new SchemaEncoder(SCHEMA_STRINGS.ScheduledIntervention);
 		expect(encoder.isEncodedDataValid(encoded)).toBe(true);
+
+		const decoded = decodeScheduledIntervention(encoded);
+		expect(decoded.interventionId).toBe("INT-2026-0002");
+		expect(decoded.interventionType).toBe(InterventionType.Restoration);
+		expect(decoded.scheduledDate).toBe(1709337600n);
+		expect(decoded.estimatedMinutes).toBe(120);
+		expect(decoded.description).toBe("Restoration of flower beds");
+		expect(decoded.commissionRef).toBe(hashIdentifier("sponsor-city-hall"));
+		expect(decoded.crewSize).toBe(3);
 	});
 });
 
@@ -198,7 +210,7 @@ describe("AdminValidation encoder", () => {
 });
 
 describe("CitizenFeedback encoder", () => {
-	it("encodes without error", () => {
+	it("encodes and decodes roundtrip", () => {
 		const encoded = encodeCitizenFeedback({
 			areaUID: ZERO_BYTES32,
 			rating: 4,
@@ -208,6 +220,11 @@ describe("CitizenFeedback encoder", () => {
 		expect(encoded).toBeTruthy();
 		const encoder = new SchemaEncoder(SCHEMA_STRINGS.CitizenFeedback);
 		expect(encoder.isEncodedDataValid(encoded)).toBe(true);
+
+		const decoded = decodeCitizenFeedback(encoded);
+		expect(decoded.rating).toBe(4);
+		expect(decoded.comment).toBe("The park looks much better now!");
+		expect(decoded.photoHash).toBe(ZERO_BYTES32);
 	});
 });
 
@@ -229,7 +246,7 @@ describe("Healthcheck encoder", () => {
 		expect(encoder.isEncodedDataValid(encoded)).toBe(true);
 	});
 
-	it("encodes a healthcheck linked to an intervention", () => {
+	it("encodes and decodes a healthcheck linked to an intervention", () => {
 		const linkedInterventionUID =
 			"0x000000000000000000000000000000000000000000000000000000000000beef";
 		const encoded = encodeHealthcheck({
@@ -245,19 +262,12 @@ describe("Healthcheck encoder", () => {
 		const encoder = new SchemaEncoder(SCHEMA_STRINGS.Healthcheck);
 		expect(encoder.isEncodedDataValid(encoded)).toBe(true);
 
-		const decoded = encoder.decodeData(encoded) as unknown as Array<{
-			name: string;
-			value: { value: unknown };
-		}>;
-		const interventionField = decoded.find((f) => f.name === "interventionUID");
-		expect(interventionField).toBeDefined();
-		expect(String(interventionField?.value.value)).toBe(linkedInterventionUID);
-
-		const assessorField = decoded.find((f) => f.name === "assessorId");
-		expect(assessorField).toBeDefined();
-		expect(String(assessorField?.value.value)).toBe(
-			hashIdentifier(ASSESSOR_STAFF_ID),
-		);
+		const decoded = decodeHealthcheck(encoded);
+		expect(decoded.interventionUID).toBe(linkedInterventionUID);
+		expect(decoded.healthScore).toBe(3);
+		expect(decoded.assessorNotes).toBe("Pre-intervention assessment");
+		expect(decoded.interventionNeeded).toBe(true);
+		expect(decoded.assessorId).toBe(hashIdentifier(ASSESSOR_STAFF_ID));
 	});
 
 	it("encodes ZERO_BYTES32 when assessorId is null", () => {
@@ -270,12 +280,7 @@ describe("Healthcheck encoder", () => {
 			interventionNeeded: false,
 			assessorId: null,
 		});
-		const encoder = new SchemaEncoder(SCHEMA_STRINGS.Healthcheck);
-		const decoded = encoder.decodeData(encoded) as unknown as Array<{
-			name: string;
-			value: { value: unknown };
-		}>;
-		const assessorField = decoded.find((f) => f.name === "assessorId");
-		expect(String(assessorField?.value.value)).toBe(ZERO_BYTES32);
+		const decoded = decodeHealthcheck(encoded);
+		expect(decoded.assessorId).toBe(ZERO_BYTES32);
 	});
 });

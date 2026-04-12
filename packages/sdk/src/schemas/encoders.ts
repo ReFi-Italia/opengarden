@@ -306,3 +306,45 @@ export function decodeGardenerMilestone(data: string) {
 		evidenceRoot: String(getFieldValue(decoded, "evidenceRoot")),
 	};
 }
+
+export function decodeScheduledIntervention(data: string) {
+	const encoder = new SchemaEncoder(SCHEMA_STRINGS.ScheduledIntervention);
+	const decoded = encoder.decodeData(data) as unknown as DecodedField[];
+	return {
+		areaUID: String(getFieldValue(decoded, "areaUID")),
+		interventionId: getFieldValue(decoded, "interventionId") as string,
+		interventionType: Number(
+			getFieldValue(decoded, "interventionType"),
+		) as InterventionType,
+		scheduledDate: BigInt(String(getFieldValue(decoded, "scheduledDate"))),
+		estimatedMinutes: Number(getFieldValue(decoded, "estimatedMinutes")),
+		description: getFieldValue(decoded, "description") as string,
+		commissionRef: String(getFieldValue(decoded, "commissionRef")),
+		crewSize: Number(getFieldValue(decoded, "crewSize")),
+	};
+}
+
+export function decodeHealthcheck(data: string) {
+	const encoder = new SchemaEncoder(SCHEMA_STRINGS.Healthcheck);
+	const decoded = encoder.decodeData(data) as unknown as DecodedField[];
+	return {
+		areaUID: String(getFieldValue(decoded, "areaUID")),
+		interventionUID: String(getFieldValue(decoded, "interventionUID")),
+		healthScore: Number(getFieldValue(decoded, "healthScore")),
+		photoHash: String(getFieldValue(decoded, "photoHash")),
+		assessorNotes: getFieldValue(decoded, "assessorNotes") as string,
+		interventionNeeded: Boolean(getFieldValue(decoded, "interventionNeeded")),
+		assessorId: String(getFieldValue(decoded, "assessorId")),
+	};
+}
+
+export function decodeCitizenFeedback(data: string) {
+	const encoder = new SchemaEncoder(SCHEMA_STRINGS.CitizenFeedback);
+	const decoded = encoder.decodeData(data) as unknown as DecodedField[];
+	return {
+		areaUID: String(getFieldValue(decoded, "areaUID")),
+		rating: Number(getFieldValue(decoded, "rating")),
+		comment: getFieldValue(decoded, "comment") as string,
+		photoHash: String(getFieldValue(decoded, "photoHash")),
+	};
+}

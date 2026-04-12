@@ -17,8 +17,11 @@ import { validateFinalizeInput } from "./preflight";
 import { SCHEMA_DEFINITIONS } from "./schemas/definitions";
 import {
 	decodeAreaRegistration,
+	decodeCitizenFeedback,
 	decodeGardenerMilestone,
+	decodeHealthcheck,
 	decodePublishedIntervention,
+	decodeScheduledIntervention,
 	encodeAdminValidation,
 	encodeAreaRegistration,
 	encodeCitizenFeedback,
@@ -32,9 +35,12 @@ import {
 } from "./schemas/encoders";
 import type {
 	Area,
+	CitizenFeedback,
 	EvidenceBundleVerification,
+	Healthcheck,
 	Intervention,
 	Milestone,
+	ScheduledIntervention,
 } from "./types/attestation";
 import type {
 	OpenGardenConfig,
@@ -627,6 +633,169 @@ export class OpenGardenClient {
 				uid: a.id,
 				...decoded,
 				recipient: a.recipient,
+				attester: a.attester,
+				time: BigInt(a.time),
+			};
+		});
+	}
+
+	async getScheduledInterventions(filter: {
+		areaUID?: string;
+		crewLead?: string;
+	}): Promise<ScheduledIntervention[]> {
+		if (!filter.areaUID && !filter.crewLead) {
+			throw new OpenGardenError(
+				OpenGardenErrorCode.INVALID_INPUT,
+				"getScheduledInterventions requires at least one filter: areaUID or crewLead",
+			);
+		}
+
+		const schemaUID = this.requireSchemaUID("ScheduledIntervention");
+		const whereFields: string[] = [
+			"schemaId: { equals: $schemaId }",
+			"revoked: { equals: false }",
+		];
+		const paramDefs: string[] = ["$schemaId: String!"];
+		const variables: Record<string, string> = { schemaId: schemaUID };
+
+		if (filter.areaUID) {
+			whereFields.push("refUID: { equals: $refUID }");
+			paramDefs.push("$refUID: String!");
+			variables.refUID = filter.areaUID;
+		}
+		if (filter.crewLead) {
+			whereFields.push("recipient: { equals: $recipient }");
+			paramDefs.push("$recipient: String!");
+			variables.recipient = filter.crewLead;
+		}
+
+		const query = `
+      query GetScheduledInterventions(${paramDefs.join(", ")}) {
+        attestations(where: { ${whereFields.join(", ")} }, orderBy: [{ time: desc }]) {
+          id
+          attester
+          recipient
+          time
+          data
+        }
+      }
+    `;
+
+		const response = await fetch(this.requireGraphqlUrl(), {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ query, variables }),
+		});
+
+		const json = (await response.json()) as {
+			data?: {
+				attestations: Array<{
+					id: string;
+					attester: string;
+					recipient: string;
+					time: string;
+					data: string;
+				}>;
+			};
+		};
+		const attestations = json.data?.attestations ?? [];
+
+		return attestations.map((a) => {
+			const decoded = decodeScheduledIntervention(a.data);
+			return {
+				uid: a.id,
+				...decoded,
+				attester: a.attester,
+				recipient: a.recipient,
+				time: BigInt(a.time),
+			};
+		});
+	}
+
+	async getAreaHealthchecks(areaUID: string): Promise<Healthcheck[]> {
+		const schemaUID = this.requireSchemaUID("Healthcheck");
+		const query = `
+      query GetAreaHealthchecks($schemaId: String!, $refUID: String!) {
+        attestations(where: { schemaId: { equals: $schemaId }, refUID: { equals: $refUID }, revoked: { equals: false } }, orderBy: [{ time: desc }]) {
+          id
+          attester
+          time
+          data
+        }
+      }
+    `;
+
+		const response = await fetch(this.requireGraphqlUrl(), {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				query,
+				variables: { schemaId: schemaUID, refUID: areaUID },
+			}),
+		});
+
+		const json = (await response.json()) as {
+			data?: {
+				attestations: Array<{
+					id: string;
+					attester: string;
+					time: string;
+					data: string;
+				}>;
+			};
+		};
+		const attestations = json.data?.attestations ?? [];
+
+		return attestations.map((a) => {
+			const decoded = decodeHealthcheck(a.data);
+			return {
+				uid: a.id,
+				...decoded,
+				attester: a.attester,
+				time: BigInt(a.time),
+			};
+		});
+	}
+
+	async getAreaCitizenFeedback(areaUID: string): Promise<CitizenFeedback[]> {
+		const schemaUID = this.requireSchemaUID("CitizenFeedback");
+		const query = `
+      query GetAreaCitizenFeedback($schemaId: String!, $refUID: String!) {
+        attestations(where: { schemaId: { equals: $schemaId }, refUID: { equals: $refUID }, revoked: { equals: false } }, orderBy: [{ time: desc }]) {
+          id
+          attester
+          time
+          data
+        }
+      }
+    `;
+
+		const response = await fetch(this.requireGraphqlUrl(), {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				query,
+				variables: { schemaId: schemaUID, refUID: areaUID },
+			}),
+		});
+
+		const json = (await response.json()) as {
+			data?: {
+				attestations: Array<{
+					id: string;
+					attester: string;
+					time: string;
+					data: string;
+				}>;
+			};
+		};
+		const attestations = json.data?.attestations ?? [];
+
+		return attestations.map((a) => {
+			const decoded = decodeCitizenFeedback(a.data);
+			return {
+				uid: a.id,
+				...decoded,
 				attester: a.attester,
 				time: BigInt(a.time),
 			};

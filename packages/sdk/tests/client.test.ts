@@ -10,9 +10,13 @@ import { OpenGardenError, OpenGardenErrorCode } from "../src/errors";
 import {
 	decodePublishedIntervention,
 	encodeAreaRegistration,
+	encodeCitizenFeedback,
 	encodeGardenerMilestone,
+	encodeHealthcheck,
 	encodePublishedIntervention,
+	encodeScheduledIntervention,
 } from "../src/schemas/encoders";
+import { InterventionType } from "../src/types/enums";
 import type { ChainConfig } from "../src/types/config";
 import type { EvidenceBundle } from "../src/types/evidence";
 import {
@@ -1382,5 +1386,258 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 		await expect(
 			client.verifyEvidenceBundle(FAKE_INTERVENTION_UID),
 		).rejects.toThrow(/missing/);
+	});
+});
+
+describe("OpenGardenClient getScheduledInterventions", () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+		vi.unstubAllGlobals();
+	});
+
+	const CREW_LEAD = "0xCrewLead000000000000000000000000000000CC";
+	const AREA_UID =
+		"0x000000000000000000000000000000000000000000000000000000000000abcd";
+
+	const createClient = () =>
+		createTestClient({ schemaUIDs: { ScheduledIntervention: "0xschema" } });
+
+	function makeEncodedSchedule() {
+		return encodeScheduledIntervention({
+			areaUID: AREA_UID,
+			interventionId: "INT-2026-0001",
+			interventionType: InterventionType.RoutineMaintenance,
+			crewLead: CREW_LEAD,
+			crewSize: 2,
+			scheduledDate: 1709337600n,
+			estimatedMinutes: 90,
+			description: "Trim hedge and water beds",
+			commissionId: null,
+		});
+	}
+
+	it("throws INVALID_INPUT when no filter is provided", async () => {
+		const client = createClient();
+		await expect(client.getScheduledInterventions({})).rejects.toThrow(
+			OpenGardenError,
+		);
+	});
+
+	it("filters by areaUID and returns decoded schedules", async () => {
+		const encodedData = makeEncodedSchedule();
+		const fetchMock = vi.fn().mockResolvedValue({
+			json: async () => ({
+				data: {
+					attestations: [
+						{
+							id: "0xschedule1",
+							attester: MOCK_SIGNER_ADDRESS,
+							recipient: CREW_LEAD,
+							time: "1709337500",
+							data: encodedData,
+						},
+					],
+				},
+			}),
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const client = createClient();
+		const schedules = await client.getScheduledInterventions({
+			areaUID: AREA_UID,
+		});
+
+		expect(schedules).toHaveLength(1);
+		expect(schedules[0].uid).toBe("0xschedule1");
+		expect(schedules[0].interventionId).toBe("INT-2026-0001");
+		expect(schedules[0].recipient).toBe(CREW_LEAD);
+		expect(schedules[0].crewSize).toBe(2);
+		expect(schedules[0].time).toBe(1709337500n);
+
+		const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+		expect(body.variables.refUID).toBe(AREA_UID);
+		expect(body.variables.recipient).toBeUndefined();
+		expect(body.query).toContain("refUID: { equals: $refUID }");
+		expect(body.query).not.toContain("recipient: { equals: $recipient }");
+	});
+
+	it("filters by crewLead and returns decoded schedules", async () => {
+		const encodedData = makeEncodedSchedule();
+		const fetchMock = vi.fn().mockResolvedValue({
+			json: async () => ({
+				data: {
+					attestations: [
+						{
+							id: "0xschedule2",
+							attester: MOCK_SIGNER_ADDRESS,
+							recipient: CREW_LEAD,
+							time: "1709337500",
+							data: encodedData,
+						},
+					],
+				},
+			}),
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const client = createClient();
+		const schedules = await client.getScheduledInterventions({
+			crewLead: CREW_LEAD,
+		});
+
+		expect(schedules).toHaveLength(1);
+
+		const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+		expect(body.variables.recipient).toBe(CREW_LEAD);
+		expect(body.variables.refUID).toBeUndefined();
+		expect(body.query).toContain("recipient: { equals: $recipient }");
+		expect(body.query).not.toContain("refUID: { equals: $refUID }");
+	});
+
+	it("combines both filters when provided", async () => {
+		const fetchMock = vi.fn().mockResolvedValue({
+			json: async () => ({ data: { attestations: [] } }),
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const client = createClient();
+		await client.getScheduledInterventions({
+			areaUID: AREA_UID,
+			crewLead: CREW_LEAD,
+		});
+
+		const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+		expect(body.variables.refUID).toBe(AREA_UID);
+		expect(body.variables.recipient).toBe(CREW_LEAD);
+		expect(body.query).toContain("refUID: { equals: $refUID }");
+		expect(body.query).toContain("recipient: { equals: $recipient }");
+	});
+});
+
+describe("OpenGardenClient getAreaHealthchecks", () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+		vi.unstubAllGlobals();
+	});
+
+	const AREA_UID =
+		"0x000000000000000000000000000000000000000000000000000000000000abcd";
+
+	const createClient = () =>
+		createTestClient({ schemaUIDs: { Healthcheck: "0xschema" } });
+
+	function makeEncodedHealthcheck() {
+		return encodeHealthcheck({
+			areaUID: AREA_UID,
+			interventionUID: ZERO_BYTES32,
+			healthScore: 6,
+			photoHash: ZERO_BYTES32,
+			assessorNotes: "Standalone assessment",
+			interventionNeeded: false,
+			assessorId: "staff-001",
+		});
+	}
+
+	it("returns decoded healthchecks from GraphQL response", async () => {
+		const encodedData = makeEncodedHealthcheck();
+		const fetchMock = vi.fn().mockResolvedValue({
+			json: async () => ({
+				data: {
+					attestations: [
+						{
+							id: "0xhealthcheck1",
+							attester: MOCK_SIGNER_ADDRESS,
+							time: "1700000000",
+							data: encodedData,
+						},
+					],
+				},
+			}),
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const client = createClient();
+		const healthchecks = await client.getAreaHealthchecks(AREA_UID);
+
+		expect(healthchecks).toHaveLength(1);
+		expect(healthchecks[0].uid).toBe("0xhealthcheck1");
+		expect(healthchecks[0].healthScore).toBe(6);
+		expect(healthchecks[0].assessorNotes).toBe("Standalone assessment");
+		expect(healthchecks[0].interventionNeeded).toBe(false);
+		expect(healthchecks[0].attester).toBe(MOCK_SIGNER_ADDRESS);
+		expect(healthchecks[0].time).toBe(1700000000n);
+	});
+
+	it("returns empty array when no attestations found", async () => {
+		const fetchMock = vi.fn().mockResolvedValue({
+			json: async () => ({ data: { attestations: [] } }),
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const client = createClient();
+		const healthchecks = await client.getAreaHealthchecks(AREA_UID);
+		expect(healthchecks).toHaveLength(0);
+	});
+});
+
+describe("OpenGardenClient getAreaCitizenFeedback", () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+		vi.unstubAllGlobals();
+	});
+
+	const AREA_UID =
+		"0x000000000000000000000000000000000000000000000000000000000000abcd";
+
+	const createClient = () =>
+		createTestClient({ schemaUIDs: { CitizenFeedback: "0xschema" } });
+
+	function makeEncodedFeedback() {
+		return encodeCitizenFeedback({
+			areaUID: AREA_UID,
+			rating: 4,
+			comment: "The park looks better now",
+			photoHash: ZERO_BYTES32,
+		});
+	}
+
+	it("returns decoded feedback from GraphQL response", async () => {
+		const encodedData = makeEncodedFeedback();
+		const fetchMock = vi.fn().mockResolvedValue({
+			json: async () => ({
+				data: {
+					attestations: [
+						{
+							id: "0xfeedback1",
+							attester: MOCK_SIGNER_ADDRESS,
+							time: "1700000000",
+							data: encodedData,
+						},
+					],
+				},
+			}),
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const client = createClient();
+		const feedback = await client.getAreaCitizenFeedback(AREA_UID);
+
+		expect(feedback).toHaveLength(1);
+		expect(feedback[0].uid).toBe("0xfeedback1");
+		expect(feedback[0].rating).toBe(4);
+		expect(feedback[0].comment).toBe("The park looks better now");
+		expect(feedback[0].attester).toBe(MOCK_SIGNER_ADDRESS);
+		expect(feedback[0].time).toBe(1700000000n);
+	});
+
+	it("returns empty array when no attestations found", async () => {
+		const fetchMock = vi.fn().mockResolvedValue({
+			json: async () => ({ data: { attestations: [] } }),
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const client = createClient();
+		const feedback = await client.getAreaCitizenFeedback(AREA_UID);
+		expect(feedback).toHaveLength(0);
 	});
 });
