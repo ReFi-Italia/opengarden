@@ -13,9 +13,11 @@ export type {
 export type { SchemaName } from "./enums";
 export { AreaType, InterventionType, MilestoneLevel } from "./enums";
 export type {
+	CrewMemberAttestations,
 	EvidenceBundle,
 	EvidenceBundleAttestation,
 	EvidenceBundleBuilderInput,
+	EvidenceBundleGardenerAttestation,
 	EvidenceBundleHealthcheck,
 	EvidenceBundleValidation,
 	FinalizeInterventionInput,

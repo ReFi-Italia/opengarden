@@ -11,11 +11,11 @@ export const SCHEMA_STRINGS: Record<SchemaName, string> = {
 	AreaRegistration:
 		"string areaId, int32 latitude, int32 longitude, uint8 areaType, string name, string municipality, bytes32 metadataHash",
 	PublishedIntervention:
-		"bytes32 areaUID, string interventionId, address gardener, uint8 interventionType, uint64 executionDate, uint8 healthBefore, uint8 healthAfter, bytes32 commissionRef, bytes32 evidenceBundleHash, uint8 offchainCount, uint8 crewSize, bool isLead",
+		"bytes32 areaUID, string interventionId, uint8 interventionType, uint64 executionDate, uint8 healthBefore, uint8 healthAfter, bytes32 commissionRef, bytes32 evidenceBundleHash, uint8 offchainCount, uint8 crewSize",
 	GardenerMilestone:
 		"uint8 milestoneLevel, uint16 totalInterventions, uint16 totalValidated, uint8 avgHealthImprovement, string skillTier, uint64 achievedAt, bytes32 evidenceRoot",
 	ScheduledIntervention:
-		"bytes32 areaUID, string interventionId, uint8 interventionType, address assignedGardener, uint64 scheduledDate, uint16 estimatedMinutes, string description, bytes32 commissionRef, uint8 crewSize",
+		"bytes32 areaUID, string interventionId, uint8 interventionType, uint64 scheduledDate, uint16 estimatedMinutes, string description, bytes32 commissionRef, uint8 crewSize",
 	GardenerCheckin:
 		"bytes32 interventionUID, int32 latitude, int32 longitude, uint64 timestamp, bytes32 photoHash",
 	GardenerCheckout:
@@ -23,7 +23,7 @@ export const SCHEMA_STRINGS: Record<SchemaName, string> = {
 	GardenerReport:
 		"bytes32 interventionUID, bytes32 checkoutUID, string tasksCompleted, uint8 taskCount, bytes32 photosHash, string notes",
 	AdminValidation:
-		"bytes32 reportUID, bool approved, uint8 qualityScore, string feedback, bytes32 validatorId",
+		"bytes32 scheduleUID, bool approved, uint8 qualityScore, string feedback, bytes32 validatorId",
 	CitizenFeedback:
 		"bytes32 areaUID, uint8 rating, string comment, bytes32 photoHash",
 	Healthcheck:

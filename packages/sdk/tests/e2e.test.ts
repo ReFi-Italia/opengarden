@@ -185,7 +185,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 			areaUID,
 			interventionId: "E2E-INT-001",
 			interventionType: 0,
-			assignedGardener: walletAddress,
+			crewLead: walletAddress,
 			crewSize: 1,
 			scheduledDate: now(),
 			estimatedMinutes: 60,
@@ -272,8 +272,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 
 	it("validates the intervention", async () => {
 		const result = await client.validateIntervention({
-			gardener: walletAddress,
-			reportUID: reportResult.uid,
+			scheduleUID: scheduleResult.uid,
 			approved: true,
 			qualityScore: 8,
 			feedback: "E2E test — approved",
@@ -313,16 +312,22 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 			interventionId: "E2E-INT-001",
 			areaUID,
 			scheduled: scheduleResult,
-			checkin: checkinResult,
-			checkout: checkoutResult,
-			report: reportResult,
+			crew: [
+				{
+					checkin: checkinResult,
+					checkout: checkoutResult,
+					report: reportResult,
+				},
+			],
 			validation: validationResult,
 			healthcheckBefore: { ...healthcheckBeforeResult, score: 3 },
 			healthcheckAfter: { ...healthcheckAfterResult, score: 8 },
 		});
 
-		expect(bundle.bundleVersion).toBe("1.0");
+		expect(bundle.bundleVersion).toBe("2.0");
 		expect(bundle.attestations.scheduled.uid).toBe(scheduleResult.uid);
+		expect(bundle.attestations.checkins).toHaveLength(1);
+		expect(bundle.attestations.reports).toHaveLength(1);
 		expect(bundle.attestations.validation.approved).toBe(true);
 
 		evidenceBundleHash = await client.uploadEvidenceBundle(bundle);
@@ -336,16 +341,15 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 		const result = await client.publishIntervention({
 			areaUID,
 			interventionId: "E2E-INT-001",
-			gardener: walletAddress,
 			interventionType: 0,
 			executionDate: now(),
 			healthBefore: 3,
 			healthAfter: 8,
 			commissionRef: ZERO_BYTES32,
 			evidenceBundleHash,
-			offchainCount: 7, // schedule + checkin + checkout + report + validation + 2 healthchecks
+			// 1 scheduled + 3 (solo crew) + 1 validation + 2 healthchecks = 7
+			offchainCount: 7,
 			crewSize: 1,
-			isLead: true,
 		});
 
 		interventionUID = result.uid;
@@ -409,9 +413,11 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 		expect(intervention.healthBefore).toBe(3);
 		expect(intervention.healthAfter).toBe(8);
 		expect(intervention.crewSize).toBe(1);
-		expect(intervention.isLead).toBe(true);
 		expect(intervention.offchainCount).toBe(7);
-		expect(intervention.recipient).toBe(walletAddress);
+		// Job record — recipient is always ZERO_ADDRESS
+		expect(intervention.recipient).toBe(
+			"0x0000000000000000000000000000000000000000",
+		);
 		console.log(
 			`  Intervention read back: ${intervention.interventionId}, health ${intervention.healthBefore} → ${intervention.healthAfter}`,
 		);
@@ -477,7 +483,7 @@ describe.skipIf(skip)("E2E: indexBundleAttestations", () => {
 			areaUID,
 			interventionId: "E2E-IDX-INT-001",
 			interventionType: 0,
-			assignedGardener: walletAddress,
+			crewLead: walletAddress,
 			crewSize: 1,
 			scheduledDate: now(),
 			estimatedMinutes: 30,

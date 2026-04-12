@@ -79,7 +79,7 @@ Registered once per work area. Serves as the canonical geographic anchor that al
 
 ### 2.2 PublishedIntervention
 
-Created only after an intervention is fully executed and validated by the organization. This is the canonical impact record. It bundles all off-chain operational attestations by referencing their content hashes.
+Created only after an intervention is fully executed and validated by the organization. This is the canonical **job record** — one per intervention, regardless of crew size. It bundles all off-chain operational attestations (including per-gardener checkins, checkouts, and reports for crew jobs) by referencing their content hashes.
 
 > **ON-CHAIN** · Revocable: No
 
@@ -87,23 +87,18 @@ Created only after an intervention is fully executed and validated by the organi
 |---|---|---|
 | **areaUID** | `bytes32` | EAS UID of the AreaRegistration attestation this intervention belongs to |
 | **interventionId** | `string` | Internal intervention identifier (e.g. "INT-2026-0187") |
-| **gardener**\* | `address` | Wallet address of the lead gardener who performed the work |
 | **interventionType** | `uint8` | 0 = routine maintenance, 1 = restoration, 2 = emergency, 3 = seasonal, 4 = new planting |
 | **executionDate** | `uint64` | Unix timestamp of when work was completed |
 | **healthBefore** | `uint8` | Area health score before intervention (1–10 scale) |
 | **healthAfter** | `uint8` | Area health score after intervention (1–10 scale) |
 | **commissionRef** | `bytes32` | Keccak256 hash of commissioning entity identifier (corporate sponsor ID, municipal contract number, or grant ID) |
 | **evidenceBundleHash** | `bytes32` | IPFS CID hash of the evidence bundle JSON containing all off-chain attestation UIDs, their content hashes, and their on-chain timestamps |
-| **offchainCount** | `uint8` | Number of off-chain attestations bundled (enables completeness verification) |
+| **offchainCount** | `uint8` | Number of off-chain attestations bundled (enables completeness verification). For crew jobs this includes one checkin, one checkout, and one report *per crew member* |
 | **crewSize** | `uint8` | Total number of gardeners on this intervention (1 for solo jobs) |
-| **isLead** | `bool` | Whether this gardener is the crew lead (used for impact deduplication) |
-
-_\*Organization wallet address until gardeners app release_
-
 
 > **Attestation Metadata**
 >
-> Recipient: Gardener wallet address
+> Recipient: ZERO_ADDRESS. A PublishedIntervention is a public job record, not a credential addressed to any individual. Per-gardener credentialing flows through GardenerMilestone SBTs (Section 2.3) whose evidence is the set of validated GardenerReports bundled inside the PublishedIntervention's evidence bundle.
 > Attester: Organization wallet.
 > Revocable: No. A published intervention is a historical fact.
 > RefUID: AreaRegistration UID (creating an explicit parent–child link in the EAS graph).
@@ -114,7 +109,9 @@ _\*Organization wallet address until gardeners app release_
 
 > **Crew Interventions**
 >
-> When multiple gardeners work the same job, the organization creates one PublishedIntervention per gardener, all sharing the same `interventionId` and `evidenceBundleHash`. Each gardener is the EAS `recipient` of their own attestation. Consumers deduplicate for impact reporting by grouping on `interventionId` and counting only the record where `isLead = true`.
+> A crew job produces a single PublishedIntervention. Each crew member independently signs their own GardenerCheckin, GardenerCheckout, and GardenerReport attestations — these are cryptographically tied to their wallet via EAS off-chain signatures and all reference the same `interventionUID`. The evidence bundle collects every crew member's signed chain alongside the one-per-job ScheduledIntervention and AdminValidation. No consumer-side deduplication is required, and no field in the PublishedIntervention discriminates individual crew members — `crewSize` records headcount, nothing more.
+>
+> **To prove an individual gardener contributed to a specific intervention**, a verifier reads the PublishedIntervention, fetches the evidence bundle, and checks for a GardenerReport whose attester is that gardener's wallet. The gardener's aggregated credential (career history, level) is the GardenerMilestone SBT, which is directly addressed to their wallet.
 
 ### 2.3 GardenerMilestone (Soulbound)
 
@@ -126,12 +123,12 @@ A non-transferable credential minted when a gardener crosses a meaningful thresh
 | Field | Type | Description |
 |---|---|---|
 | **milestoneLevel** | `uint8` | Progressive level: 1 = Apprentice (5 validated), 2 = Gardener (15), 3 = Senior (40), 4 = Master (100) |
-| **totalInterventions** | `uint16` | Cumulative count of interventions completed at time of minting |
-| **totalValidated** | `uint16` | Count of interventions that passed organizational validation |
-| **avgHealthImprovement** | `uint8` | Average health score delta across all interventions (0–10) |
+| **totalInterventions** | `uint16` | Cumulative count of interventions the gardener personally signed a GardenerReport for at time of minting |
+| **totalValidated** | `uint16` | Subset of the above whose parent PublishedIntervention carries an approved AdminValidation |
+| **avgHealthImprovement** | `uint8` | Average `healthAfter − healthBefore` delta across the validated interventions the gardener contributed to |
 | **skillTier** | `string` | Human-readable credential label (e.g. "Certified Urban Gardener — Level 3") |
 | **achievedAt** | `uint64` | Unix timestamp when milestone was reached |
-| **evidenceRoot** | `bytes32` | Merkle root of all PublishedIntervention UIDs that contributed to this milestone |
+| **evidenceRoot** | `bytes32` | Merkle root of the PublishedIntervention UIDs the gardener contributed to (one leaf per intervention). The organization computes this at mint time by scanning its evidence bundles for GardenerReports signed by the recipient wallet |
 
 > **Attestation Metadata**
 >
@@ -157,7 +154,7 @@ All off-chain attestations in the intervention lifecycle (ScheduledIntervention 
 
 ### 3.1 ScheduledIntervention
 
-Created when the organization plans a new intervention. This is the task assignment. It may never reach on-chain if the intervention is cancelled or rescheduled.
+Created when the organization plans a new intervention. One ScheduledIntervention per job, regardless of crew size. It may never reach on-chain if the intervention is cancelled or rescheduled.
 
 > **OFF-CHAIN** · Revocable: Yes · **Timestamped on-chain: Required**
 
@@ -166,7 +163,6 @@ Created when the organization plans a new intervention. This is the task assignm
 | **areaUID** | `bytes32` | EAS UID of the target AreaRegistration |
 | **interventionId** | `string` | Internal ID, will carry through to PublishedIntervention if completed |
 | **interventionType** | `uint8` | Same enum as PublishedIntervention (0–4) |
-| **assignedGardener** | `address` | Wallet of the crew lead (may change before execution) |
 | **crewSize** | `uint8` | Total number of gardeners assigned (1 for solo jobs) |
 | **scheduledDate** | `uint64` | Planned execution date as Unix timestamp |
 | **estimatedMinutes** | `uint16` | Expected duration in minutes |
@@ -175,10 +171,14 @@ Created when the organization plans a new intervention. This is the task assignm
 
 > **Attestation Metadata**
 >
-> Recipient: Assigned gardener wallet.
+> Recipient: Crew lead wallet (so the lead receives the assignment notification and is operationally responsible for the crew). `ZERO_ADDRESS` is permitted for unassigned schedules that will be reassigned via revoke-and-re-create.
 > Attester: Organization wallet.
 > Revocable: Yes. If an intervention is cancelled or rescheduled, the original attestation is revoked and a new one created. This maintains a clean audit trail of planning decisions.
 > RefUID: AreaRegistration UID (areaUID field provides the same linkage within the attestation data).
+
+> **Why the lead is not a data field**
+>
+> The lead's wallet is captured via the EAS `recipient` metadata, not duplicated into the schema data. The off-chain gardener attestations (checkin/checkout/report) follow the same pattern — gardener identity comes from the `attester` signature, never from a data field. Crew members other than the lead are not individually named in the schedule; they appear in the PublishedIntervention's evidence bundle via their own signed checkin/checkout/report attestations.
 
 > **Temporal Anchoring**
 >
@@ -186,7 +186,7 @@ Created when the organization plans a new intervention. This is the task assignm
 
 ### 3.2 GardenerCheckin
 
-Created by the gardener (or their device) when arriving at the work site. Establishes presence and start time.
+Created by the gardener (or their device) when arriving at the work site. Establishes presence and start time. **One per crew member per intervention.** Each crew member independently signs their own checkin; all of them reference the same `interventionUID`.
 
 > **OFF-CHAIN** · Revocable: No · **Timestamped on-chain: Required**
 
@@ -211,7 +211,7 @@ Created by the gardener (or their device) when arriving at the work site. Establ
 
 ### 3.3 GardenerCheckout
 
-Created when the gardener finishes work at the site. Closes the work session.
+Created when the gardener finishes work at the site. Closes the work session. **One per crew member per intervention**, each paired to the same crew member's checkin via `checkinUID`.
 
 > **OFF-CHAIN** · Revocable: No · **Timestamped on-chain: Required**
 
@@ -230,7 +230,7 @@ Created when the gardener finishes work at the site. Closes the work session.
 
 ### 3.4 GardenerReport
 
-The gardener's own account of the work performed. This is the primary evidence document and the foundation of the gardener's verifiable work history.
+The gardener's own account of the work performed. This is the primary evidence document and the foundation of the gardener's verifiable work history. **One per crew member per intervention.** For crew jobs, each crew member writes their own report — the set of reports is the cryptographic roster of who actually worked.
 
 > **OFF-CHAIN** · Revocable: No · **Timestamped on-chain: Required**
 
@@ -252,24 +252,24 @@ The gardener's own account of the work performed. This is the primary evidence d
 
 ### 3.5 AdminValidation
 
-The organization's quality assessment of the completed work. This is the gate between operational data and on-chain publication. Only interventions that pass validation become PublishedInterventions.
+The organization's quality assessment of the completed work. This is the gate between operational data and on-chain publication. **One AdminValidation per intervention**, regardless of crew size — the validator is judging the job as a whole, not individual crew members. All per-gardener reports, checkins, and checkouts live in the evidence bundle the PublishedIntervention references; the AdminValidation anchors on the ScheduledIntervention because that's the single off-chain root of the intervention. Only interventions that pass validation become PublishedInterventions.
 
 > **OFF-CHAIN** · Revocable: Yes · **Timestamped on-chain: Required**
 
 | Field | Type | Description |
 |---|---|---|
-| **reportUID** | `bytes32` | Off-chain UID of the GardenerReport being validated |
+| **scheduleUID** | `bytes32` | Off-chain UID of the ScheduledIntervention being validated |
 | **approved** | `bool` | Whether the work meets quality standards |
 | **qualityScore** | `uint8` | Quality assessment (1–10 scale) |
-| **feedback** | `string` | Written feedback to gardener (visible to gardener, not published on-chain) |
+| **feedback** | `string` | Written feedback to the crew (visible via the evidence bundle, not surfaced individually on-chain) |
 | **validatorId** | `bytes32` | Hashed identifier of the staff member who performed validation |
 
 > **Attestation Metadata**
 >
-> Recipient: Gardener wallet.
+> Recipient: ZERO_ADDRESS. Validation is job-level, not addressed to any individual crew member.
 > Attester: Organization wallet.
 > Revocable: Yes. If validation is issued in error, it can be revoked and reissued. This is the only quality gate in the system and must allow correction.
-> RefUID: GardenerReport UID (reportUID field).
+> RefUID: ScheduledIntervention UID (scheduleUID field).
 
 ### 3.6 CitizenFeedback
 
@@ -342,11 +342,15 @@ These record an off-chain attestation UID alongside the current **block timestam
 
 ### 4.2 Ordering Rules
 
-Every off-chain attestation in the intervention lifecycle MUST be timestamped on-chain immediately after creation. The on-chain timestamps MUST satisfy:
+Every off-chain attestation in the intervention lifecycle MUST be timestamped on-chain immediately after creation. For a crew of size N, each crew member `i ∈ {1..N}` independently produces `(checkin_i, checkout_i, report_i)`. The on-chain timestamps MUST satisfy:
 
 ```
-T_schedule < T_checkin < T_checkout < T_report < T_validation < T_publication
+T_schedule < min(T_checkin[*])
+for each i:  T_checkin[i] < T_checkout[i] < T_report[i]
+max(T_report[*]) < T_validation < T_publication
 ```
+
+Put plainly: scheduling precedes every crew member's arrival, each crew member checks out after checking in and reports after checking out, and validation happens after every crew member's report is recorded. There is no ordering constraint *between* crew members — Alice can finish her shift before Bob even arrives.
 
 The claimed `executionDate` in PublishedIntervention MUST fall within the bracket:
 
@@ -354,15 +358,22 @@ The claimed `executionDate` in PublishedIntervention MUST fall within the bracke
 T_schedule ≤ executionDate ≤ T_publication
 ```
 
-For Healthcheck attestations linked to an intervention via `interventionUID`: `T_healthcheckBefore < T_checkin` and `T_healthcheckAfter > T_checkout`. The explicit `interventionUID` field makes the linkage auditable; the temporal bracket prevents post-hoc fabrication.
+For Healthcheck attestations linked to an intervention via `interventionUID`:
+
+```
+T_healthcheckBefore < min(T_checkin[*])
+T_healthcheckAfter  > max(T_checkout[*])
+```
+
+The explicit `interventionUID` field makes the linkage auditable; the temporal brackets prevent post-hoc fabrication.
 
 A PublishedIntervention whose `executionDate` predates `T_schedule` is provably backfilled.
 
 ### 4.3 Timestamping Protocol
 
-Each off-chain attestation is timestamped individually via `EAS.timestamp(uid)`. Steps that are logically simultaneous (e.g., checkout and report) MAY be batched via `multiTimestamp()`. Steps that must demonstrate elapsed time (e.g., checkin and checkout) MUST NOT be batched.
+Each off-chain attestation is timestamped individually via `EAS.timestamp(uid)`. Steps that are logically simultaneous (e.g., a single gardener's checkout and report) MAY be batched via `multiTimestamp()`. Steps that must demonstrate elapsed time (e.g., checkin and checkout for the same gardener) MUST NOT be batched. All N crew members' checkins across a single crew job MAY be batched together if they genuinely arrive at the same moment, since the relative ordering between crew members is unconstrained.
 
-Total cost per intervention lifecycle: **~$0.0005** (5 timestamps). At 1,000 interventions/month, this is ~$0.50/month.
+Total cost per intervention lifecycle: `2 + 3N` timestamps (scheduled + validation + per-crew-member checkin/checkout/report), plus optional healthchecks. A solo job is `2 + 3 = 5` timestamps at **~$0.0005**. A 4-person crew is `2 + 12 = 14` timestamps at **~$0.0014**. At 1,000 interventions/month with an average crew of 2, this is under $1/month.
 
 ### 4.4 MVP Minimum
 
@@ -374,7 +385,9 @@ At minimum, **timestamp the ScheduledIntervention on-chain**. Combined with the 
 
 The evidenceBundleHash field in PublishedIntervention points to a JSON document on IPFS that links all off-chain attestations for a given intervention. This is the bridge between the off-chain operational layer and the on-chain settlement layer.
 
-**evidence-bundle.json**
+The `scheduled` and `validation` entries are always single (one per job). The `checkins`, `checkouts`, and `reports` entries are **always arrays** — length 1 for solo jobs, length N for a crew of N. Consumers treat solo and crew jobs uniformly by iterating the arrays; there is no separate code path.
+
+**evidence-bundle.json** (crew of 2 shown)
 
 ```json
 {
@@ -387,24 +400,54 @@ The evidenceBundleHash field in PublishedIntervention points to a JSON document 
       "claimedTimestamp": 1709251200,
       "onchainTimestamp": 1709251215
     },
-    "checkin": {
-      "uid": "0x456...012",
-      "contentHash": "0xcba...654",
-      "claimedTimestamp": 1709337600,
-      "onchainTimestamp": 1709337618
-    },
-    "checkout": {
-      "uid": "0x789...345",
-      "contentHash": "0xabc...678",
-      "claimedTimestamp": 1709344800,
-      "onchainTimestamp": 1709344812
-    },
-    "report": {
-      "uid": "0xdef...901",
-      "contentHash": "0x456...789",
-      "claimedTimestamp": 1709345100,
-      "onchainTimestamp": 1709345120
-    },
+    "checkins": [
+      {
+        "uid": "0x456...012",
+        "contentHash": "0xcba...654",
+        "attester": "0xAlice...",
+        "claimedTimestamp": 1709337600,
+        "onchainTimestamp": 1709337618
+      },
+      {
+        "uid": "0x457...013",
+        "contentHash": "0xcbb...655",
+        "attester": "0xBob...",
+        "claimedTimestamp": 1709337650,
+        "onchainTimestamp": 1709337670
+      }
+    ],
+    "checkouts": [
+      {
+        "uid": "0x789...345",
+        "contentHash": "0xabc...678",
+        "attester": "0xAlice...",
+        "claimedTimestamp": 1709344800,
+        "onchainTimestamp": 1709344812
+      },
+      {
+        "uid": "0x790...346",
+        "contentHash": "0xabd...679",
+        "attester": "0xBob...",
+        "claimedTimestamp": 1709344900,
+        "onchainTimestamp": 1709344920
+      }
+    ],
+    "reports": [
+      {
+        "uid": "0xdef...901",
+        "contentHash": "0x456...789",
+        "attester": "0xAlice...",
+        "claimedTimestamp": 1709345100,
+        "onchainTimestamp": 1709345120
+      },
+      {
+        "uid": "0xdf0...902",
+        "contentHash": "0x457...790",
+        "attester": "0xBob...",
+        "claimedTimestamp": 1709345200,
+        "onchainTimestamp": 1709345220
+      }
+    ],
     "validation": {
       "uid": "0x234...567",
       "contentHash": "0x987...123",
@@ -425,11 +468,11 @@ The evidenceBundleHash field in PublishedIntervention points to a JSON document 
     }
   },
   "photos": {
-    "checkinPhoto": "ipfs://Qm.../arrival.jpg",
+    "checkinPhotos": ["ipfs://Qm.../alice-arrival.jpg", "ipfs://Qm.../bob-arrival.jpg"],
     "reportPhotos": "ipfs://Qm.../work-evidence/",
     "afterPhotos": "ipfs://Qm.../completion/"
   },
-  "bundleVersion": "1.0"
+  "bundleVersion": "2.0"
 }
 ```
 
@@ -437,17 +480,23 @@ The evidenceBundleHash field in PublishedIntervention points to a JSON document 
 >
 > - `claimedTimestamp`: The self-reported timestamp from the off-chain attestation data (device time, application time). This is what the attester claims.
 > - `onchainTimestamp`: The block timestamp from `EAS.timestamp()`. This is the authoritative, independently verifiable time anchor.
+> - `attester` (per-gardener entries only): The wallet that signed the attestation. This is the canonical gardener identity — it matches the EAS off-chain signature and is how a verifier proves a specific gardener contributed to the intervention.
 >
 > The `onchainTimestamp` fields are technically redundant — they can be verified by reading the EAS contract's timestamp mapping directly. Including them in the bundle enables offline verification without a chain query, with the expectation that auditors performing due diligence will spot-check against the chain.
+
+> **Bundle Version**
+>
+> Version `2.0` introduces the array-shaped `checkins`, `checkouts`, `reports` fields and is required for any intervention touched by the crew-handling redesign. Consumers MUST reject bundles declaring `bundleVersion` values they don't understand.
 
 > **Verification Flow**
 >
 > Anyone with the PublishedIntervention UID can:
 > (1) Read the evidenceBundleHash from the on-chain attestation.
 > (2) Fetch the JSON from IPFS.
-> (3) Verify each off-chain attestation signature independently.
-> (4) Confirm the bundle is complete by checking offchainCount matches the number of attestations in the bundle.
-> (5) **Verify temporal integrity:** For each attestation in the bundle, query `EAS.getTimestamp(uid)` on-chain and confirm the on-chain timestamps match the bundle's `onchainTimestamp` values and satisfy the ordering rules in Section 4.2.
+> (3) Verify each off-chain attestation signature independently — `attester` on each array entry MUST match the EIP-712 signer.
+> (4) Confirm the bundle is complete by checking `offchainCount` matches the number of attestations in the bundle: `1 (scheduled) + checkins.length + checkouts.length + reports.length + 1 (validation)` plus any optional healthchecks. For a well-formed bundle, `checkins.length == checkouts.length == reports.length == PublishedIntervention.crewSize`.
+> (5) **Verify temporal integrity:** For each attestation in the bundle, query `EAS.getTimestamp(uid)` on-chain and confirm the on-chain timestamps match the bundle's `onchainTimestamp` values and satisfy the ordering rules in Section 4.2 (including the per-crew-member `T_checkin[i] < T_checkout[i] < T_report[i]` check).
+> (6) **To prove an individual gardener's participation**, find the report in `reports` whose `attester` matches the gardener's wallet; verify its EAS signature.
 >
 > This provides full end-to-end verifiability — both content integrity and temporal integrity — without putting operational data on-chain.
 
@@ -466,7 +515,7 @@ EAS attestations can reference each other via the refUID field, creating a direc
 | GardenerCheckout | → | GardenerCheckin | checkinUID field |
 | GardenerReport | → | ScheduledIntervention | interventionUID field |
 | GardenerReport | → | GardenerCheckout | checkoutUID field |
-| AdminValidation | → | GardenerReport | reportUID field |
+| AdminValidation | → | ScheduledIntervention | scheduleUID field |
 | CitizenFeedback | → | AreaRegistration | areaUID field |
 | Healthcheck | → | AreaRegistration | areaUID field |
 | Healthcheck | → | ScheduledIntervention | interventionUID field (when linked) |
@@ -516,7 +565,7 @@ string areaId, int32 latitude, int32 longitude, uint8 areaType, string name, str
 
 **PublishedIntervention** (revocable: false)
 ```
-bytes32 areaUID, string interventionId, address gardener, uint8 interventionType, uint64 executionDate, uint8 healthBefore, uint8 healthAfter, bytes32 commissionRef, bytes32 evidenceBundleHash, uint8 offchainCount, uint8 crewSize, bool isLead
+bytes32 areaUID, string interventionId, uint8 interventionType, uint64 executionDate, uint8 healthBefore, uint8 healthAfter, bytes32 commissionRef, bytes32 evidenceBundleHash, uint8 offchainCount, uint8 crewSize
 ```
 
 **GardenerMilestone** (revocable: false)
@@ -526,7 +575,7 @@ uint8 milestoneLevel, uint16 totalInterventions, uint16 totalValidated, uint8 av
 
 **ScheduledIntervention** (revocable: true)
 ```
-bytes32 areaUID, string interventionId, uint8 interventionType, address assignedGardener, uint64 scheduledDate, uint16 estimatedMinutes, string description, bytes32 commissionRef, uint8 crewSize
+bytes32 areaUID, string interventionId, uint8 interventionType, uint64 scheduledDate, uint16 estimatedMinutes, string description, bytes32 commissionRef, uint8 crewSize
 ```
 
 **GardenerCheckin** (revocable: false)
@@ -546,7 +595,7 @@ bytes32 interventionUID, bytes32 checkoutUID, string tasksCompleted, uint8 taskC
 
 **AdminValidation** (revocable: true)
 ```
-bytes32 reportUID, bool approved, uint8 qualityScore, string feedback, bytes32 validatorId
+bytes32 scheduleUID, bool approved, uint8 qualityScore, string feedback, bytes32 validatorId
 ```
 
 **CitizenFeedback** (revocable: false)

@@ -1,6 +1,7 @@
 import type {
 	EvidenceBundle,
 	EvidenceBundleBuilderInput,
+	EvidenceBundleGardenerAttestation,
 } from "./types/evidence";
 
 function extractAttestation(result: {
@@ -21,6 +22,22 @@ function extractAttestation(result: {
 	};
 }
 
+function extractGardenerAttestation(result: {
+	uid: string;
+	signedAttestation: Record<string, unknown>;
+	onchainTimestamp: bigint;
+}): EvidenceBundleGardenerAttestation {
+	const base = extractAttestation(result);
+	const message = result.signedAttestation.message as
+		| Record<string, unknown>
+		| undefined;
+	const attester =
+		(result.signedAttestation.signer as string | undefined) ??
+		(message?.attester as string | undefined) ??
+		"";
+	return { ...base, attester };
+}
+
 export function buildEvidenceBundle(
 	input: EvidenceBundleBuilderInput,
 ): EvidenceBundle {
@@ -29,9 +46,9 @@ export function buildEvidenceBundle(
 		areaUID: input.areaUID,
 		attestations: {
 			scheduled: extractAttestation(input.scheduled),
-			checkin: extractAttestation(input.checkin),
-			checkout: extractAttestation(input.checkout),
-			report: extractAttestation(input.report),
+			checkins: input.crew.map((m) => extractGardenerAttestation(m.checkin)),
+			checkouts: input.crew.map((m) => extractGardenerAttestation(m.checkout)),
+			reports: input.crew.map((m) => extractGardenerAttestation(m.report)),
 			validation: {
 				...extractAttestation(input.validation),
 				approved: input.validation.approved,
@@ -39,11 +56,11 @@ export function buildEvidenceBundle(
 			},
 		},
 		photos: {
-			checkinPhoto: input.photos?.checkinPhoto,
+			checkinPhotos: input.photos?.checkinPhotos,
 			reportPhotos: input.photos?.reportPhotos,
 			afterPhotos: input.photos?.afterPhotos,
 		},
-		bundleVersion: "1.0",
+		bundleVersion: "2.0",
 	};
 
 	if (input.healthcheckBefore) {

@@ -38,6 +38,7 @@ import type {
 import type { SchemaName } from "./types/enums";
 import type {
 	EvidenceBundle,
+	EvidenceBundleAttestation,
 	EvidenceBundleBuilderInput,
 	FinalizeInterventionInput,
 	FinalizeInterventionResult,
@@ -218,7 +219,7 @@ export class OpenGardenClient {
 		const tx = await this.eas.attest({
 			schema: schemaUID,
 			data: {
-				recipient: data.gardener,
+				recipient: ZERO_ADDRESS,
 				data: encodedData,
 				expirationTime: 0n,
 				revocable: false,
@@ -321,7 +322,7 @@ export class OpenGardenClient {
 		return this.signAndTimestamp(
 			"ScheduledIntervention",
 			encodedData,
-			data.assignedGardener,
+			data.crewLead,
 			data.areaUID,
 			true,
 		);
@@ -373,8 +374,8 @@ export class OpenGardenClient {
 		return this.signAndTimestamp(
 			"AdminValidation",
 			encodedData,
-			data.gardener,
-			data.reportUID,
+			ZERO_ADDRESS,
+			data.scheduleUID,
 			true,
 		);
 	}
@@ -402,11 +403,13 @@ export class OpenGardenClient {
 		const signerAddress = await this.signer.getAddress();
 		const attestations: Record<string, unknown>[] = [
 			input.scheduled.signedAttestation,
-			input.checkin.signedAttestation,
-			input.checkout.signedAttestation,
-			input.report.signedAttestation,
-			input.validation.signedAttestation,
 		];
+		for (const member of input.crew) {
+			attestations.push(member.checkin.signedAttestation);
+			attestations.push(member.checkout.signedAttestation);
+			attestations.push(member.report.signedAttestation);
+		}
+		attestations.push(input.validation.signedAttestation);
 		if (input.healthcheckBefore)
 			attestations.push(input.healthcheckBefore.signedAttestation);
 		if (input.healthcheckAfter)
@@ -423,6 +426,13 @@ export class OpenGardenClient {
 	async finalizeIntervention(
 		input: FinalizeInterventionInput,
 	): Promise<FinalizeInterventionResult> {
+		if (input.crew.length === 0) {
+			throw new OpenGardenError(
+				OpenGardenErrorCode.INVALID_INPUT,
+				"Cannot finalize an intervention with no crew members",
+			);
+		}
+
 		// Execution date bracketing (lower bound): T_schedule ≤ executionDate
 		if (input.scheduled.onchainTimestamp > input.executionDate) {
 			throw new OpenGardenError(
@@ -435,14 +445,14 @@ export class OpenGardenClient {
 		const evidenceBundleHash = await this.uploadEvidenceBundle(bundle);
 		const indexedCount = await this.indexBundleAttestations(input);
 
-		let offchainCount = 5;
+		// 1 scheduled + 3 per crew member (checkin/checkout/report) + 1 validation
+		let offchainCount = 2 + 3 * input.crew.length;
 		if (input.healthcheckBefore) offchainCount++;
 		if (input.healthcheckAfter) offchainCount++;
 
 		const publication = await this.publishIntervention({
 			areaUID: input.areaUID,
 			interventionId: input.interventionId,
-			gardener: input.gardener,
 			interventionType: input.interventionType,
 			executionDate: input.executionDate,
 			healthBefore: input.healthBefore,
@@ -451,7 +461,6 @@ export class OpenGardenClient {
 			evidenceBundleHash,
 			offchainCount,
 			crewSize: input.crewSize,
-			isLead: input.isLead,
 		});
 
 		return { bundle, evidenceBundleHash, indexedCount, publication };
@@ -655,49 +664,69 @@ export class OpenGardenClient {
 			new TextDecoder().decode(bundleBytes),
 		) as EvidenceBundle;
 
-		const attestationKeys = [
-			"scheduled",
-			"checkin",
-			"checkout",
-			"report",
-			"validation",
-		] as const;
-		const presentAttestations = attestationKeys.filter(
-			(key) => bundle.attestations[key] !== undefined,
-		);
+		const { checkins, checkouts, reports } = bundle.attestations;
+
 		const attestationCount =
-			presentAttestations.length +
+			1 + // scheduled
+			checkins.length +
+			checkouts.length +
+			reports.length +
+			1 + // validation
 			(bundle.attestations.healthcheckBefore ? 1 : 0) +
 			(bundle.attestations.healthcheckAfter ? 1 : 0);
 
 		const expectedCount = intervention.offchainCount;
 
-		// Verify strict temporal ordering (same-block timestamps fail)
-		const timestamps = presentAttestations.map(
-			(key) => bundle.attestations[key].onchainTimestamp,
-		);
-		let temporalOrderValid = true;
-		for (let i = 1; i < timestamps.length; i++) {
-			if (timestamps[i] <= timestamps[i - 1]) {
+		// Verify temporal ordering per spec Section 4.2:
+		//   T_schedule < min(T_checkin[*])
+		//   for each i: T_checkin[i] < T_checkout[i] < T_report[i]
+		//   max(T_report[*]) < T_validation
+		let temporalOrderValid =
+			checkins.length > 0 &&
+			checkins.length === checkouts.length &&
+			checkouts.length === reports.length;
+
+		if (temporalOrderValid) {
+			const scheduledTs = bundle.attestations.scheduled.onchainTimestamp;
+			const minCheckin = Math.min(...checkins.map((c) => c.onchainTimestamp));
+			if (scheduledTs >= minCheckin) {
 				temporalOrderValid = false;
-				break;
+			}
+		}
+
+		if (temporalOrderValid) {
+			for (let i = 0; i < checkins.length; i++) {
+				const ci = checkins[i].onchainTimestamp;
+				const co = checkouts[i].onchainTimestamp;
+				const rp = reports[i].onchainTimestamp;
+				if (!(ci < co && co < rp)) {
+					temporalOrderValid = false;
+					break;
+				}
+			}
+		}
+
+		if (temporalOrderValid) {
+			const maxReport = Math.max(...reports.map((r) => r.onchainTimestamp));
+			if (maxReport >= bundle.attestations.validation.onchainTimestamp) {
+				temporalOrderValid = false;
 			}
 		}
 
 		// Verify healthcheck temporal ordering per spec Section 4.2
 		let healthcheckOrderValid = true;
 		if (bundle.attestations.healthcheckBefore) {
+			const minCheckin = Math.min(...checkins.map((c) => c.onchainTimestamp));
 			if (
-				bundle.attestations.healthcheckBefore.onchainTimestamp >=
-				bundle.attestations.checkin.onchainTimestamp
+				bundle.attestations.healthcheckBefore.onchainTimestamp >= minCheckin
 			) {
 				healthcheckOrderValid = false;
 			}
 		}
 		if (bundle.attestations.healthcheckAfter) {
+			const maxCheckout = Math.max(...checkouts.map((c) => c.onchainTimestamp));
 			if (
-				bundle.attestations.healthcheckAfter.onchainTimestamp <=
-				bundle.attestations.checkout.onchainTimestamp
+				bundle.attestations.healthcheckAfter.onchainTimestamp <= maxCheckout
 			) {
 				healthcheckOrderValid = false;
 			}
@@ -716,10 +745,16 @@ export class OpenGardenClient {
 		// Verify validation approval
 		const validationApproved = bundle.attestations.validation.approved === true;
 
-		// Verify on-chain timestamps match
+		// Verify on-chain timestamps match the bundle's claimed values
 		let timestampsVerified = true;
-		for (const key of presentAttestations) {
-			const att = bundle.attestations[key];
+		const flatAttestations: EvidenceBundleAttestation[] = [
+			bundle.attestations.scheduled,
+			...checkins,
+			...checkouts,
+			...reports,
+			bundle.attestations.validation,
+		];
+		for (const att of flatAttestations) {
 			try {
 				const onchainTs = await this.eas.getTimestamp(att.uid);
 				if (Number(onchainTs) !== att.onchainTimestamp) {

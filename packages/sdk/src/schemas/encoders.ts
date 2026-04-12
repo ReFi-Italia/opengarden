@@ -40,7 +40,6 @@ export function encodePublishedIntervention(
 	return encoder.encodeData([
 		{ name: "areaUID", value: input.areaUID, type: "bytes32" },
 		{ name: "interventionId", value: input.interventionId, type: "string" },
-		{ name: "gardener", value: input.gardener, type: "address" },
 		{ name: "interventionType", value: input.interventionType, type: "uint8" },
 		{ name: "executionDate", value: input.executionDate, type: "uint64" },
 		{ name: "healthBefore", value: input.healthBefore, type: "uint8" },
@@ -53,7 +52,6 @@ export function encodePublishedIntervention(
 		},
 		{ name: "offchainCount", value: input.offchainCount, type: "uint8" },
 		{ name: "crewSize", value: input.crewSize, type: "uint8" },
-		{ name: "isLead", value: input.isLead, type: "bool" },
 	]);
 }
 
@@ -86,11 +84,6 @@ export function encodeScheduledIntervention(
 		{ name: "areaUID", value: input.areaUID, type: "bytes32" },
 		{ name: "interventionId", value: input.interventionId, type: "string" },
 		{ name: "interventionType", value: input.interventionType, type: "uint8" },
-		{
-			name: "assignedGardener",
-			value: input.assignedGardener,
-			type: "address",
-		},
 		{ name: "scheduledDate", value: input.scheduledDate, type: "uint64" },
 		{ name: "estimatedMinutes", value: input.estimatedMinutes, type: "uint16" },
 		{ name: "description", value: input.description, type: "string" },
@@ -138,7 +131,7 @@ export function encodeGardenerReport(input: GardenerReportInput): string {
 export function encodeAdminValidation(input: AdminValidationInput): string {
 	const encoder = new SchemaEncoder(SCHEMA_STRINGS.AdminValidation);
 	return encoder.encodeData([
-		{ name: "reportUID", value: input.reportUID, type: "bytes32" },
+		{ name: "scheduleUID", value: input.scheduleUID, type: "bytes32" },
 		{ name: "approved", value: input.approved, type: "bool" },
 		{ name: "qualityScore", value: input.qualityScore, type: "uint8" },
 		{ name: "feedback", value: input.feedback, type: "string" },
@@ -210,7 +203,6 @@ export function decodePublishedIntervention(data: string) {
 	return {
 		areaUID: String(getFieldValue(decoded, "areaUID")),
 		interventionId: getFieldValue(decoded, "interventionId") as string,
-		gardener: getFieldValue(decoded, "gardener") as string,
 		interventionType: Number(getFieldValue(decoded, "interventionType")),
 		executionDate: BigInt(String(getFieldValue(decoded, "executionDate"))),
 		healthBefore: Number(getFieldValue(decoded, "healthBefore")),
@@ -219,7 +211,6 @@ export function decodePublishedIntervention(data: string) {
 		evidenceBundleHash: String(getFieldValue(decoded, "evidenceBundleHash")),
 		offchainCount: Number(getFieldValue(decoded, "offchainCount")),
 		crewSize: Number(getFieldValue(decoded, "crewSize")),
-		isLead: Boolean(getFieldValue(decoded, "isLead")),
 	};
 }
 

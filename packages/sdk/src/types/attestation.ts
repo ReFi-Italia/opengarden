@@ -15,7 +15,6 @@ export interface Intervention {
 	uid: string;
 	areaUID: string;
 	interventionId: string;
-	gardener: string;
 	interventionType: number;
 	executionDate: bigint;
 	healthBefore: number;
@@ -24,7 +23,6 @@ export interface Intervention {
 	evidenceBundleHash: string;
 	offchainCount: number;
 	crewSize: number;
-	isLead: boolean;
 	attester: string;
 	recipient: string;
 	time: bigint;

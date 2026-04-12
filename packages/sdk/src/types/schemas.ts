@@ -11,7 +11,6 @@ export interface AreaRegistrationInput {
 export interface PublishedInterventionInput {
 	areaUID: string;
 	interventionId: string;
-	gardener: string;
 	interventionType: number;
 	executionDate: bigint;
 	healthBefore: number;
@@ -20,7 +19,6 @@ export interface PublishedInterventionInput {
 	evidenceBundleHash: string;
 	offchainCount: number;
 	crewSize: number;
-	isLead: boolean;
 }
 
 export interface GardenerMilestoneInput {
@@ -38,7 +36,7 @@ export interface ScheduledInterventionInput {
 	areaUID: string;
 	interventionId: string;
 	interventionType: number;
-	assignedGardener: string;
+	crewLead: string;
 	crewSize: number;
 	scheduledDate: bigint;
 	estimatedMinutes: number;
@@ -70,8 +68,7 @@ export interface GardenerReportInput {
 }
 
 export interface AdminValidationInput {
-	gardener: string;
-	reportUID: string;
+	scheduleUID: string;
 	approved: boolean;
 	qualityScore: number;
 	feedback: string;

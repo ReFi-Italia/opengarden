@@ -8,12 +8,14 @@ function mockTimestampedResult(
 	uid: string,
 	time: number,
 	onchainTimestamp: bigint,
+	attester?: string,
 ): TimestampedOffChainResult {
 	return {
 		uid,
 		signedAttestation: {
 			message: { time: BigInt(time) },
 			uid,
+			signer: attester ?? `0xsigner-${uid}`,
 		},
 		timestampTxHash: `0xtx${uid}`,
 		onchainTimestamp,
@@ -21,79 +23,113 @@ function mockTimestampedResult(
 	};
 }
 
+function mockHealthcheck(uid: string, score: number, onchainTimestamp: bigint) {
+	return {
+		...mockTimestampedResult(uid, 0, onchainTimestamp),
+		score,
+	};
+}
+
 describe("buildEvidenceBundle", () => {
-	const input: EvidenceBundleBuilderInput = {
+	const soloInput: EvidenceBundleBuilderInput = {
 		interventionId: "INT-2026-0001",
 		areaUID: "0xarea123",
 		scheduled: mockTimestampedResult("0xsched", 1000, 1015n),
-		checkin: mockTimestampedResult("0xcheckin", 2000, 2018n),
-		checkout: mockTimestampedResult("0xcheckout", 3000, 3012n),
-		report: mockTimestampedResult("0xreport", 3100, 3120n),
+		crew: [
+			{
+				checkin: mockTimestampedResult("0xcheckin", 2000, 2018n, "0xAlice"),
+				checkout: mockTimestampedResult("0xcheckout", 3000, 3012n, "0xAlice"),
+				report: mockTimestampedResult("0xreport", 3100, 3120n, "0xAlice"),
+			},
+		],
 		validation: {
 			...mockTimestampedResult("0xvalidation", 4000, 4025n),
 			approved: true,
 			qualityScore: 8,
 		},
 		photos: {
-			checkinPhoto: "ipfs://Qm.../arrival.jpg",
+			checkinPhotos: ["ipfs://Qm.../arrival.jpg"],
 			reportPhotos: "ipfs://Qm.../work/",
 		},
 	};
 
-	it("sets bundleVersion to 1.0", () => {
-		const bundle = buildEvidenceBundle(input);
-		expect(bundle.bundleVersion).toBe("1.0");
+	it("sets bundleVersion to 2.0", () => {
+		const bundle = buildEvidenceBundle(soloInput);
+		expect(bundle.bundleVersion).toBe("2.0");
 	});
 
 	it("includes interventionId and areaUID", () => {
-		const bundle = buildEvidenceBundle(input);
+		const bundle = buildEvidenceBundle(soloInput);
 		expect(bundle.interventionId).toBe("INT-2026-0001");
 		expect(bundle.areaUID).toBe("0xarea123");
 	});
 
-	it("includes all 5 core attestations", () => {
-		const bundle = buildEvidenceBundle(input);
+	it("includes all core attestations for a solo job", () => {
+		const bundle = buildEvidenceBundle(soloInput);
 		expect(bundle.attestations.scheduled.uid).toBe("0xsched");
-		expect(bundle.attestations.checkin.uid).toBe("0xcheckin");
-		expect(bundle.attestations.checkout.uid).toBe("0xcheckout");
-		expect(bundle.attestations.report.uid).toBe("0xreport");
+		expect(bundle.attestations.checkins).toHaveLength(1);
+		expect(bundle.attestations.checkouts).toHaveLength(1);
+		expect(bundle.attestations.reports).toHaveLength(1);
+		expect(bundle.attestations.checkins[0].uid).toBe("0xcheckin");
+		expect(bundle.attestations.checkouts[0].uid).toBe("0xcheckout");
+		expect(bundle.attestations.reports[0].uid).toBe("0xreport");
 		expect(bundle.attestations.validation.uid).toBe("0xvalidation");
 	});
 
+	it("preserves per-gardener arrays for a crew job", () => {
+		const crewInput: EvidenceBundleBuilderInput = {
+			...soloInput,
+			crew: [
+				{
+					checkin: mockTimestampedResult("0xciA", 2000, 2018n, "0xAlice"),
+					checkout: mockTimestampedResult("0xcoA", 3000, 3012n, "0xAlice"),
+					report: mockTimestampedResult("0xrpA", 3100, 3120n, "0xAlice"),
+				},
+				{
+					checkin: mockTimestampedResult("0xciB", 2100, 2118n, "0xBob"),
+					checkout: mockTimestampedResult("0xcoB", 3200, 3212n, "0xBob"),
+					report: mockTimestampedResult("0xrpB", 3300, 3320n, "0xBob"),
+				},
+			],
+		};
+		const bundle = buildEvidenceBundle(crewInput);
+		expect(bundle.attestations.checkins).toHaveLength(2);
+		expect(bundle.attestations.checkouts).toHaveLength(2);
+		expect(bundle.attestations.reports).toHaveLength(2);
+		expect(bundle.attestations.reports[0].attester).toBe("0xAlice");
+		expect(bundle.attestations.reports[1].attester).toBe("0xBob");
+	});
+
 	it("converts onchainTimestamp from bigint to number", () => {
-		const bundle = buildEvidenceBundle(input);
+		const bundle = buildEvidenceBundle(soloInput);
 		expect(bundle.attestations.scheduled.onchainTimestamp).toBe(1015);
-		expect(bundle.attestations.checkin.onchainTimestamp).toBe(2018);
+		expect(bundle.attestations.checkins[0].onchainTimestamp).toBe(2018);
 	});
 
 	it("includes validation-specific fields", () => {
-		const bundle = buildEvidenceBundle(input);
+		const bundle = buildEvidenceBundle(soloInput);
 		expect(bundle.attestations.validation.approved).toBe(true);
 		expect(bundle.attestations.validation.qualityScore).toBe(8);
 	});
 
 	it("includes photo references", () => {
-		const bundle = buildEvidenceBundle(input);
-		expect(bundle.photos.checkinPhoto).toBe("ipfs://Qm.../arrival.jpg");
+		const bundle = buildEvidenceBundle(soloInput);
+		expect(bundle.photos.checkinPhotos).toEqual(["ipfs://Qm.../arrival.jpg"]);
 		expect(bundle.photos.reportPhotos).toBe("ipfs://Qm.../work/");
 		expect(bundle.photos.afterPhotos).toBeUndefined();
 	});
 
 	it("omits healthchecks when not provided", () => {
-		const bundle = buildEvidenceBundle(input);
+		const bundle = buildEvidenceBundle(soloInput);
 		expect(bundle.attestations.healthcheckBefore).toBeUndefined();
 		expect(bundle.attestations.healthcheckAfter).toBeUndefined();
 	});
 
 	it("includes healthchecks when provided", () => {
 		const withHealth: EvidenceBundleBuilderInput = {
-			...input,
-			healthcheckBefore: {
-				uid: "0xhcbefore",
-				score: 3,
-				onchainTimestamp: 500n,
-			},
-			healthcheckAfter: { uid: "0xhcafter", score: 8, onchainTimestamp: 5000n },
+			...soloInput,
+			healthcheckBefore: mockHealthcheck("0xhcbefore", 3, 500n),
+			healthcheckAfter: mockHealthcheck("0xhcafter", 8, 5000n),
 		};
 		const bundle = buildEvidenceBundle(withHealth);
 		expect(bundle.attestations.healthcheckBefore).toEqual({

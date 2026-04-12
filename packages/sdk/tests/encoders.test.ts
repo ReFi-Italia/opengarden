@@ -55,16 +55,14 @@ describe("PublishedIntervention encoder", () => {
 	const input = {
 		areaUID: ZERO_BYTES32,
 		interventionId: "INT-2026-0001",
-		gardener: "0x0000000000000000000000000000000000000001",
 		interventionType: 0,
 		executionDate: 1709251200n,
 		healthBefore: 3,
 		healthAfter: 8,
 		commissionRef: ZERO_BYTES32,
 		evidenceBundleHash: ZERO_BYTES32,
-		offchainCount: 5,
+		offchainCount: 8,
 		crewSize: 2,
-		isLead: true,
 	};
 
 	it("encodes and decodes roundtrip", () => {
@@ -75,9 +73,8 @@ describe("PublishedIntervention encoder", () => {
 		expect(decoded.executionDate).toBe(1709251200n);
 		expect(decoded.healthBefore).toBe(3);
 		expect(decoded.healthAfter).toBe(8);
-		expect(decoded.offchainCount).toBe(5);
+		expect(decoded.offchainCount).toBe(8);
 		expect(decoded.crewSize).toBe(2);
-		expect(decoded.isLead).toBe(true);
 	});
 });
 
@@ -111,7 +108,7 @@ describe("ScheduledIntervention encoder", () => {
 			areaUID: ZERO_BYTES32,
 			interventionId: "INT-2026-0002",
 			interventionType: 1,
-			assignedGardener: "0x0000000000000000000000000000000000000001",
+			crewLead: "0x0000000000000000000000000000000000000001",
 			crewSize: 3,
 			scheduledDate: 1709337600n,
 			estimatedMinutes: 120,
@@ -171,8 +168,7 @@ describe("GardenerReport encoder", () => {
 describe("AdminValidation encoder", () => {
 	it("encodes without error", () => {
 		const encoded = encodeAdminValidation({
-			gardener: "0x0000000000000000000000000000000000000001",
-			reportUID: ZERO_BYTES32,
+			scheduleUID: ZERO_BYTES32,
 			approved: true,
 			qualityScore: 8,
 			feedback: "Good work.",

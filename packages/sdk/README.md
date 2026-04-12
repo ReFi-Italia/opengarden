@@ -59,8 +59,13 @@ The SDK covers the complete attestation flow defined in the [schema spec](../../
 // 1. Register area (on-chain)
 const area = await client.registerArea({ ... });
 
-// 2. Schedule intervention (off-chain + timestamped) — created first so healthchecks can link to it
-const schedule = await client.scheduleIntervention({ areaUID: area.uid, ... });
+// 2. Schedule intervention (off-chain + timestamped) — recipient = crew lead
+const schedule = await client.scheduleIntervention({
+  areaUID: area.uid,
+  crewLead: crewLeadWallet,
+  crewSize: 2,
+  ...
+});
 
 // 3. Healthcheck before (off-chain + timestamped, linked to the scheduled intervention)
 const hcBefore = await client.recordHealthcheck({
@@ -71,19 +76,26 @@ const hcBefore = await client.recordHealthcheck({
   ...
 });
 
-// 4. Gardener checkin (off-chain + timestamped)
-const checkin = await client.checkin({ interventionUID: schedule.uid, ... });
+// 4. Each crew member runs their own checkin → checkout → report chain.
+//    All three attestations per member reference the same schedule.uid (via interventionUID / checkinUID).
+const aliceCheckin  = await client.checkin({ interventionUID: schedule.uid, ... }); // signed by Alice
+const aliceCheckout = await client.checkout({ checkinUID: aliceCheckin.uid, ... });
+const aliceReport   = await client.submitReport({ interventionUID: schedule.uid, checkoutUID: aliceCheckout.uid, ... });
 
-// 5. Gardener checkout (off-chain + timestamped)
-const checkout = await client.checkout({ checkinUID: checkin.uid, ... });
+const bobCheckin  = await client.checkin({ interventionUID: schedule.uid, ... }); // signed by Bob
+const bobCheckout = await client.checkout({ checkinUID: bobCheckin.uid, ... });
+const bobReport   = await client.submitReport({ interventionUID: schedule.uid, checkoutUID: bobCheckout.uid, ... });
 
-// 6. Gardener report (off-chain + timestamped)
-const report = await client.submitReport({ interventionUID: schedule.uid, checkoutUID: checkout.uid, ... });
+// 5. Admin validation (off-chain + timestamped) — one per intervention, anchored on schedule.uid
+const validation = await client.validateIntervention({
+  scheduleUID: schedule.uid,
+  approved: true,
+  qualityScore: 8,
+  validatorId: hashIdentifier(staffUuid),
+  ...
+});
 
-// 7. Admin validation (off-chain + timestamped)
-const validation = await client.validateIntervention({ reportUID: report.uid, approved: true, ... });
-
-// 8. Healthcheck after (off-chain + timestamped, linked to the scheduled intervention)
+// 6. Healthcheck after
 const hcAfter = await client.recordHealthcheck({
   areaUID: area.uid,
   interventionUID: schedule.uid,
@@ -92,36 +104,38 @@ const hcAfter = await client.recordHealthcheck({
   ...
 });
 
-// 9. Build evidence bundle
+// 7. Build evidence bundle — crew is an array of { checkin, checkout, report } tuples
 const bundle = client.buildEvidenceBundle({
   interventionId: 'INT-2026-0001',
   areaUID: area.uid,
   scheduled: schedule,
-  checkin,
-  checkout,
-  report,
+  crew: [
+    { checkin: aliceCheckin, checkout: aliceCheckout, report: aliceReport },
+    { checkin: bobCheckin,   checkout: bobCheckout,   report: bobReport },
+  ],
   validation: { ...validation, approved: true, qualityScore: 8 },
-  healthcheckBefore: { uid: hcBefore.uid, score: 3, onchainTimestamp: hcBefore.onchainTimestamp },
-  healthcheckAfter: { uid: hcAfter.uid, score: 8, onchainTimestamp: hcAfter.onchainTimestamp },
+  healthcheckBefore: { ...hcBefore, score: 3 },
+  healthcheckAfter: { ...hcAfter, score: 8 },
 });
 
-// 10. Upload bundle (requires storage adapter)
+// 8. Upload bundle (requires storage adapter)
 const bundleHash = await client.uploadEvidenceBundle(bundle);
 
-// 11. Publish intervention (on-chain)
+// 9. Publish intervention (on-chain) — one record per job, recipient = ZERO_ADDRESS
 const intervention = await client.publishIntervention({
   areaUID: area.uid,
   interventionId: 'INT-2026-0001',
-  gardener: walletAddress,
   evidenceBundleHash: bundleHash,
-  offchainCount: 7,
+  // 1 scheduled + 3 per crew member (2) + 1 validation + 2 healthchecks = 10
+  offchainCount: 10,
+  crewSize: 2,
   ...
 });
 
-// 12. Mint milestone (on-chain, soulbound)
-await client.mintMilestone({ recipient: walletAddress, milestoneLevel: 1, ... });
+// 10. Mint milestone (on-chain, soulbound) — per gardener, from their signed report history
+await client.mintMilestone({ recipient: crewLeadWallet, milestoneLevel: 1, ... });
 
-// 13. Citizen feedback (off-chain, no timestamp)
+// 11. Citizen feedback (off-chain, no timestamp)
 await client.submitFeedback({ areaUID: area.uid, rating: 5, ... });
 ```
 

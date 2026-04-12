@@ -4,6 +4,7 @@ import { OpenGardenClient } from "../src/client";
 import {
 	OPTIMISM_MAINNET,
 	SCHEMA_NAME_UID,
+	ZERO_ADDRESS,
 	ZERO_BYTES32,
 } from "../src/constants";
 import { OpenGardenError, OpenGardenErrorCode } from "../src/errors";
@@ -289,9 +290,13 @@ describe("OpenGardenClient indexBundleAttestations", () => {
 		interventionId: "INT-001",
 		areaUID: "0xarea",
 		scheduled: makeFakeResult("0xsched"),
-		checkin: makeFakeResult("0xcheckin"),
-		checkout: makeFakeResult("0xcheckout"),
-		report: makeFakeResult("0xreport"),
+		crew: [
+			{
+				checkin: makeFakeResult("0xcheckin"),
+				checkout: makeFakeResult("0xcheckout"),
+				report: makeFakeResult("0xreport"),
+			},
+		],
 		validation: {
 			...makeFakeResult("0xvalidation"),
 			approved: true,
@@ -418,7 +423,6 @@ describe("OpenGardenClient indexBundleAttestations", () => {
 		const result = await client.publishIntervention({
 			areaUID: "0xarea",
 			interventionId: "INT-001",
-			gardener: "0x0000000000000000000000000000000000000001",
 			interventionType: 1,
 			executionDate: 1000000n,
 			healthBefore: 3,
@@ -428,8 +432,7 @@ describe("OpenGardenClient indexBundleAttestations", () => {
 			evidenceBundleHash:
 				"0x0000000000000000000000000000000000000000000000000000000000000000",
 			offchainCount: 5,
-			crewSize: 2,
-			isLead: true,
+			crewSize: 1,
 		});
 
 		expect(fetchMock).not.toHaveBeenCalled();
@@ -484,28 +487,31 @@ describe("OpenGardenClient finalizeIntervention", () => {
 			interventionId: "INT-001",
 			areaUID: "0xarea",
 			scheduled: makeFakeResult("0xsched"),
-			checkin: makeFakeResult("0xcheckin"),
-			checkout: makeFakeResult("0xcheckout"),
-			report: makeFakeResult("0xreport"),
+			crew: [
+				{
+					checkin: makeFakeResult("0xcheckin"),
+					checkout: makeFakeResult("0xcheckout"),
+					report: makeFakeResult("0xreport"),
+				},
+			],
 			validation: {
 				...makeFakeResult("0xvalidation"),
 				approved: true,
 				qualityScore: 9,
 			},
-			gardener: "0x0000000000000000000000000000000000000001",
 			interventionType: 1,
 			executionDate: 1000000n,
 			healthBefore: 3,
 			healthAfter: 8,
 			commissionRef:
 				"0x0000000000000000000000000000000000000000000000000000000000000000",
-			crewSize: 2,
-			isLead: true,
+			crewSize: 1,
 		});
 
 		expect(storageMock.upload).toHaveBeenCalledTimes(1);
-		expect(result.bundle.bundleVersion).toBe("1.0");
+		expect(result.bundle.bundleVersion).toBe("2.0");
 		expect(result.evidenceBundleHash).toBe("0xbundlehash");
+		// 1 scheduled + 3 per gardener + 1 validation = 5 off-chain attestations
 		expect(result.indexedCount).toBe(5);
 		expect(result.publication.uid).toBe("0xpublishuid");
 		expect(fetchMock).toHaveBeenCalledTimes(5);
@@ -544,21 +550,31 @@ describe("OpenGardenClient finalizeIntervention", () => {
 			interventionId: "INT-001",
 			areaUID: "0xarea",
 			scheduled: makeFakeResult("0xsched"),
-			checkin: makeFakeResult("0xcheckin"),
-			checkout: makeFakeResult("0xcheckout"),
-			report: makeFakeResult("0xreport"),
+			crew: [
+				{
+					checkin: makeFakeResult("0xcheckinA"),
+					checkout: makeFakeResult("0xcheckoutA"),
+					report: makeFakeResult("0xreportA"),
+				},
+				{
+					checkin: makeFakeResult("0xcheckinB"),
+					checkout: makeFakeResult("0xcheckoutB"),
+					report: makeFakeResult("0xreportB"),
+				},
+			],
 			validation: {
 				...makeFakeResult("0xvalidation"),
 				approved: true,
 				qualityScore: 9,
 			},
 			healthcheckBefore: {
-				uid: "0xhcbefore",
+				...makeFakeResult("0xhcbefore"),
 				score: 3,
-				onchainTimestamp: 100n,
 			},
-			healthcheckAfter: { uid: "0xhcafter", score: 8, onchainTimestamp: 200n },
-			gardener: "0x0000000000000000000000000000000000000001",
+			healthcheckAfter: {
+				...makeFakeResult("0xhcafter"),
+				score: 8,
+			},
 			interventionType: 1,
 			executionDate: 1000000n,
 			healthBefore: 3,
@@ -566,10 +582,9 @@ describe("OpenGardenClient finalizeIntervention", () => {
 			commissionRef:
 				"0x0000000000000000000000000000000000000000000000000000000000000000",
 			crewSize: 2,
-			isLead: true,
 		});
 
-		// offchainCount should be 7 (5 base + 2 healthchecks)
+		// offchainCount = 2 + 3*2 (crew of 2) + 2 (healthchecks) = 10
 		const attestData = attestCalls[0].data.data;
 		expect(attestData).toBeDefined();
 
@@ -589,60 +604,40 @@ describe("OpenGardenClient finalizeIntervention", () => {
 			storage: storageMock,
 		});
 
-		await expect(
-			client.finalizeIntervention({
-				interventionId: "INT-001",
-				areaUID: "0xarea",
-				scheduled: {
-					...makeFakeResult("0xsched"),
-					onchainTimestamp: 2000000n,
+		const backfilledInput = {
+			interventionId: "INT-001",
+			areaUID: "0xarea",
+			scheduled: {
+				...makeFakeResult("0xsched"),
+				onchainTimestamp: 2000000n,
+			},
+			crew: [
+				{
+					checkin: makeFakeResult("0xcheckin"),
+					checkout: makeFakeResult("0xcheckout"),
+					report: makeFakeResult("0xreport"),
 				},
-				checkin: makeFakeResult("0xcheckin"),
-				checkout: makeFakeResult("0xcheckout"),
-				report: makeFakeResult("0xreport"),
-				validation: {
-					...makeFakeResult("0xvalidation"),
-					approved: true,
-					qualityScore: 9,
-				},
-				gardener: "0x0000000000000000000000000000000000000001",
-				interventionType: 1,
-				executionDate: 1000000n,
-				healthBefore: 3,
-				healthAfter: 8,
-				commissionRef:
-					"0x0000000000000000000000000000000000000000000000000000000000000000",
-				crewSize: 2,
-				isLead: true,
-			}),
-		).rejects.toThrow(OpenGardenError);
+			],
+			validation: {
+				...makeFakeResult("0xvalidation"),
+				approved: true,
+				qualityScore: 9,
+			},
+			interventionType: 1,
+			executionDate: 1000000n,
+			healthBefore: 3,
+			healthAfter: 8,
+			commissionRef:
+				"0x0000000000000000000000000000000000000000000000000000000000000000",
+			crewSize: 1,
+		};
+
+		await expect(client.finalizeIntervention(backfilledInput)).rejects.toThrow(
+			OpenGardenError,
+		);
 
 		try {
-			await client.finalizeIntervention({
-				interventionId: "INT-001",
-				areaUID: "0xarea",
-				scheduled: {
-					...makeFakeResult("0xsched"),
-					onchainTimestamp: 2000000n,
-				},
-				checkin: makeFakeResult("0xcheckin"),
-				checkout: makeFakeResult("0xcheckout"),
-				report: makeFakeResult("0xreport"),
-				validation: {
-					...makeFakeResult("0xvalidation"),
-					approved: true,
-					qualityScore: 9,
-				},
-				gardener: "0x0000000000000000000000000000000000000001",
-				interventionType: 1,
-				executionDate: 1000000n,
-				healthBefore: 3,
-				healthAfter: 8,
-				commissionRef:
-					"0x0000000000000000000000000000000000000000000000000000000000000000",
-				crewSize: 2,
-				isLead: true,
-			});
+			await client.finalizeIntervention(backfilledInput);
 		} catch (e) {
 			expect((e as OpenGardenError).code).toBe(
 				OpenGardenErrorCode.INVALID_INPUT,
@@ -743,7 +738,6 @@ describe("OpenGardenClient getIntervention", () => {
 			areaUID:
 				"0x000000000000000000000000000000000000000000000000000000000000abcd",
 			interventionId: "INT-001",
-			gardener: "0x0000000000000000000000000000000000000001",
 			interventionType: 1,
 			executionDate: 1000000n,
 			healthBefore: 3,
@@ -752,9 +746,8 @@ describe("OpenGardenClient getIntervention", () => {
 				"0x0000000000000000000000000000000000000000000000000000000000000000",
 			evidenceBundleHash:
 				"0x0000000000000000000000000000000000000000000000000000000000000002",
-			offchainCount: 5,
+			offchainCount: 8,
 			crewSize: 2,
-			isLead: true,
 		});
 	}
 
@@ -767,7 +760,7 @@ describe("OpenGardenClient getIntervention", () => {
 				uid: FAKE_INTERVENTION_UID,
 				data: encodedData,
 				attester: "0x0000000000000000000000000000000000000001",
-				recipient: "0x0000000000000000000000000000000000000001",
+				recipient: ZERO_ADDRESS,
 				time: 1700000000n,
 			}),
 		};
@@ -778,9 +771,9 @@ describe("OpenGardenClient getIntervention", () => {
 		expect(intervention.interventionId).toBe("INT-001");
 		expect(intervention.healthBefore).toBe(3);
 		expect(intervention.healthAfter).toBe(8);
-		expect(intervention.offchainCount).toBe(5);
+		expect(intervention.offchainCount).toBe(8);
 		expect(intervention.crewSize).toBe(2);
-		expect(intervention.isLead).toBe(true);
+		expect(intervention.recipient).toBe(ZERO_ADDRESS);
 		expect(intervention.time).toBe(1700000000n);
 	});
 
@@ -830,7 +823,6 @@ describe("OpenGardenClient getAreaInterventions", () => {
 			areaUID:
 				"0x000000000000000000000000000000000000000000000000000000000000abcd",
 			interventionId: "INT-001",
-			gardener: "0x0000000000000000000000000000000000000001",
 			interventionType: 1,
 			executionDate: 1000000n,
 			healthBefore: 3,
@@ -840,8 +832,7 @@ describe("OpenGardenClient getAreaInterventions", () => {
 			evidenceBundleHash:
 				"0x0000000000000000000000000000000000000000000000000000000000000002",
 			offchainCount: 5,
-			crewSize: 2,
-			isLead: true,
+			crewSize: 1,
 		});
 	}
 
@@ -985,12 +976,12 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 		executionDate?: bigint;
 		offchainCount?: number;
 		evidenceBundleHash?: string;
+		crewSize?: number;
 	}) {
 		return encodePublishedIntervention({
 			areaUID:
 				"0x000000000000000000000000000000000000000000000000000000000000abcd",
 			interventionId: "INT-001",
-			gardener: "0x0000000000000000000000000000000000000001",
 			interventionType: 1,
 			executionDate: overrides?.executionDate ?? 200n,
 			healthBefore: 3,
@@ -1001,8 +992,7 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 				overrides?.evidenceBundleHash ??
 				"0x0000000000000000000000000000000000000000000000000000000000000002",
 			offchainCount: overrides?.offchainCount ?? 5,
-			crewSize: 2,
-			isLead: true,
+			crewSize: overrides?.crewSize ?? 1,
 		});
 	}
 
@@ -1019,24 +1009,33 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 					claimedTimestamp: 100,
 					onchainTimestamp: 100,
 				},
-				checkin: {
-					uid: "0xcheckin",
-					contentHash: "0xcheckin",
-					claimedTimestamp: 200,
-					onchainTimestamp: 200,
-				},
-				checkout: {
-					uid: "0xcheckout",
-					contentHash: "0xcheckout",
-					claimedTimestamp: 300,
-					onchainTimestamp: 300,
-				},
-				report: {
-					uid: "0xreport",
-					contentHash: "0xreport",
-					claimedTimestamp: 400,
-					onchainTimestamp: 400,
-				},
+				checkins: [
+					{
+						uid: "0xcheckin",
+						contentHash: "0xcheckin",
+						attester: "0xAlice",
+						claimedTimestamp: 200,
+						onchainTimestamp: 200,
+					},
+				],
+				checkouts: [
+					{
+						uid: "0xcheckout",
+						contentHash: "0xcheckout",
+						attester: "0xAlice",
+						claimedTimestamp: 300,
+						onchainTimestamp: 300,
+					},
+				],
+				reports: [
+					{
+						uid: "0xreport",
+						contentHash: "0xreport",
+						attester: "0xAlice",
+						claimedTimestamp: 400,
+						onchainTimestamp: 400,
+					},
+				],
 				validation: {
 					uid: "0xvalidation",
 					contentHash: "0xvalidation",
@@ -1047,7 +1046,7 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 				},
 			},
 			photos: {},
-			bundleVersion: "1.0",
+			bundleVersion: "2.0",
 			...overrides,
 		};
 	}
@@ -1058,6 +1057,7 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 			executionDate?: bigint;
 			time?: bigint;
 			offchainCount?: number;
+			crewSize?: number;
 		},
 		timestampMap?: Record<string, number>,
 	) {
@@ -1085,6 +1085,7 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 		const encodedData = makeEncodedIntervention({
 			executionDate: interventionOverrides?.executionDate ?? 200n,
 			offchainCount: interventionOverrides?.offchainCount ?? 5,
+			crewSize: interventionOverrides?.crewSize,
 		});
 
 		(client as any).eas = {
@@ -1092,7 +1093,7 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 				uid: FAKE_INTERVENTION_UID,
 				data: encodedData,
 				attester: "0x0000000000000000000000000000000000000001",
-				recipient: "0x0000000000000000000000000000000000000001",
+				recipient: ZERO_ADDRESS,
 				time: interventionOverrides?.time ?? 600n,
 			}),
 			getTimestamp: async (uid: string) => BigInt(tsMap[uid] ?? 0),
@@ -1101,7 +1102,7 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 		return { client, storageMock };
 	}
 
-	it("valid bundle passes all checks", async () => {
+	it("valid solo bundle passes all checks", async () => {
 		const bundle = makeValidBundle();
 		const { client } = createVerifyClient(bundle);
 
@@ -1117,6 +1118,96 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 		expect(result.validationApproved).toBe(true);
 	});
 
+	it("valid 2-person crew bundle passes all checks", async () => {
+		const bundle = makeValidBundle({
+			attestations: {
+				scheduled: {
+					uid: "0xsched",
+					contentHash: "0xsched",
+					claimedTimestamp: 100,
+					onchainTimestamp: 100,
+				},
+				checkins: [
+					{
+						uid: "0xciA",
+						contentHash: "0xciA",
+						attester: "0xAlice",
+						claimedTimestamp: 200,
+						onchainTimestamp: 200,
+					},
+					{
+						uid: "0xciB",
+						contentHash: "0xciB",
+						attester: "0xBob",
+						claimedTimestamp: 210,
+						onchainTimestamp: 210,
+					},
+				],
+				checkouts: [
+					{
+						uid: "0xcoA",
+						contentHash: "0xcoA",
+						attester: "0xAlice",
+						claimedTimestamp: 300,
+						onchainTimestamp: 300,
+					},
+					{
+						uid: "0xcoB",
+						contentHash: "0xcoB",
+						attester: "0xBob",
+						claimedTimestamp: 320,
+						onchainTimestamp: 320,
+					},
+				],
+				reports: [
+					{
+						uid: "0xrpA",
+						contentHash: "0xrpA",
+						attester: "0xAlice",
+						claimedTimestamp: 400,
+						onchainTimestamp: 400,
+					},
+					{
+						uid: "0xrpB",
+						contentHash: "0xrpB",
+						attester: "0xBob",
+						claimedTimestamp: 420,
+						onchainTimestamp: 420,
+					},
+				],
+				validation: {
+					uid: "0xvalidation",
+					contentHash: "0xvalidation",
+					claimedTimestamp: 500,
+					onchainTimestamp: 500,
+					approved: true,
+					qualityScore: 9,
+				},
+			},
+		});
+		const { client } = createVerifyClient(
+			bundle,
+			{ offchainCount: 8, crewSize: 2 },
+			{
+				"0xsched": 100,
+				"0xciA": 200,
+				"0xciB": 210,
+				"0xcoA": 300,
+				"0xcoB": 320,
+				"0xrpA": 400,
+				"0xrpB": 420,
+				"0xvalidation": 500,
+			},
+		);
+
+		const result = await client.verifyEvidenceBundle(FAKE_INTERVENTION_UID);
+
+		expect(result.valid).toBe(true);
+		expect(result.attestationCount).toBe(8);
+		expect(result.expectedCount).toBe(8);
+		expect(result.temporalOrderValid).toBe(true);
+	});
+
 	it("mismatched attestation count fails", async () => {
 		const bundle = makeValidBundle();
 		const { client } = createVerifyClient(bundle, { offchainCount: 7 });
@@ -1128,22 +1219,28 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 		expect(result.expectedCount).toBe(7);
 	});
 
-	it("out-of-order timestamps fails", async () => {
+	it("per-gardener out-of-order (checkout before checkin) fails", async () => {
 		const bundle = makeValidBundle({
 			attestations: {
 				...makeValidBundle().attestations,
-				checkin: {
-					uid: "0xcheckin",
-					contentHash: "0xcheckin",
-					claimedTimestamp: 200,
-					onchainTimestamp: 500,
-				},
-				checkout: {
-					uid: "0xcheckout",
-					contentHash: "0xcheckout",
-					claimedTimestamp: 300,
-					onchainTimestamp: 150,
-				},
+				checkins: [
+					{
+						uid: "0xcheckin",
+						contentHash: "0xcheckin",
+						attester: "0xAlice",
+						claimedTimestamp: 200,
+						onchainTimestamp: 500,
+					},
+				],
+				checkouts: [
+					{
+						uid: "0xcheckout",
+						contentHash: "0xcheckout",
+						attester: "0xAlice",
+						claimedTimestamp: 300,
+						onchainTimestamp: 150,
+					},
+				],
 			},
 		});
 		const { client } = createVerifyClient(bundle, undefined, {
@@ -1160,22 +1257,28 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 		expect(result.temporalOrderValid).toBe(false);
 	});
 
-	it("equal timestamps (same block) fails strict ordering", async () => {
+	it("equal per-gardener timestamps (same block) fails strict ordering", async () => {
 		const bundle = makeValidBundle({
 			attestations: {
 				...makeValidBundle().attestations,
-				checkin: {
-					uid: "0xcheckin",
-					contentHash: "0xcheckin",
-					claimedTimestamp: 200,
-					onchainTimestamp: 200,
-				},
-				checkout: {
-					uid: "0xcheckout",
-					contentHash: "0xcheckout",
-					claimedTimestamp: 200,
-					onchainTimestamp: 200,
-				},
+				checkins: [
+					{
+						uid: "0xcheckin",
+						contentHash: "0xcheckin",
+						attester: "0xAlice",
+						claimedTimestamp: 200,
+						onchainTimestamp: 200,
+					},
+				],
+				checkouts: [
+					{
+						uid: "0xcheckout",
+						contentHash: "0xcheckout",
+						attester: "0xAlice",
+						claimedTimestamp: 200,
+						onchainTimestamp: 200,
+					},
+				],
 			},
 		});
 		const { client } = createVerifyClient(bundle, undefined, {
@@ -1233,9 +1336,9 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 			{ executionDate: 200n, time: 600n },
 			{
 				"0xsched": 300,
-				"0xcheckin": 200,
-				"0xcheckout": 300,
-				"0xreport": 400,
+				"0xcheckin": 400,
+				"0xcheckout": 450,
+				"0xreport": 480,
 				"0xvalidation": 500,
 			},
 		);

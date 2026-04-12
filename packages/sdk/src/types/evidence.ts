@@ -11,6 +11,11 @@ export interface EvidenceBundleAttestation {
 	onchainTimestamp: number;
 }
 
+export interface EvidenceBundleGardenerAttestation
+	extends EvidenceBundleAttestation {
+	attester: string;
+}
+
 export interface EvidenceBundleValidation extends EvidenceBundleAttestation {
 	approved: boolean;
 	qualityScore: number;
@@ -27,28 +32,32 @@ export interface EvidenceBundle {
 	areaUID: string;
 	attestations: {
 		scheduled: EvidenceBundleAttestation;
-		checkin: EvidenceBundleAttestation;
-		checkout: EvidenceBundleAttestation;
-		report: EvidenceBundleAttestation;
+		checkins: EvidenceBundleGardenerAttestation[];
+		checkouts: EvidenceBundleGardenerAttestation[];
+		reports: EvidenceBundleGardenerAttestation[];
 		validation: EvidenceBundleValidation;
 		healthcheckBefore?: EvidenceBundleHealthcheck;
 		healthcheckAfter?: EvidenceBundleHealthcheck;
 	};
 	photos: {
-		checkinPhoto?: string;
+		checkinPhotos?: string[];
 		reportPhotos?: string;
 		afterPhotos?: string;
 	};
-	bundleVersion: "1.0";
+	bundleVersion: "2.0";
+}
+
+export interface CrewMemberAttestations {
+	checkin: TimestampedOffChainResult;
+	checkout: TimestampedOffChainResult;
+	report: TimestampedOffChainResult;
 }
 
 export interface EvidenceBundleBuilderInput {
 	interventionId: string;
 	areaUID: string;
 	scheduled: TimestampedOffChainResult;
-	checkin: TimestampedOffChainResult;
-	checkout: TimestampedOffChainResult;
-	report: TimestampedOffChainResult;
+	crew: CrewMemberAttestations[];
 	validation: TimestampedOffChainResult & {
 		approved: boolean;
 		qualityScore: number;
@@ -56,7 +65,7 @@ export interface EvidenceBundleBuilderInput {
 	healthcheckBefore?: TimestampedOffChainResult & { score: number };
 	healthcheckAfter?: TimestampedOffChainResult & { score: number };
 	photos?: {
-		checkinPhoto?: string;
+		checkinPhotos?: string[];
 		reportPhotos?: string;
 		afterPhotos?: string;
 	};
