@@ -64,6 +64,8 @@ import type {
 	FinalizeInterventionResult,
 } from "./types/evidence";
 import type {
+	BundleIndexingResult,
+	BundleIndexingRole,
 	OffChainAttestationResult,
 	OnChainAttestationResult,
 	SchemaRegistrationResult,
@@ -418,29 +420,75 @@ export class OpenGardenClient {
 
 	async indexBundleAttestations(
 		input: EvidenceBundleBuilderInput,
-	): Promise<number> {
-		if (!this.storeUrl) return 0;
+	): Promise<BundleIndexingResult[]> {
+		if (!this.storeUrl) return [];
 
 		const signerAddress = await this.signer.getAddress();
-		const attestations: Record<string, unknown>[] = [
-			input.scheduled.signedAttestation,
+		const entries: Array<{
+			uid: string;
+			sig: Record<string, unknown>;
+			role: BundleIndexingRole;
+			crewIndex?: number;
+		}> = [
+			{
+				uid: input.scheduled.uid,
+				sig: input.scheduled.signedAttestation,
+				role: "scheduled",
+			},
 		];
-		for (const member of input.crew) {
-			attestations.push(member.checkin.signedAttestation);
-			attestations.push(member.checkout.signedAttestation);
-			attestations.push(member.report.signedAttestation);
+		input.crew.forEach((member, i) => {
+			entries.push({
+				uid: member.checkin.uid,
+				sig: member.checkin.signedAttestation,
+				role: "checkin",
+				crewIndex: i,
+			});
+			entries.push({
+				uid: member.checkout.uid,
+				sig: member.checkout.signedAttestation,
+				role: "checkout",
+				crewIndex: i,
+			});
+			entries.push({
+				uid: member.report.uid,
+				sig: member.report.signedAttestation,
+				role: "report",
+				crewIndex: i,
+			});
+		});
+		entries.push({
+			uid: input.validation.uid,
+			sig: input.validation.signedAttestation,
+			role: "validation",
+		});
+		if (input.healthcheckBefore) {
+			entries.push({
+				uid: input.healthcheckBefore.uid,
+				sig: input.healthcheckBefore.signedAttestation,
+				role: "healthcheckBefore",
+			});
 		}
-		attestations.push(input.validation.signedAttestation);
-		if (input.healthcheckBefore)
-			attestations.push(input.healthcheckBefore.signedAttestation);
-		if (input.healthcheckAfter)
-			attestations.push(input.healthcheckAfter.signedAttestation);
+		if (input.healthcheckAfter) {
+			entries.push({
+				uid: input.healthcheckAfter.uid,
+				sig: input.healthcheckAfter.signedAttestation,
+				role: "healthcheckAfter",
+			});
+		}
 
 		const storeUrl = this.storeUrl;
-		const results = await Promise.all(
-			attestations.map((sig) => submitToIndexer(storeUrl, sig, signerAddress)),
+		return Promise.all(
+			entries.map(async (e) => {
+				const result = await submitToIndexer(storeUrl, e.sig, signerAddress);
+				return {
+					uid: e.uid,
+					role: e.role,
+					...(e.crewIndex !== undefined ? { crewIndex: e.crewIndex } : {}),
+					ok: result.ok,
+					...(result.error ? { error: result.error } : {}),
+				} satisfies BundleIndexingResult;
+			}),
 		);
-		return results.filter(Boolean).length;
 	}
 
 	async finalizeIntervention(
@@ -460,7 +508,8 @@ export class OpenGardenClient {
 		const executionDate = toUnixSeconds(input.executionDate);
 		const bundle = this.buildEvidenceBundle(input);
 		const evidenceBundleHash = await this.uploadEvidenceBundle(bundle);
-		const indexedCount = await this.indexBundleAttestations(input);
+		const indexingResults = await this.indexBundleAttestations(input);
+		const indexedCount = indexingResults.filter((r) => r.ok).length;
 
 		let offchainCount = 2 + 3 * input.crew.length;
 		if (input.healthcheckBefore) offchainCount++;
@@ -479,7 +528,13 @@ export class OpenGardenClient {
 			crewSize: input.crewSize,
 		});
 
-		return { bundle, evidenceBundleHash, indexedCount, publication };
+		return {
+			bundle,
+			evidenceBundleHash,
+			indexedCount,
+			indexingResults,
+			publication,
+		};
 	}
 
 	// --- Non-Timestamped Off-Chain Write ---

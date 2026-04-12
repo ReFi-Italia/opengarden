@@ -24,3 +24,25 @@ export interface SchemaRegistrationResult {
 	uid: string;
 	txHash: string;
 }
+
+export interface IndexerSubmissionResult {
+	ok: boolean;
+	/** Error description when `ok` is false (HTTP status + body, or thrown error message). */
+	error?: string;
+}
+
+export type BundleIndexingRole =
+	| "scheduled"
+	| "checkin"
+	| "checkout"
+	| "report"
+	| "validation"
+	| "healthcheckBefore"
+	| "healthcheckAfter";
+
+export interface BundleIndexingResult extends IndexerSubmissionResult {
+	uid: string;
+	role: BundleIndexingRole;
+	/** 0-based crew member index for per-member roles (`checkin` / `checkout` / `report`). */
+	crewIndex?: number;
+}

@@ -298,9 +298,22 @@ describe("OpenGardenClient indexBundleAttestations", () => {
 		vi.stubGlobal("fetch", fetchMock);
 
 		const client = createClient();
-		const count = await client.indexBundleAttestations(BUNDLE_INPUT);
+		const results = await client.indexBundleAttestations(BUNDLE_INPUT);
 
-		expect(count).toBe(5);
+		expect(results).toHaveLength(5);
+		expect(results.every((r) => r.ok)).toBe(true);
+		expect(results.map((r) => r.role)).toEqual([
+			"scheduled",
+			"checkin",
+			"checkout",
+			"report",
+			"validation",
+		]);
+		expect(results[1].crewIndex).toBe(0);
+		expect(results[2].crewIndex).toBe(0);
+		expect(results[3].crewIndex).toBe(0);
+		expect(results[0].uid).toBe("0xsched");
+		expect(results[1].uid).toBe("0xcheckin");
 		expect(fetchMock).toHaveBeenCalledTimes(5);
 
 		const [url, init] = fetchMock.mock.calls[0];
@@ -331,7 +344,7 @@ describe("OpenGardenClient indexBundleAttestations", () => {
 		vi.unstubAllGlobals();
 	});
 
-	it("returns 0 and warns on non-200 response", async () => {
+	it("surfaces per-attestation errors on non-200 response", async () => {
 		const fetchMock = vi.fn().mockResolvedValue({
 			ok: false,
 			status: 500,
@@ -341,23 +354,28 @@ describe("OpenGardenClient indexBundleAttestations", () => {
 		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
 		const client = createClient();
-		const count = await client.indexBundleAttestations(BUNDLE_INPUT);
+		const results = await client.indexBundleAttestations(BUNDLE_INPUT);
 
-		expect(count).toBe(0);
+		expect(results).toHaveLength(5);
+		expect(results.every((r) => r.ok === false)).toBe(true);
+		expect(results[0].error).toContain("500");
+		expect(results[0].error).toContain("Server Error");
 		expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("500"));
 
 		vi.unstubAllGlobals();
 	});
 
-	it("returns 0 and warns on fetch error", async () => {
+	it("surfaces per-attestation errors on fetch failure", async () => {
 		const fetchMock = vi.fn().mockRejectedValue(new Error("network down"));
 		vi.stubGlobal("fetch", fetchMock);
 		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
 		const client = createClient();
-		const count = await client.indexBundleAttestations(BUNDLE_INPUT);
+		const results = await client.indexBundleAttestations(BUNDLE_INPUT);
 
-		expect(count).toBe(0);
+		expect(results).toHaveLength(5);
+		expect(results.every((r) => r.ok === false)).toBe(true);
+		expect(results[0].error).toBe("network down");
 		expect(warnSpy).toHaveBeenCalledWith(
 			"easscan indexer submission failed",
 			expect.any(Error),
@@ -366,7 +384,38 @@ describe("OpenGardenClient indexBundleAttestations", () => {
 		vi.unstubAllGlobals();
 	});
 
-	it("returns 0 when chain has no easscan store endpoint", async () => {
+	it("reports partial failures with the specific failing role", async () => {
+		let call = 0;
+		const fetchMock = vi.fn().mockImplementation(async () => {
+			call++;
+			// Third submission (checkout) fails
+			if (call === 3) {
+				return {
+					ok: false,
+					status: 503,
+					text: async () => "Service Unavailable",
+				};
+			}
+			return { ok: true };
+		});
+		vi.stubGlobal("fetch", fetchMock);
+		vi.spyOn(console, "warn").mockImplementation(() => {});
+
+		const client = createClient();
+		const results = await client.indexBundleAttestations(BUNDLE_INPUT);
+
+		const okCount = results.filter((r) => r.ok).length;
+		const failed = results.filter((r) => !r.ok);
+		expect(okCount).toBe(4);
+		expect(failed).toHaveLength(1);
+		expect(failed[0].role).toBe("checkout");
+		expect(failed[0].crewIndex).toBe(0);
+		expect(failed[0].error).toContain("503");
+
+		vi.unstubAllGlobals();
+	});
+
+	it("returns empty array when chain has no easscan store endpoint", async () => {
 		const fetchMock = vi.fn().mockResolvedValue({ ok: true });
 		vi.stubGlobal("fetch", fetchMock);
 
@@ -377,9 +426,9 @@ describe("OpenGardenClient indexBundleAttestations", () => {
 		};
 
 		const client = createClient(unknownChain);
-		const count = await client.indexBundleAttestations(BUNDLE_INPUT);
+		const results = await client.indexBundleAttestations(BUNDLE_INPUT);
 
-		expect(count).toBe(0);
+		expect(results).toEqual([]);
 		expect(fetchMock).not.toHaveBeenCalled();
 
 		vi.unstubAllGlobals();

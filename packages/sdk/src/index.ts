@@ -64,6 +64,9 @@ export type {
 	FinalizeInterventionResult,
 } from "./types/evidence";
 export type {
+	BundleIndexingResult,
+	BundleIndexingRole,
+	IndexerSubmissionResult,
 	OffChainAttestationResult,
 	OnChainAttestationResult,
 	SchemaRegistrationResult,

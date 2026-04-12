@@ -36,13 +36,13 @@ describe("submitToIndexer", () => {
 		const fetchMock = vi.fn().mockResolvedValue({ ok: true });
 		vi.stubGlobal("fetch", fetchMock);
 
-		const ok = await submitToIndexer(
+		const result = await submitToIndexer(
 			"https://example.com/store",
 			{ uid: "0xabc", message: { time: 1000n } },
 			"0xsigner",
 		);
 
-		expect(ok).toBe(true);
+		expect(result).toEqual({ ok: true });
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 
 		const [url, init] = fetchMock.mock.calls[0];
@@ -71,7 +71,7 @@ describe("submitToIndexer", () => {
 		expect(pkg.sig.message.time).toBe("999999");
 	});
 
-	it("returns false and warns on non-200 response", async () => {
+	it("returns structured error and warns on non-200 response", async () => {
 		const fetchMock = vi.fn().mockResolvedValue({
 			ok: false,
 			status: 500,
@@ -80,28 +80,31 @@ describe("submitToIndexer", () => {
 		vi.stubGlobal("fetch", fetchMock);
 		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-		const ok = await submitToIndexer(
+		const result = await submitToIndexer(
 			"https://example.com/store",
 			{ uid: "0x1" },
 			"0xsigner",
 		);
 
-		expect(ok).toBe(false);
+		expect(result.ok).toBe(false);
+		expect(result.error).toContain("500");
+		expect(result.error).toContain("Server Error");
 		expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("500"));
 	});
 
-	it("returns false and warns on network error", async () => {
+	it("returns structured error and warns on network failure", async () => {
 		const fetchMock = vi.fn().mockRejectedValue(new Error("network down"));
 		vi.stubGlobal("fetch", fetchMock);
 		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-		const ok = await submitToIndexer(
+		const result = await submitToIndexer(
 			"https://example.com/store",
 			{ uid: "0x1" },
 			"0xsigner",
 		);
 
-		expect(ok).toBe(false);
+		expect(result.ok).toBe(false);
+		expect(result.error).toBe("network down");
 		expect(warnSpy).toHaveBeenCalledWith(
 			"easscan indexer submission failed",
 			expect.any(Error),

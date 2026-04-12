@@ -1,5 +1,6 @@
 import type { EVIDENCE_BUNDLE_VERSION } from "../constants";
 import type {
+	BundleIndexingResult,
 	OnChainAttestationResult,
 	TimestampedOffChainResult,
 } from "./results";
@@ -79,6 +80,9 @@ export type FinalizeInterventionInput = EvidenceBundleBuilderInput &
 export interface FinalizeInterventionResult {
 	bundle: EvidenceBundle;
 	evidenceBundleHash: string;
+	/** Count of `indexingResults` with `ok === true`. Convenience for simple dashboards. */
 	indexedCount: number;
+	/** Per-attestation indexer submission status with `uid`, `role`, `crewIndex?`, `ok`, `error?`. */
+	indexingResults: BundleIndexingResult[];
 	publication: OnChainAttestationResult;
 }

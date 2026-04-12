@@ -1,3 +1,5 @@
+import type { IndexerSubmissionResult } from "./types/results";
+
 const EASSCAN_GRAPHQL_URLS: Record<string, string> = {
 	"42220": "https://celo.easscan.org/graphql",
 	"10": "https://optimism.easscan.org/graphql",
@@ -26,7 +28,7 @@ export async function submitToIndexer(
 	storeUrl: string,
 	signedAttestation: Record<string, unknown>,
 	signerAddress: string,
-): Promise<boolean> {
+): Promise<IndexerSubmissionResult> {
 	try {
 		const pkg = JSON.stringify(
 			{ sig: signedAttestation, signer: signerAddress },
@@ -39,12 +41,16 @@ export async function submitToIndexer(
 		});
 		if (!response.ok) {
 			const body = await response.text().catch(() => "");
-			console.warn(`easscan indexer returned ${response.status}: ${body}`);
-			return false;
+			const error = `HTTP ${response.status}${body ? `: ${body}` : ""}`;
+			console.warn(`easscan indexer returned ${error}`);
+			return { ok: false, error };
 		}
-		return true;
+		return { ok: true };
 	} catch (err) {
 		console.warn("easscan indexer submission failed", err);
-		return false;
+		return {
+			ok: false,
+			error: err instanceof Error ? err.message : String(err),
+		};
 	}
 }
