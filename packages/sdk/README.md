@@ -42,10 +42,10 @@ const area = await client.registerArea({
   areaId: 'RM-PIGN-042',
   latitude: 41.8902,
   longitude: 12.4922,
-  areaType: 0, // PublicGreenSpace
+  areaType: AreaType.PublicGreenSpace,
   name: 'Giardino Via Appia 12',
   municipality: 'RM-I',
-  metadataHash: ZERO_BYTES32,
+  metadataHash: null, // or an IPFS CID / storage hash for extended metadata JSON
 });
 
 console.log('Area UID:', area.uid);
@@ -72,7 +72,7 @@ const hcBefore = await client.recordHealthcheck({
   areaUID: area.uid,
   interventionUID: schedule.uid,
   healthScore: 3,
-  assessorId: hashIdentifier(staffUuid),
+  assessorId: staffUuid, // plain identifier — hashed internally per spec §9.1 (pass `null` for organizational assessments)
   ...
 });
 
@@ -91,7 +91,7 @@ const validation = await client.validateIntervention({
   scheduleUID: schedule.uid,
   approved: true,
   qualityScore: 8,
-  validatorId: hashIdentifier(staffUuid),
+  validatorId: staffUuid, // plain identifier — hashed internally (pass `null` to omit individual attribution)
   ...
 });
 
@@ -100,7 +100,7 @@ const hcAfter = await client.recordHealthcheck({
   areaUID: area.uid,
   interventionUID: schedule.uid,
   healthScore: 8,
-  assessorId: hashIdentifier(staffUuid),
+  assessorId: staffUuid,
   ...
 });
 

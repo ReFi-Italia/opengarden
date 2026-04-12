@@ -400,8 +400,7 @@ describe("OpenGardenClient indexBundleAttestations", () => {
 			executionDate: 1000000n,
 			healthBefore: 3,
 			healthAfter: 8,
-			commissionRef:
-				"0x0000000000000000000000000000000000000000000000000000000000000000",
+			commissionId: null,
 			evidenceBundleHash:
 				"0x0000000000000000000000000000000000000000000000000000000000000000",
 			offchainCount: 5,
@@ -466,8 +465,7 @@ describe("OpenGardenClient finalizeIntervention", () => {
 			executionDate: 1000000n,
 			healthBefore: 3,
 			healthAfter: 8,
-			commissionRef:
-				"0x0000000000000000000000000000000000000000000000000000000000000000",
+			commissionId: null,
 			crewSize: 1,
 		});
 
@@ -541,7 +539,7 @@ describe("OpenGardenClient finalizeIntervention", () => {
 			executionDate: 1000000n,
 			healthBefore: 3,
 			healthAfter: 8,
-			commissionRef: ZERO_BYTES32,
+			commissionId: null,
 			crewSize: 2,
 		});
 
@@ -589,8 +587,7 @@ describe("OpenGardenClient finalizeIntervention", () => {
 			executionDate: 1000000n,
 			healthBefore: 3,
 			healthAfter: 8,
-			commissionRef:
-				"0x0000000000000000000000000000000000000000000000000000000000000000",
+			commissionId: null,
 			crewSize: 1,
 		};
 
@@ -693,7 +690,7 @@ describe("OpenGardenClient getIntervention", () => {
 			executionDate: 1000000n,
 			healthBefore: 3,
 			healthAfter: 8,
-			commissionRef: ZERO_BYTES32,
+			commissionId: null,
 			evidenceBundleHash:
 				"0x0000000000000000000000000000000000000000000000000000000000000002",
 			offchainCount: 8,
@@ -775,7 +772,7 @@ describe("OpenGardenClient getAreaInterventions", () => {
 			executionDate: 1000000n,
 			healthBefore: 3,
 			healthAfter: 8,
-			commissionRef: ZERO_BYTES32,
+			commissionId: null,
 			evidenceBundleHash:
 				"0x0000000000000000000000000000000000000000000000000000000000000002",
 			offchainCount: 5,
@@ -924,8 +921,7 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 			executionDate: overrides?.executionDate ?? 200n,
 			healthBefore: 3,
 			healthAfter: 8,
-			commissionRef:
-				"0x0000000000000000000000000000000000000000000000000000000000000000",
+			commissionId: null,
 			evidenceBundleHash:
 				overrides?.evidenceBundleHash ??
 				"0x0000000000000000000000000000000000000000000000000000000000000002",

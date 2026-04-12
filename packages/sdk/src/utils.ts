@@ -9,10 +9,25 @@ export function fromMicrodegrees(micro: number): number {
 }
 
 /**
+ * Normalizes a caller-supplied timestamp to a bigint of Unix seconds, matching
+ * the `uint64` convention used by EAS schemas. Accepts a `Date` (converted via
+ * `getTime() / 1000`, truncated) or a `bigint` already in Unix seconds.
+ *
+ * `number` is intentionally not accepted because the JS convention (`Date.now()`
+ * returns milliseconds) makes `number` ambiguous at call sites; pass a `Date`
+ * or `BigInt(unixSeconds)` explicitly.
+ */
+export function toUnixSeconds(value: Date | bigint): bigint {
+	if (typeof value === "bigint") return value;
+	return BigInt(Math.floor(value.getTime() / 1000));
+}
+
+/**
  * Produces a bytes32 hash of an internal identifier (UUID, staff ID, etc.)
- * for use in hashed-identifier fields: `commissionRef`, `validatorId`,
- * `assessorId`. Keeps personal or contractual identifiers off-chain while
- * preserving equality checks on-chain.
+ * per spec §9.1. The SDK applies this automatically to the `commissionId`,
+ * `validatorId`, and `assessorId` input fields; this helper is exported for
+ * callers that need to reproduce the same hash outside the encoding path
+ * (e.g. to resolve an on-chain `commissionRef` against a known sponsor ID).
  */
 export function hashIdentifier(id: string): string {
 	if (!id) {

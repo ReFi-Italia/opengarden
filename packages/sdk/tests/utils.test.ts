@@ -5,6 +5,7 @@ import {
 	hashIdentifier,
 	hashPhotoBundle,
 	toMicrodegrees,
+	toUnixSeconds,
 } from "../src/utils";
 
 describe("toMicrodegrees", () => {
@@ -104,5 +105,20 @@ describe("hashPhotoBundle", () => {
 
 	it("throws on empty bundle", () => {
 		expect(() => hashPhotoBundle([])).toThrow(/empty/);
+	});
+});
+
+describe("toUnixSeconds", () => {
+	it("passes a bigint through unchanged", () => {
+		expect(toUnixSeconds(1709251200n)).toBe(1709251200n);
+	});
+
+	it("converts a Date to seconds (truncating ms)", () => {
+		const date = new Date("2024-03-01T00:00:00.789Z");
+		expect(toUnixSeconds(date)).toBe(1709251200n);
+	});
+
+	it("converts the Unix epoch", () => {
+		expect(toUnixSeconds(new Date(0))).toBe(0n);
 	});
 });

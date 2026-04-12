@@ -18,6 +18,7 @@ import {
 	encodeScheduledIntervention,
 } from "../src/schemas/encoders";
 import { AreaType, InterventionType } from "../src/types/enums";
+import { hashIdentifier } from "../src/utils";
 import { MOCK_SIGNER_ADDRESS } from "./_helpers";
 
 describe("AreaRegistration encoder", () => {
@@ -28,7 +29,7 @@ describe("AreaRegistration encoder", () => {
 		areaType: AreaType.PublicGreenSpace,
 		name: "Giardino Via Appia 12",
 		municipality: "RM-I",
-		metadataHash: ZERO_BYTES32,
+		metadataHash: null,
 	};
 
 	it("encodes and decodes roundtrip", () => {
@@ -61,7 +62,7 @@ describe("PublishedIntervention encoder", () => {
 		executionDate: 1709251200n,
 		healthBefore: 3,
 		healthAfter: 8,
-		commissionRef: ZERO_BYTES32,
+		commissionId: "sponsor-acme-001",
 		evidenceBundleHash: ZERO_BYTES32,
 		offchainCount: 8,
 		crewSize: 2,
@@ -75,8 +76,22 @@ describe("PublishedIntervention encoder", () => {
 		expect(decoded.executionDate).toBe(1709251200n);
 		expect(decoded.healthBefore).toBe(3);
 		expect(decoded.healthAfter).toBe(8);
+		expect(decoded.commissionRef).toBe(hashIdentifier("sponsor-acme-001"));
 		expect(decoded.offchainCount).toBe(8);
 		expect(decoded.crewSize).toBe(2);
+	});
+
+	it("encodes a volunteer intervention with ZERO_BYTES32 commissionRef", () => {
+		const encoded = encodePublishedIntervention({ ...input, commissionId: null });
+		const decoded = decodePublishedIntervention(encoded);
+		expect(decoded.commissionRef).toBe(ZERO_BYTES32);
+	});
+
+	it("accepts a Date for executionDate and normalizes to Unix seconds", () => {
+		const executionDate = new Date("2024-03-01T00:00:00.000Z");
+		const encoded = encodePublishedIntervention({ ...input, executionDate });
+		const decoded = decodePublishedIntervention(encoded);
+		expect(decoded.executionDate).toBe(1709251200n);
 	});
 });
 
@@ -115,7 +130,7 @@ describe("ScheduledIntervention encoder", () => {
 			scheduledDate: 1709337600n,
 			estimatedMinutes: 120,
 			description: "Restoration of flower beds",
-			commissionRef: ZERO_BYTES32,
+			commissionId: null,
 		});
 		expect(encoded).toBeTruthy();
 		const encoder = new SchemaEncoder(SCHEMA_STRINGS.ScheduledIntervention);
@@ -174,7 +189,7 @@ describe("AdminValidation encoder", () => {
 			approved: true,
 			qualityScore: 8,
 			feedback: "Good work.",
-			validatorId: ZERO_BYTES32,
+			validatorId: null,
 		});
 		expect(encoded).toBeTruthy();
 		const encoder = new SchemaEncoder(SCHEMA_STRINGS.AdminValidation);
@@ -197,8 +212,7 @@ describe("CitizenFeedback encoder", () => {
 });
 
 describe("Healthcheck encoder", () => {
-	const FAKE_ASSESSOR_ID =
-		"0x000000000000000000000000000000000000000000000000000000000000cafe";
+	const ASSESSOR_STAFF_ID = "staff-cafe";
 
 	it("encodes a standalone healthcheck (no linked intervention)", () => {
 		const encoded = encodeHealthcheck({
@@ -208,7 +222,7 @@ describe("Healthcheck encoder", () => {
 			photoHash: ZERO_BYTES32,
 			assessorNotes: "Good condition overall, minor weeding needed",
 			interventionNeeded: false,
-			assessorId: FAKE_ASSESSOR_ID,
+			assessorId: ASSESSOR_STAFF_ID,
 		});
 		expect(encoded).toBeTruthy();
 		const encoder = new SchemaEncoder(SCHEMA_STRINGS.Healthcheck);
@@ -225,7 +239,7 @@ describe("Healthcheck encoder", () => {
 			photoHash: ZERO_BYTES32,
 			assessorNotes: "Pre-intervention assessment",
 			interventionNeeded: true,
-			assessorId: FAKE_ASSESSOR_ID,
+			assessorId: ASSESSOR_STAFF_ID,
 		});
 		expect(encoded).toBeTruthy();
 		const encoder = new SchemaEncoder(SCHEMA_STRINGS.Healthcheck);
@@ -241,6 +255,27 @@ describe("Healthcheck encoder", () => {
 
 		const assessorField = decoded.find((f) => f.name === "assessorId");
 		expect(assessorField).toBeDefined();
-		expect(String(assessorField?.value.value)).toBe(FAKE_ASSESSOR_ID);
+		expect(String(assessorField?.value.value)).toBe(
+			hashIdentifier(ASSESSOR_STAFF_ID),
+		);
+	});
+
+	it("encodes ZERO_BYTES32 when assessorId is null", () => {
+		const encoded = encodeHealthcheck({
+			areaUID: ZERO_BYTES32,
+			interventionUID: ZERO_BYTES32,
+			healthScore: 7,
+			photoHash: ZERO_BYTES32,
+			assessorNotes: "Organizational assessment",
+			interventionNeeded: false,
+			assessorId: null,
+		});
+		const encoder = new SchemaEncoder(SCHEMA_STRINGS.Healthcheck);
+		const decoded = encoder.decodeData(encoded) as unknown as Array<{
+			name: string;
+			value: { value: unknown };
+		}>;
+		const assessorField = decoded.find((f) => f.name === "assessorId");
+		expect(String(assessorField?.value.value)).toBe(ZERO_BYTES32);
 	});
 });

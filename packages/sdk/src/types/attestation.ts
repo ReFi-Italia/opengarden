@@ -1,9 +1,11 @@
+import type { AreaType, InterventionType, MilestoneLevel } from "./enums";
+
 export interface Area {
 	uid: string;
 	areaId: string;
 	latitude: number;
 	longitude: number;
-	areaType: number;
+	areaType: AreaType;
 	name: string;
 	municipality: string;
 	metadataHash: string;
@@ -15,7 +17,7 @@ export interface Intervention {
 	uid: string;
 	areaUID: string;
 	interventionId: string;
-	interventionType: number;
+	interventionType: InterventionType;
 	executionDate: bigint;
 	healthBefore: number;
 	healthAfter: number;
@@ -30,7 +32,7 @@ export interface Intervention {
 
 export interface Milestone {
 	uid: string;
-	milestoneLevel: number;
+	milestoneLevel: MilestoneLevel;
 	totalInterventions: number;
 	totalValidated: number;
 	avgHealthImprovement: number;

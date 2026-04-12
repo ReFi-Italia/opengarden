@@ -65,6 +65,7 @@ import type {
 	PublishedInterventionInput,
 	ScheduledInterventionInput,
 } from "./types/schemas";
+import { toUnixSeconds } from "./utils";
 
 export class OpenGardenClient {
 	private readonly eas: EAS;
@@ -436,10 +437,11 @@ export class OpenGardenClient {
 			);
 		}
 
-		if (input.scheduled.onchainTimestamp > input.executionDate) {
+		const executionDate = toUnixSeconds(input.executionDate);
+		if (input.scheduled.onchainTimestamp > executionDate) {
 			throw new OpenGardenError(
 				OpenGardenErrorCode.INVALID_INPUT,
-				`Execution date (${input.executionDate}) must not be before the scheduled timestamp (${input.scheduled.onchainTimestamp})`,
+				`Execution date (${executionDate}) must not be before the scheduled timestamp (${input.scheduled.onchainTimestamp})`,
 			);
 		}
 
@@ -455,10 +457,10 @@ export class OpenGardenClient {
 			areaUID: input.areaUID,
 			interventionId: input.interventionId,
 			interventionType: input.interventionType,
-			executionDate: input.executionDate,
+			executionDate,
 			healthBefore: input.healthBefore,
 			healthAfter: input.healthAfter,
-			commissionRef: input.commissionRef,
+			commissionId: input.commissionId,
 			evidenceBundleHash,
 			offchainCount,
 			crewSize: input.crewSize,

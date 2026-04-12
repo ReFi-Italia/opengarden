@@ -1,21 +1,25 @@
+import type { AreaType, InterventionType, MilestoneLevel } from "./enums";
+
 export interface AreaRegistrationInput {
 	areaId: string;
 	latitude: number;
 	longitude: number;
-	areaType: number;
+	areaType: AreaType;
 	name: string;
 	municipality: string;
-	metadataHash: string;
+	/** IPFS CID / storage hash for extended metadata JSON; `null` for none. */
+	metadataHash: string | null;
 }
 
 export interface PublishedInterventionInput {
 	areaUID: string;
 	interventionId: string;
-	interventionType: number;
-	executionDate: bigint;
+	interventionType: InterventionType;
+	executionDate: Date | bigint;
 	healthBefore: number;
 	healthAfter: number;
-	commissionRef: string;
+	/** Plain commissioning identifier (sponsor ID, contract number, grant ID); `null` for volunteer/unsponsored work. Hashed internally per spec §9.1. */
+	commissionId: string | null;
 	evidenceBundleHash: string;
 	offchainCount: number;
 	crewSize: number;
@@ -23,38 +27,39 @@ export interface PublishedInterventionInput {
 
 export interface GardenerMilestoneInput {
 	recipient: string;
-	milestoneLevel: number;
+	milestoneLevel: MilestoneLevel;
 	totalInterventions: number;
 	totalValidated: number;
 	avgHealthImprovement: number;
 	skillTier: string;
-	achievedAt: bigint;
+	achievedAt: Date | bigint;
 	evidenceRoot: string;
 }
 
 export interface ScheduledInterventionInput {
 	areaUID: string;
 	interventionId: string;
-	interventionType: number;
+	interventionType: InterventionType;
 	crewLead: string;
 	crewSize: number;
-	scheduledDate: bigint;
+	scheduledDate: Date | bigint;
 	estimatedMinutes: number;
 	description: string;
-	commissionRef: string;
+	/** Plain commissioning identifier (must match the PublishedIntervention for the same job); `null` for volunteer/unsponsored work. Hashed internally per spec §9.1. */
+	commissionId: string | null;
 }
 
 export interface GardenerCheckinInput {
 	interventionUID: string;
 	latitude: number;
 	longitude: number;
-	timestamp: bigint;
+	timestamp: Date | bigint;
 	photoHash: string;
 }
 
 export interface GardenerCheckoutInput {
 	checkinUID: string;
-	timestamp: bigint;
+	timestamp: Date | bigint;
 	actualMinutes: number;
 }
 
@@ -72,7 +77,8 @@ export interface AdminValidationInput {
 	approved: boolean;
 	qualityScore: number;
 	feedback: string;
-	validatorId: string;
+	/** Plain staff identifier of the validating admin; `null` for organizational validation without individual attribution. Hashed internally per spec §9.1. */
+	validatorId: string | null;
 }
 
 export interface CitizenFeedbackInput {
@@ -89,5 +95,6 @@ export interface HealthcheckInput {
 	photoHash: string;
 	assessorNotes: string;
 	interventionNeeded: boolean;
-	assessorId: string;
+	/** Plain staff identifier of the assessing staff member; `null` for organizational assessment without individual attribution. Hashed internally per spec §9.1. */
+	assessorId: string | null;
 }

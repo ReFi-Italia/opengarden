@@ -27,7 +27,6 @@ import type {
 } from "../src/types/config";
 import { AreaType, InterventionType } from "../src/types/enums";
 import type { TimestampedOffChainResult } from "../src/types/results";
-import { hashIdentifier } from "../src/utils";
 
 const PRIVATE_KEY = process.env.OPENGARDEN_TEST_PRIVATE_KEY;
 const RPC_URL =
@@ -175,7 +174,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 			areaType: AreaType.PublicGreenSpace,
 			name: "E2E Test Garden",
 			municipality: "RM-TEST",
-			metadataHash: ZERO_BYTES32,
+			metadataHash: null,
 		});
 
 		areaUID = result.uid;
@@ -197,7 +196,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 			scheduledDate: now(),
 			estimatedMinutes: 60,
 			description: "E2E test routine maintenance",
-			commissionRef: ZERO_BYTES32,
+			commissionId: null,
 		});
 
 		expect(scheduleResult.uid).toBeTruthy();
@@ -216,7 +215,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 			photoHash: ZERO_BYTES32,
 			assessorNotes: "E2E test — poor condition before intervention",
 			interventionNeeded: true,
-			assessorId: hashIdentifier("e2e-assessor-001"),
+			assessorId: "e2e-assessor-001",
 		});
 
 		expect(healthcheckBeforeResult.uid).toBeTruthy();
@@ -283,7 +282,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 			approved: true,
 			qualityScore: 8,
 			feedback: "E2E test — approved",
-			validatorId: ZERO_BYTES32,
+			validatorId: null,
 		});
 
 		validationResult = { ...result, approved: true, qualityScore: 8 };
@@ -303,7 +302,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 			photoHash: ZERO_BYTES32,
 			assessorNotes: "E2E test — good condition after intervention",
 			interventionNeeded: false,
-			assessorId: hashIdentifier("e2e-assessor-001"),
+			assessorId: "e2e-assessor-001",
 		});
 
 		expect(healthcheckAfterResult.uid).toBeTruthy();
@@ -352,7 +351,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 			executionDate: now(),
 			healthBefore: 3,
 			healthAfter: 8,
-			commissionRef: ZERO_BYTES32,
+			commissionId: null,
 			evidenceBundleHash,
 			offchainCount: 7,
 			crewSize: 1,
@@ -472,7 +471,7 @@ describe.skipIf(skip)("E2E: indexBundleAttestations", () => {
 			areaType: AreaType.PublicGreenSpace,
 			name: "E2E Indexer Test Garden",
 			municipality: "RM-TEST",
-			metadataHash: ZERO_BYTES32,
+			metadataHash: null,
 		});
 
 		areaUID = result.uid;
@@ -491,7 +490,7 @@ describe.skipIf(skip)("E2E: indexBundleAttestations", () => {
 			scheduledDate: now(),
 			estimatedMinutes: 30,
 			description: "E2E indexer test — scheduled",
-			commissionRef: ZERO_BYTES32,
+			commissionId: null,
 		});
 
 		expect(scheduleResult.uid).toBeTruthy();
