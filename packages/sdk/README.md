@@ -295,7 +295,7 @@ pnpm register-schemas
 pnpm test:e2e
 ```
 
-Set `OPENGARDEN_SCHEMA_UIDS` in `.env` to reuse already-deployed schemas and skip the registration step in tests.
+Schema UIDs are loaded from `src/chains/schemas.json` via each chain's `ChainConfig.schemaUIDs`. `pnpm register-schemas` persists freshly-registered UIDs back into that file; subsequent e2e runs skip the registration step automatically for any chain the JSON covers.
 
 ## Errors
 

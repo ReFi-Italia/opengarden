@@ -95,6 +95,38 @@ describe("OpenGardenClient construction", () => {
 			);
 		}
 	});
+
+	it("inherits schemaUIDs from the chain config when the chain carries them", () => {
+		const client = new OpenGardenClient({
+			signer: createMockSigner(),
+			chain: "optimism-sepolia",
+		});
+
+		const uids = client.getSchemaUIDs();
+		expect(uids.AreaRegistration).toBe(
+			"0x948b5dcc84298941bcbbe7c4f94c781b94eb90fb25c8a9ee4176b09603e06070",
+		);
+		expect(uids.Healthcheck).toBe(
+			"0xa810dc4c9ff78d9cdc6de45439ed8a3a6f1e8be62befa04e3e04cc44300f0828",
+		);
+	});
+
+	it("lets explicit config.schemaUIDs override chain defaults", () => {
+		const client = new OpenGardenClient({
+			signer: createMockSigner(),
+			chain: "optimism-sepolia",
+			schemaUIDs: {
+				AreaRegistration: "0xoverridearea",
+			},
+		});
+
+		const uids = client.getSchemaUIDs();
+		expect(uids.AreaRegistration).toBe("0xoverridearea");
+		// Unoverridden entries still come from the chain default.
+		expect(uids.Healthcheck).toBe(
+			"0xa810dc4c9ff78d9cdc6de45439ed8a3a6f1e8be62befa04e3e04cc44300f0828",
+		);
+	});
 });
 
 describe("OpenGardenClient schema validation", () => {

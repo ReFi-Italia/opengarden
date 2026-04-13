@@ -6,6 +6,14 @@ export interface ChainConfig {
 	chainId: bigint;
 	easAddress: string;
 	schemaRegistryAddress: string;
+	/**
+	 * Canonical schema UIDs registered and named on this chain by the
+	 * OpenGarden operator of record. Populated for chains where the register
+	 * + name flow has been completed; `undefined` for chains where consumers
+	 * must deploy schemas themselves. Explicit `OpenGardenConfig.schemaUIDs`
+	 * overrides still win over these defaults.
+	 */
+	schemaUIDs?: Partial<SchemaUIDs>;
 }
 
 export interface StorageAdapter {

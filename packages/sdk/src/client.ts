@@ -124,7 +124,7 @@ export class OpenGardenClient {
 
 		this.signer = config.signer;
 		this.storage = config.storage;
-		this.schemaUIDs = { ...config.schemaUIDs };
+		this.schemaUIDs = { ...chain.schemaUIDs, ...config.schemaUIDs };
 		this.chainId = chain.chainId;
 		this.graphqlUrl = config.graphqlUrl ?? getGraphqlUrl(this.chainId);
 		this.storeUrl = config.storeUrl ?? getStoreUrl(this.chainId);

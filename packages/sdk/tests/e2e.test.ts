@@ -20,11 +20,7 @@ import {
 	ZERO_ADDRESS,
 	ZERO_BYTES32,
 } from "../src/constants";
-import type {
-	ChainConfig,
-	SchemaUIDs,
-	StorageAdapter,
-} from "../src/types/config";
+import type { ChainConfig, StorageAdapter } from "../src/types/config";
 import { AreaType, InterventionType } from "../src/types/enums";
 import type { TimestampedOffChainResult } from "../src/types/results";
 
@@ -32,7 +28,6 @@ const PRIVATE_KEY = process.env.OPENGARDEN_TEST_PRIVATE_KEY;
 const RPC_URL =
 	process.env.OPENGARDEN_TEST_RPC_URL || "https://sepolia.optimism.io";
 const CHAIN_NAME = process.env.OPENGARDEN_TEST_CHAIN || "optimism-sepolia";
-const SCHEMA_UIDS_JSON = process.env.OPENGARDEN_SCHEMA_UIDS;
 
 const CHAINS: Record<string, ChainConfig> = {
 	"optimism-sepolia": OPTIMISM_SEPOLIA,
@@ -40,18 +35,6 @@ const CHAINS: Record<string, ChainConfig> = {
 };
 
 const skip = !PRIVATE_KEY;
-
-function loadSchemaUIDs(): Partial<SchemaUIDs> | undefined {
-	if (!SCHEMA_UIDS_JSON) return undefined;
-	try {
-		return JSON.parse(SCHEMA_UIDS_JSON) as Partial<SchemaUIDs>;
-	} catch {
-		console.warn(
-			"  Warning: OPENGARDEN_SCHEMA_UIDS is not valid JSON, ignoring",
-		);
-		return undefined;
-	}
-}
 
 // Pause between steps to avoid RPC rate limits
 const STEP_DELAY_MS = 2_000;
@@ -110,7 +93,6 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 		if (!chain) throw new Error(`Unknown chain: ${CHAIN_NAME}`);
 
 		if (!PRIVATE_KEY) throw new Error("PRIVATE_KEY not set");
-		const cachedUIDs = loadSchemaUIDs();
 		const provider = new ethers.JsonRpcProvider(RPC_URL);
 		const signer = new ethers.Wallet(PRIVATE_KEY, provider);
 		walletAddress = await signer.getAddress();
@@ -120,14 +102,15 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 			signer,
 			chain,
 			storage,
-			schemaUIDs: cachedUIDs,
 		});
 
+		const hasCanonicalUIDs =
+			chain.schemaUIDs && Object.keys(chain.schemaUIDs).length > 0;
 		console.log(`  Wallet: ${walletAddress}`);
 		console.log(`  Chain:  ${CHAIN_NAME}`);
 		console.log(`  RPC:    ${RPC_URL}`);
 		console.log(
-			`  Schema UIDs: ${cachedUIDs ? "loaded from env" : "will register on-chain"}`,
+			`  Schema UIDs: ${hasCanonicalUIDs ? "loaded from chains/schemas.json" : "will register on-chain"}`,
 		);
 
 		const balance = await provider.getBalance(walletAddress);
@@ -158,7 +141,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 			for (const r of results) console.log(`    ${r.name}: ${r.uid}`);
 		} else {
 			console.log(
-				"  All schemas already registered (loaded from OPENGARDEN_SCHEMA_UIDS)",
+				"  All schemas already registered (loaded from chains/schemas.json)",
 			);
 		}
 		await delay(STEP_DELAY_MS);
@@ -449,7 +432,6 @@ describe.skipIf(skip)("E2E: indexBundleAttestations", () => {
 		if (!chain) throw new Error(`Unknown chain: ${CHAIN_NAME}`);
 
 		if (!PRIVATE_KEY) throw new Error("PRIVATE_KEY not set");
-		const cachedUIDs = loadSchemaUIDs();
 		const provider = new ethers.JsonRpcProvider(RPC_URL);
 		const signer = new ethers.Wallet(PRIVATE_KEY, provider);
 		walletAddress = await signer.getAddress();
@@ -457,7 +439,6 @@ describe.skipIf(skip)("E2E: indexBundleAttestations", () => {
 		indexerClient = new OpenGardenClient({
 			signer,
 			chain,
-			schemaUIDs: cachedUIDs,
 		});
 
 		console.log(`  Indexer test — wallet: ${walletAddress}`);
