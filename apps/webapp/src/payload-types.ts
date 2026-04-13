@@ -69,6 +69,18 @@ export interface Config {
   collections: {
     users: User;
     media: Media;
+    sponsors: Sponsor;
+    staff: Staff;
+    gardeners: Gardener;
+    areas: Area;
+    interventions: Intervention;
+    gardenerCheckins: GardenerCheckin;
+    gardenerCheckouts: GardenerCheckout;
+    gardenerReports: GardenerReport;
+    adminValidations: AdminValidation;
+    healthchecks: Healthcheck;
+    evidenceBundles: EvidenceBundle;
+    chainTransactions: ChainTransaction;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -78,6 +90,18 @@ export interface Config {
   collectionsSelect: {
     users: UsersSelect<false> | UsersSelect<true>;
     media: MediaSelect<false> | MediaSelect<true>;
+    sponsors: SponsorsSelect<false> | SponsorsSelect<true>;
+    staff: StaffSelect<false> | StaffSelect<true>;
+    gardeners: GardenersSelect<false> | GardenersSelect<true>;
+    areas: AreasSelect<false> | AreasSelect<true>;
+    interventions: InterventionsSelect<false> | InterventionsSelect<true>;
+    gardenerCheckins: GardenerCheckinsSelect<false> | GardenerCheckinsSelect<true>;
+    gardenerCheckouts: GardenerCheckoutsSelect<false> | GardenerCheckoutsSelect<true>;
+    gardenerReports: GardenerReportsSelect<false> | GardenerReportsSelect<true>;
+    adminValidations: AdminValidationsSelect<false> | AdminValidationsSelect<true>;
+    healthchecks: HealthchecksSelect<false> | HealthchecksSelect<true>;
+    evidenceBundles: EvidenceBundlesSelect<false> | EvidenceBundlesSelect<true>;
+    chainTransactions: ChainTransactionsSelect<false> | ChainTransactionsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -87,8 +111,16 @@ export interface Config {
     defaultIDType: number;
   };
   fallbackLocale: null;
-  globals: {};
-  globalsSelect: {};
+  globals: {
+    protocolConfig: ProtocolConfig;
+    organizationProfile: OrganizationProfile;
+    taskCatalog: TaskCatalog;
+  };
+  globalsSelect: {
+    protocolConfig: ProtocolConfigSelect<false> | ProtocolConfigSelect<true>;
+    organizationProfile: OrganizationProfileSelect<false> | OrganizationProfileSelect<true>;
+    taskCatalog: TaskCatalogSelect<false> | TaskCatalogSelect<true>;
+  };
   locale: null;
   widgets: {
     collections: CollectionsWidget;
@@ -123,6 +155,12 @@ export interface UserAuthOperations {
  */
 export interface User {
   id: number;
+  displayName: string;
+  roles: ('admin' | 'manager' | 'validator' | 'assessor' | 'authoring' | 'viewer')[];
+  /**
+   * Optional link to the hashable staff identifier so users can be archived without losing staff id continuity.
+   */
+  staffRecord?: (number | null) | Staff;
   updatedAt: string;
   createdAt: string;
   email: string;
@@ -144,11 +182,48 @@ export interface User {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "staff".
+ */
+export interface Staff {
+  id: number;
+  displayName: string;
+  /**
+   * Org-supplied stable string (NOT email). Hashed per spec §9.1.
+   */
+  staffId: string;
+  /**
+   * keccak256(utf8Bytes(staffId)) — derived automatically.
+   */
+  staffIdHash?: string | null;
+  frozen?: boolean | null;
+  /**
+   * Optional 1:1 link to a Payload admin user.
+   */
+  linkedUser?: (number | null) | User;
+  /**
+   * Filters the dropdowns on validations, healthchecks, and crew lead selection.
+   */
+  capabilities?: ('validator' | 'assessor' | 'crewLead')[] | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "media".
  */
 export interface Media {
   id: number;
   alt: string;
+  caption?: string | null;
+  purpose?: ('area-metadata' | 'checkin' | 'report' | 'healthcheck' | 'misc') | null;
+  /**
+   * Content-addressed hash reproducing what the SDK would hash. Set lazily when the media is first referenced from an attestation.
+   */
+  storageHash?: string | null;
+  /**
+   * Flipped true once the file is IPFS-pinned.
+   */
+  pinned?: boolean | null;
   updatedAt: string;
   createdAt: string;
   url?: string | null;
@@ -160,6 +235,613 @@ export interface Media {
   height?: number | null;
   focalX?: number | null;
   focalY?: number | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "sponsors".
+ */
+export interface Sponsor {
+  id: number;
+  displayName: string;
+  kind: 'corporate' | 'municipal' | 'grant' | 'volunteer';
+  /**
+   * Fields contributing to the canonical JSON hash. Exactly one sub-field is populated depending on `kind`.
+   */
+  canonicalKey?: {
+    /**
+     * Corporate sponsor identifier.
+     */
+    sponsorId?: string | null;
+    /**
+     * Municipal contract number.
+     */
+    contractNumber?: string | null;
+    /**
+     * Grant identifier.
+     */
+    grantId?: string | null;
+  };
+  /**
+   * Literal JSON bytes used for hashing (spec §9.1). Derived automatically — never edit by hand.
+   */
+  canonicalJson?: string | null;
+  /**
+   * keccak256(canonicalJson) — matches the on-chain commissionRef. ZERO_BYTES32 for volunteer.
+   */
+  commissionRefHash?: string | null;
+  /**
+   * Flipped true on first reference from a scheduled-or-later intervention. Once frozen, hash-affecting fields cannot change.
+   */
+  frozen?: boolean | null;
+  notes?: string | null;
+  archived?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "gardeners".
+ */
+export interface Gardener {
+  id: number;
+  displayName: string;
+  /**
+   * Optional until the mobile app ships; required once gardeners self-attest.
+   */
+  wallet?: string | null;
+  email?: string | null;
+  status: 'onboarding' | 'active' | 'inactive';
+  notes?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "areas".
+ */
+export interface Area {
+  id: number;
+  /**
+   * Internal identifier such as RM-PIGN-042.
+   */
+  areaId: string;
+  name: string;
+  municipality: string;
+  areaType: '0' | '1' | '2' | '3' | '4';
+  latitude: number;
+  longitude: number;
+  extendedMetadata?: {
+    surfaceAreaSqm?: number | null;
+    boundaryGeojson?:
+      | {
+          [k: string]: unknown;
+        }
+      | unknown[]
+      | string
+      | number
+      | boolean
+      | null;
+    coverPhoto?: (number | null) | Media;
+    gallery?: (number | Media)[] | null;
+  };
+  /**
+   * IPFS CID of the extended metadata JSON uploaded by the register-area server action. ZERO_BYTES32 if none.
+   */
+  metadataHash?: string | null;
+  /**
+   * Populated by the register-area server action. Empty until the area is registered on-chain.
+   */
+  chain?: {
+    chainUID?: string | null;
+    txHash?: string | null;
+    /**
+     * Unix seconds as recorded by EAS.timestamp().
+     */
+    onchainTimestamp?: number | null;
+    attesterWallet?: string | null;
+    /**
+     * Chain id at attestation time — snapshotted per row for migration safety.
+     */
+    chainIdSnapshot?: number | null;
+    signedAttestation?:
+      | {
+          [k: string]: unknown;
+        }
+      | unknown[]
+      | string
+      | number
+      | boolean
+      | null;
+  };
+  lifecycleStatus: 'draft' | 'registering' | 'registered' | 'failed';
+  updatedAt: string;
+  createdAt: string;
+  _status?: ('draft' | 'published') | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "interventions".
+ */
+export interface Intervention {
+  id: number;
+  interventionId: string;
+  area: number | Area;
+  interventionType: '0' | '1' | '2' | '3' | '4' | '5';
+  description: string;
+  commissioning: {
+    sponsor: number | Sponsor;
+    /**
+     * Snapshotted from sponsor.commissionRefHash the moment the intervention is scheduled. Populated by the schedule-intervention server action.
+     */
+    commissionRefHashAtSchedule?: string | null;
+  };
+  crew: {
+    gardener: number | Gardener;
+    isCrewLead?: boolean | null;
+    id?: string | null;
+  }[];
+  /**
+   * Derived from crew.length at read time.
+   */
+  crewSize?: number | null;
+  /**
+   * Populated by the schedule-intervention server action. Frozen once populated.
+   */
+  scheduling?: {
+    scheduledDate?: string | null;
+    estimatedMinutes?: number | null;
+    chainUID?: string | null;
+    txHash?: string | null;
+    /**
+     * Unix seconds as recorded by EAS.timestamp().
+     */
+    onchainTimestamp?: number | null;
+    attesterWallet?: string | null;
+    /**
+     * Chain id at attestation time — snapshotted per row for migration safety.
+     */
+    chainIdSnapshot?: number | null;
+    signedAttestation?:
+      | {
+          [k: string]: unknown;
+        }
+      | unknown[]
+      | string
+      | number
+      | boolean
+      | null;
+  };
+  /**
+   * Populated by the validate-intervention server action. Wiped by revoke-validation before re-validation.
+   */
+  validation?: {
+    validator?: (number | null) | Staff;
+    approved?: boolean | null;
+    qualityScore?: number | null;
+    feedback?: string | null;
+    /**
+     * Snapshotted from staff.staffIdHash at validate time; ZERO_BYTES32 for null validators.
+     */
+    validatorIdHashAtValidation?: string | null;
+    /**
+     * Points at the current non-revoked adminValidations row.
+     */
+    currentAttestation?: (number | null) | AdminValidation;
+    chainUID?: string | null;
+    txHash?: string | null;
+    /**
+     * Unix seconds as recorded by EAS.timestamp().
+     */
+    onchainTimestamp?: number | null;
+    attesterWallet?: string | null;
+    /**
+     * Chain id at attestation time — snapshotted per row for migration safety.
+     */
+    chainIdSnapshot?: number | null;
+    signedAttestation?:
+      | {
+          [k: string]: unknown;
+        }
+      | unknown[]
+      | string
+      | number
+      | boolean
+      | null;
+  };
+  /**
+   * Populated by the publish-intervention server action. Immutable once published.
+   */
+  execution?: {
+    executionDate?: string | null;
+    healthBefore?: number | null;
+    healthAfter?: number | null;
+    /**
+     * Denormalized back-reference — maintained by publish-intervention, not by hooks. Source of truth is evidenceBundles.intervention.
+     */
+    evidenceBundle?: (number | null) | EvidenceBundle;
+    offchainCount?: number | null;
+    chainUID?: string | null;
+    txHash?: string | null;
+    /**
+     * Unix seconds as recorded by EAS.timestamp().
+     */
+    onchainTimestamp?: number | null;
+    attesterWallet?: string | null;
+    /**
+     * Chain id at attestation time — snapshotted per row for migration safety.
+     */
+    chainIdSnapshot?: number | null;
+    signedAttestation?:
+      | {
+          [k: string]: unknown;
+        }
+      | unknown[]
+      | string
+      | number
+      | boolean
+      | null;
+  };
+  /**
+   * Holds revocation details (when lifecycleStatus === "revoked") and transient failure details (when lifecycleStatus === "failed").
+   */
+  revocation?: {
+    reason?: string | null;
+    revokedAt?: string | null;
+    revokedScheduleUID?: string | null;
+    /**
+     * Snapshot of the prior state when an SDK error flipped the row to "failed". Cleared on successful admin-recover.
+     */
+    failedFrom?: ('draft' | 'scheduled' | 'in_progress' | 'validated') | null;
+  };
+  /**
+   * Lifecycle state — mutated only by server actions, never directly editable.
+   */
+  lifecycleStatus: 'draft' | 'scheduled' | 'in_progress' | 'validated' | 'published' | 'revoked' | 'failed';
+  updatedAt: string;
+  createdAt: string;
+  _status?: ('draft' | 'published') | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "adminValidations".
+ */
+export interface AdminValidation {
+  id: number;
+  intervention: number | Intervention;
+  validator: number | Staff;
+  approved: boolean;
+  qualityScore?: number | null;
+  feedback?: string | null;
+  revoked?: boolean | null;
+  revokedAt?: string | null;
+  revocationTxHash?: string | null;
+  chain?: {
+    chainUID?: string | null;
+    txHash?: string | null;
+    /**
+     * Unix seconds as recorded by EAS.timestamp().
+     */
+    onchainTimestamp?: number | null;
+    attesterWallet?: string | null;
+    /**
+     * Chain id at attestation time — snapshotted per row for migration safety.
+     */
+    chainIdSnapshot?: number | null;
+    signedAttestation?:
+      | {
+          [k: string]: unknown;
+        }
+      | unknown[]
+      | string
+      | number
+      | boolean
+      | null;
+  };
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "evidenceBundles".
+ */
+export interface EvidenceBundle {
+  id: number;
+  /**
+   * Source of truth for the 1:1 link. Set at bundle creation and never nulled.
+   */
+  intervention: number | Intervention;
+  /**
+   * Mutated only by build / upload / publish / verify / reset server actions.
+   */
+  bundleState: 'draft' | 'built' | 'uploaded' | 'published' | 'verified' | 'failed';
+  /**
+   * Captured at build so the bundle stays legible if the parent is renamed.
+   */
+  interventionIdSnapshot?: string | null;
+  areaUIDSnapshot?: string | null;
+  /**
+   * UID of the ScheduledIntervention attestation.
+   */
+  scheduledRef?: string | null;
+  /**
+   * Denormalized per-crew-member attestation refs.
+   */
+  crewMembers?:
+    | {
+        gardener?: (number | null) | Gardener;
+        attesterWallet?: string | null;
+        checkin?: (number | null) | GardenerCheckin;
+        checkout?: (number | null) | GardenerCheckout;
+        report?: (number | null) | GardenerReport;
+        id?: string | null;
+      }[]
+    | null;
+  validationRef?: (number | null) | AdminValidation;
+  healthcheckBefore?: (number | null) | Healthcheck;
+  healthcheckAfter?: (number | null) | Healthcheck;
+  /**
+   * Exact bytes uploaded to IPFS — preserved for re-verification.
+   */
+  bundleJson?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  bundleVersion?: string | null;
+  evidenceBundleHash?: string | null;
+  /**
+   * Populated by the verify-bundle server action after publish. Drives the "valid?" column in list views.
+   */
+  verification?: {
+    valid?: boolean | null;
+    attestationCount?: number | null;
+    expectedCount?: number | null;
+    temporalOrderValid?: boolean | null;
+    timestampsVerified?: boolean | null;
+    healthcheckOrderValid?: boolean | null;
+    executionDateBracketed?: boolean | null;
+    validationApproved?: boolean | null;
+    lastVerifiedAt?: string | null;
+    checksJson?:
+      | {
+          [k: string]: unknown;
+        }
+      | unknown[]
+      | string
+      | number
+      | boolean
+      | null;
+  };
+  /**
+   * Last validateFinalizeInput result; publish is disabled until empty.
+   */
+  buildIssuesJson?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  /**
+   * Captured on any "failed" transition so the admin can inspect.
+   */
+  lastError?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "gardenerCheckins".
+ */
+export interface GardenerCheckin {
+  id: number;
+  intervention: number | Intervention;
+  gardener: number | Gardener;
+  latitude: number;
+  longitude: number;
+  /**
+   * Device-reported arrival time (Unix seconds under the hood).
+   */
+  claimedTimestamp: string;
+  photo?: (number | null) | Media;
+  /**
+   * Mirrored from media.storageHash at the time of attestation.
+   */
+  photoHash?: string | null;
+  chain?: {
+    chainUID?: string | null;
+    txHash?: string | null;
+    /**
+     * Unix seconds as recorded by EAS.timestamp().
+     */
+    onchainTimestamp?: number | null;
+    attesterWallet?: string | null;
+    /**
+     * Chain id at attestation time — snapshotted per row for migration safety.
+     */
+    chainIdSnapshot?: number | null;
+    signedAttestation?:
+      | {
+          [k: string]: unknown;
+        }
+      | unknown[]
+      | string
+      | number
+      | boolean
+      | null;
+  };
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "gardenerCheckouts".
+ */
+export interface GardenerCheckout {
+  id: number;
+  checkin: number | GardenerCheckin;
+  claimedTimestamp: string;
+  actualMinutes: number;
+  chain?: {
+    chainUID?: string | null;
+    txHash?: string | null;
+    /**
+     * Unix seconds as recorded by EAS.timestamp().
+     */
+    onchainTimestamp?: number | null;
+    attesterWallet?: string | null;
+    /**
+     * Chain id at attestation time — snapshotted per row for migration safety.
+     */
+    chainIdSnapshot?: number | null;
+    signedAttestation?:
+      | {
+          [k: string]: unknown;
+        }
+      | unknown[]
+      | string
+      | number
+      | boolean
+      | null;
+  };
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "gardenerReports".
+ */
+export interface GardenerReport {
+  id: number;
+  intervention: number | Intervention;
+  checkout: number | GardenerCheckout;
+  /**
+   * Comma-separated task codes. Each code must exist in the taskCatalog global.
+   */
+  tasksCompleted: string;
+  /**
+   * Derived from tasksCompleted length on save.
+   */
+  taskCount: number;
+  photos?: (number | Media)[] | null;
+  /**
+   * keccak256 of the canonical manifest of media.storageHash values. Computed on save via the SDK helper.
+   */
+  photosHash?: string | null;
+  notes?: string | null;
+  chain?: {
+    chainUID?: string | null;
+    txHash?: string | null;
+    /**
+     * Unix seconds as recorded by EAS.timestamp().
+     */
+    onchainTimestamp?: number | null;
+    attesterWallet?: string | null;
+    /**
+     * Chain id at attestation time — snapshotted per row for migration safety.
+     */
+    chainIdSnapshot?: number | null;
+    signedAttestation?:
+      | {
+          [k: string]: unknown;
+        }
+      | unknown[]
+      | string
+      | number
+      | boolean
+      | null;
+  };
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "healthchecks".
+ */
+export interface Healthcheck {
+  id: number;
+  area: number | Area;
+  intervention?: (number | null) | Intervention;
+  kind: 'standalone' | 'before' | 'after';
+  healthScore: number;
+  assessor?: (number | null) | Staff;
+  /**
+   * Snapshotted from staff.staffIdHash at attestation time; ZERO_BYTES32 when no assessor is assigned.
+   */
+  assessorIdHashSnapshot?: string | null;
+  assessorNotes?: string | null;
+  interventionNeeded?: boolean | null;
+  photo?: (number | null) | Media;
+  /**
+   * Mirrored from media.storageHash at the time of attestation.
+   */
+  photoHash?: string | null;
+  chain?: {
+    chainUID?: string | null;
+    txHash?: string | null;
+    /**
+     * Unix seconds as recorded by EAS.timestamp().
+     */
+    onchainTimestamp?: number | null;
+    attesterWallet?: string | null;
+    /**
+     * Chain id at attestation time — snapshotted per row for migration safety.
+     */
+    chainIdSnapshot?: number | null;
+    signedAttestation?:
+      | {
+          [k: string]: unknown;
+        }
+      | unknown[]
+      | string
+      | number
+      | boolean
+      | null;
+  };
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "chainTransactions".
+ */
+export interface ChainTransaction {
+  id: number;
+  kind: 'registerSchema' | 'registerArea' | 'scheduleIntervention' | 'timestamp' | 'validate' | 'publish' | 'revoke';
+  relatedCollection?: string | null;
+  relatedId?: string | null;
+  txHash?: string | null;
+  chainUID?: string | null;
+  chainId?: number | null;
+  attesterWallet?: string | null;
+  status: 'pending' | 'success' | 'failed';
+  error?: string | null;
+  payloadJson?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  resultJson?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  updatedAt: string;
+  createdAt: string;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -192,6 +874,54 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'media';
         value: number | Media;
+      } | null)
+    | ({
+        relationTo: 'sponsors';
+        value: number | Sponsor;
+      } | null)
+    | ({
+        relationTo: 'staff';
+        value: number | Staff;
+      } | null)
+    | ({
+        relationTo: 'gardeners';
+        value: number | Gardener;
+      } | null)
+    | ({
+        relationTo: 'areas';
+        value: number | Area;
+      } | null)
+    | ({
+        relationTo: 'interventions';
+        value: number | Intervention;
+      } | null)
+    | ({
+        relationTo: 'gardenerCheckins';
+        value: number | GardenerCheckin;
+      } | null)
+    | ({
+        relationTo: 'gardenerCheckouts';
+        value: number | GardenerCheckout;
+      } | null)
+    | ({
+        relationTo: 'gardenerReports';
+        value: number | GardenerReport;
+      } | null)
+    | ({
+        relationTo: 'adminValidations';
+        value: number | AdminValidation;
+      } | null)
+    | ({
+        relationTo: 'healthchecks';
+        value: number | Healthcheck;
+      } | null)
+    | ({
+        relationTo: 'evidenceBundles';
+        value: number | EvidenceBundle;
+      } | null)
+    | ({
+        relationTo: 'chainTransactions';
+        value: number | ChainTransaction;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -240,6 +970,9 @@ export interface PayloadMigration {
  * via the `definition` "users_select".
  */
 export interface UsersSelect<T extends boolean = true> {
+  displayName?: T;
+  roles?: T;
+  staffRecord?: T;
   updatedAt?: T;
   createdAt?: T;
   email?: T;
@@ -263,6 +996,10 @@ export interface UsersSelect<T extends boolean = true> {
  */
 export interface MediaSelect<T extends boolean = true> {
   alt?: T;
+  caption?: T;
+  purpose?: T;
+  storageHash?: T;
+  pinned?: T;
   updatedAt?: T;
   createdAt?: T;
   url?: T;
@@ -274,6 +1011,358 @@ export interface MediaSelect<T extends boolean = true> {
   height?: T;
   focalX?: T;
   focalY?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "sponsors_select".
+ */
+export interface SponsorsSelect<T extends boolean = true> {
+  displayName?: T;
+  kind?: T;
+  canonicalKey?:
+    | T
+    | {
+        sponsorId?: T;
+        contractNumber?: T;
+        grantId?: T;
+      };
+  canonicalJson?: T;
+  commissionRefHash?: T;
+  frozen?: T;
+  notes?: T;
+  archived?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "staff_select".
+ */
+export interface StaffSelect<T extends boolean = true> {
+  displayName?: T;
+  staffId?: T;
+  staffIdHash?: T;
+  frozen?: T;
+  linkedUser?: T;
+  capabilities?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "gardeners_select".
+ */
+export interface GardenersSelect<T extends boolean = true> {
+  displayName?: T;
+  wallet?: T;
+  email?: T;
+  status?: T;
+  notes?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "areas_select".
+ */
+export interface AreasSelect<T extends boolean = true> {
+  areaId?: T;
+  name?: T;
+  municipality?: T;
+  areaType?: T;
+  latitude?: T;
+  longitude?: T;
+  extendedMetadata?:
+    | T
+    | {
+        surfaceAreaSqm?: T;
+        boundaryGeojson?: T;
+        coverPhoto?: T;
+        gallery?: T;
+      };
+  metadataHash?: T;
+  chain?:
+    | T
+    | {
+        chainUID?: T;
+        txHash?: T;
+        onchainTimestamp?: T;
+        attesterWallet?: T;
+        chainIdSnapshot?: T;
+        signedAttestation?: T;
+      };
+  lifecycleStatus?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  _status?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "interventions_select".
+ */
+export interface InterventionsSelect<T extends boolean = true> {
+  interventionId?: T;
+  area?: T;
+  interventionType?: T;
+  description?: T;
+  commissioning?:
+    | T
+    | {
+        sponsor?: T;
+        commissionRefHashAtSchedule?: T;
+      };
+  crew?:
+    | T
+    | {
+        gardener?: T;
+        isCrewLead?: T;
+        id?: T;
+      };
+  crewSize?: T;
+  scheduling?:
+    | T
+    | {
+        scheduledDate?: T;
+        estimatedMinutes?: T;
+        chainUID?: T;
+        txHash?: T;
+        onchainTimestamp?: T;
+        attesterWallet?: T;
+        chainIdSnapshot?: T;
+        signedAttestation?: T;
+      };
+  validation?:
+    | T
+    | {
+        validator?: T;
+        approved?: T;
+        qualityScore?: T;
+        feedback?: T;
+        validatorIdHashAtValidation?: T;
+        currentAttestation?: T;
+        chainUID?: T;
+        txHash?: T;
+        onchainTimestamp?: T;
+        attesterWallet?: T;
+        chainIdSnapshot?: T;
+        signedAttestation?: T;
+      };
+  execution?:
+    | T
+    | {
+        executionDate?: T;
+        healthBefore?: T;
+        healthAfter?: T;
+        evidenceBundle?: T;
+        offchainCount?: T;
+        chainUID?: T;
+        txHash?: T;
+        onchainTimestamp?: T;
+        attesterWallet?: T;
+        chainIdSnapshot?: T;
+        signedAttestation?: T;
+      };
+  revocation?:
+    | T
+    | {
+        reason?: T;
+        revokedAt?: T;
+        revokedScheduleUID?: T;
+        failedFrom?: T;
+      };
+  lifecycleStatus?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  _status?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "gardenerCheckins_select".
+ */
+export interface GardenerCheckinsSelect<T extends boolean = true> {
+  intervention?: T;
+  gardener?: T;
+  latitude?: T;
+  longitude?: T;
+  claimedTimestamp?: T;
+  photo?: T;
+  photoHash?: T;
+  chain?:
+    | T
+    | {
+        chainUID?: T;
+        txHash?: T;
+        onchainTimestamp?: T;
+        attesterWallet?: T;
+        chainIdSnapshot?: T;
+        signedAttestation?: T;
+      };
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "gardenerCheckouts_select".
+ */
+export interface GardenerCheckoutsSelect<T extends boolean = true> {
+  checkin?: T;
+  claimedTimestamp?: T;
+  actualMinutes?: T;
+  chain?:
+    | T
+    | {
+        chainUID?: T;
+        txHash?: T;
+        onchainTimestamp?: T;
+        attesterWallet?: T;
+        chainIdSnapshot?: T;
+        signedAttestation?: T;
+      };
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "gardenerReports_select".
+ */
+export interface GardenerReportsSelect<T extends boolean = true> {
+  intervention?: T;
+  checkout?: T;
+  tasksCompleted?: T;
+  taskCount?: T;
+  photos?: T;
+  photosHash?: T;
+  notes?: T;
+  chain?:
+    | T
+    | {
+        chainUID?: T;
+        txHash?: T;
+        onchainTimestamp?: T;
+        attesterWallet?: T;
+        chainIdSnapshot?: T;
+        signedAttestation?: T;
+      };
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "adminValidations_select".
+ */
+export interface AdminValidationsSelect<T extends boolean = true> {
+  intervention?: T;
+  validator?: T;
+  approved?: T;
+  qualityScore?: T;
+  feedback?: T;
+  revoked?: T;
+  revokedAt?: T;
+  revocationTxHash?: T;
+  chain?:
+    | T
+    | {
+        chainUID?: T;
+        txHash?: T;
+        onchainTimestamp?: T;
+        attesterWallet?: T;
+        chainIdSnapshot?: T;
+        signedAttestation?: T;
+      };
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "healthchecks_select".
+ */
+export interface HealthchecksSelect<T extends boolean = true> {
+  area?: T;
+  intervention?: T;
+  kind?: T;
+  healthScore?: T;
+  assessor?: T;
+  assessorIdHashSnapshot?: T;
+  assessorNotes?: T;
+  interventionNeeded?: T;
+  photo?: T;
+  photoHash?: T;
+  chain?:
+    | T
+    | {
+        chainUID?: T;
+        txHash?: T;
+        onchainTimestamp?: T;
+        attesterWallet?: T;
+        chainIdSnapshot?: T;
+        signedAttestation?: T;
+      };
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "evidenceBundles_select".
+ */
+export interface EvidenceBundlesSelect<T extends boolean = true> {
+  intervention?: T;
+  bundleState?: T;
+  interventionIdSnapshot?: T;
+  areaUIDSnapshot?: T;
+  scheduledRef?: T;
+  crewMembers?:
+    | T
+    | {
+        gardener?: T;
+        attesterWallet?: T;
+        checkin?: T;
+        checkout?: T;
+        report?: T;
+        id?: T;
+      };
+  validationRef?: T;
+  healthcheckBefore?: T;
+  healthcheckAfter?: T;
+  bundleJson?: T;
+  bundleVersion?: T;
+  evidenceBundleHash?: T;
+  verification?:
+    | T
+    | {
+        valid?: T;
+        attestationCount?: T;
+        expectedCount?: T;
+        temporalOrderValid?: T;
+        timestampsVerified?: T;
+        healthcheckOrderValid?: T;
+        executionDateBracketed?: T;
+        validationApproved?: T;
+        lastVerifiedAt?: T;
+        checksJson?: T;
+      };
+  buildIssuesJson?: T;
+  lastError?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "chainTransactions_select".
+ */
+export interface ChainTransactionsSelect<T extends boolean = true> {
+  kind?: T;
+  relatedCollection?: T;
+  relatedId?: T;
+  txHash?: T;
+  chainUID?: T;
+  chainId?: T;
+  attesterWallet?: T;
+  status?: T;
+  error?: T;
+  payloadJson?: T;
+  resultJson?: T;
+  updatedAt?: T;
+  createdAt?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -314,6 +1403,154 @@ export interface PayloadMigrationsSelect<T extends boolean = true> {
   batch?: T;
   updatedAt?: T;
   createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "protocolConfig".
+ */
+export interface ProtocolConfig {
+  id: number;
+  chain: 'celo-mainnet' | 'celo-alfajores' | 'optimism-mainnet' | 'optimism-sepolia' | 'base-mainnet' | 'base-sepolia';
+  chainIdSnapshot?: number | null;
+  easAddress?: string | null;
+  schemaRegistryAddress?: string | null;
+  /**
+   * Operator flow: run `packages/sdk/scripts/register-schemas.ts` against the chain, copy the 10 UIDs from stdout, paste them here.
+   */
+  schemaUIDs?: {
+    AreaRegistration?: string | null;
+    PublishedIntervention?: string | null;
+    GardenerMilestone?: string | null;
+    ScheduledIntervention?: string | null;
+    GardenerCheckin?: string | null;
+    GardenerCheckout?: string | null;
+    GardenerReport?: string | null;
+    AdminValidation?: string | null;
+    CitizenFeedback?: string | null;
+    Healthcheck?: string | null;
+  };
+  /**
+   * Display only — the private key lives in OPENGARDEN_SIGNER_PRIVATE_KEY.
+   */
+  signerWalletPublic?: string | null;
+  storage: {
+    provider: 'inMemory' | 'ipfs' | 's3';
+    gatewayUrl?: string | null;
+  };
+  graphqlUrl?: string | null;
+  storeUrl?: string | null;
+  /**
+   * When true, only ScheduledIntervention is on-chain-timestamped (matches spec §4.4).
+   */
+  mvpMode?: boolean | null;
+  /**
+   * One-shot acknowledgement required when switching to a new chain after historical activity.
+   */
+  confirmChainSwitch?: boolean | null;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "organizationProfile".
+ */
+export interface OrganizationProfile {
+  id: number;
+  name: string;
+  legalEntity?: string | null;
+  description?: string | null;
+  website?: string | null;
+  logo?: (number | null) | Media;
+  attesterWalletPublic?: string | null;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "taskCatalog".
+ */
+export interface TaskCatalog {
+  id: number;
+  tasks?:
+    | {
+        code: string;
+        label: string;
+        description?: string | null;
+        id?: string | null;
+      }[]
+    | null;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "protocolConfig_select".
+ */
+export interface ProtocolConfigSelect<T extends boolean = true> {
+  chain?: T;
+  chainIdSnapshot?: T;
+  easAddress?: T;
+  schemaRegistryAddress?: T;
+  schemaUIDs?:
+    | T
+    | {
+        AreaRegistration?: T;
+        PublishedIntervention?: T;
+        GardenerMilestone?: T;
+        ScheduledIntervention?: T;
+        GardenerCheckin?: T;
+        GardenerCheckout?: T;
+        GardenerReport?: T;
+        AdminValidation?: T;
+        CitizenFeedback?: T;
+        Healthcheck?: T;
+      };
+  signerWalletPublic?: T;
+  storage?:
+    | T
+    | {
+        provider?: T;
+        gatewayUrl?: T;
+      };
+  graphqlUrl?: T;
+  storeUrl?: T;
+  mvpMode?: T;
+  confirmChainSwitch?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "organizationProfile_select".
+ */
+export interface OrganizationProfileSelect<T extends boolean = true> {
+  name?: T;
+  legalEntity?: T;
+  description?: T;
+  website?: T;
+  logo?: T;
+  attesterWalletPublic?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "taskCatalog_select".
+ */
+export interface TaskCatalogSelect<T extends boolean = true> {
+  tasks?:
+    | T
+    | {
+        code?: T;
+        label?: T;
+        description?: T;
+        id?: T;
+      };
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
