@@ -1,4 +1,4 @@
-import { AreaType, InterventionType } from "@refi-italia/opengarden/helpers";
+import { AreaType, InterventionType } from "@refi-italia/opengarden";
 import { getPayload, type Payload } from "payload";
 import { beforeAll, describe, expect, it } from "vitest";
 import config from "@/payload.config";

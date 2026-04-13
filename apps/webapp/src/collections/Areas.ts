@@ -1,4 +1,4 @@
-import { AreaType } from "@refi-italia/opengarden/helpers";
+import { AreaType } from "@refi-italia/opengarden";
 import type { CollectionBeforeValidateHook, CollectionConfig } from "payload";
 import { APIError } from "payload";
 import { authenticated } from "../access/authenticated";

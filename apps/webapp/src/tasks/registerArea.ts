@@ -1,7 +1,7 @@
-// Type-only import from the SDK root entry is safe — TS strips it at compile
-// time, so the EAS SDK ESM chain is never loaded by the Payload CLI.
-import type { AreaRegistrationInput } from "@refi-italia/opengarden";
-import type { AreaType } from "@refi-italia/opengarden/helpers";
+import type {
+	AreaRegistrationInput,
+	AreaType,
+} from "@refi-italia/opengarden";
 import type { TaskConfig } from "payload";
 
 import {

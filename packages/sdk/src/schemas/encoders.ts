@@ -1,4 +1,4 @@
-import { SchemaEncoder } from "@ethereum-attestation-service/eas-sdk";
+import type { SchemaEncoder as SchemaEncoderType } from "@ethereum-attestation-service/eas-sdk";
 import { ZERO_BYTES32 } from "../constants";
 import { type SponsorRef, serializeSponsorRef } from "../sponsor";
 import type { AreaType, InterventionType, MilestoneLevel } from "../types/enums";
@@ -34,6 +34,29 @@ import {
 	validateScheduledIntervention,
 } from "./validators";
 
+let SchemaEncoderCtor: (new (schema: string) => SchemaEncoderType) | null =
+	null;
+
+/**
+ * Lazy-loads the `SchemaEncoder` class from `eas-sdk` and caches it.
+ * Idempotent. `createOpenGardenClient` calls it automatically; consumers
+ * calling the encode/decode helpers directly must await it first.
+ */
+export async function initEncoders(): Promise<void> {
+	if (SchemaEncoderCtor) return;
+	const mod = await import("@ethereum-attestation-service/eas-sdk");
+	SchemaEncoderCtor = mod.SchemaEncoder;
+}
+
+export function newSchemaEncoder(schema: string): SchemaEncoderType {
+	if (!SchemaEncoderCtor) {
+		throw new Error(
+			"SchemaEncoder not initialised. Call `initEncoders()` (or use `createOpenGardenClient`) first.",
+		);
+	}
+	return new SchemaEncoderCtor(schema);
+}
+
 function hashOrZero(id: string | null): string {
 	return id === null ? ZERO_BYTES32 : hashIdentifier(id);
 }
@@ -51,7 +74,7 @@ function hashCommissionIdOrZero(
 
 export function encodeAreaRegistration(input: AreaRegistrationInput): string {
 	validateAreaRegistration(input);
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.AreaRegistration);
+	const encoder = newSchemaEncoder(SCHEMA_STRINGS.AreaRegistration);
 	return encoder.encodeData([
 		{ name: "areaId", value: input.areaId, type: "string" },
 		{ name: "latitude", value: toMicrodegrees(input.latitude), type: "int32" },
@@ -75,7 +98,7 @@ export function encodePublishedIntervention(
 	input: PublishedInterventionInput,
 ): string {
 	validatePublishedIntervention(input);
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.PublishedIntervention);
+	const encoder = newSchemaEncoder(SCHEMA_STRINGS.PublishedIntervention);
 	return encoder.encodeData([
 		{ name: "areaUID", value: input.areaUID, type: "bytes32" },
 		{ name: "interventionId", value: input.interventionId, type: "string" },
@@ -104,7 +127,7 @@ export function encodePublishedIntervention(
 
 export function encodeGardenerMilestone(input: GardenerMilestoneInput): string {
 	validateGardenerMilestone(input);
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.GardenerMilestone);
+	const encoder = newSchemaEncoder(SCHEMA_STRINGS.GardenerMilestone);
 	return encoder.encodeData([
 		{ name: "milestoneLevel", value: input.milestoneLevel, type: "uint8" },
 		{
@@ -132,7 +155,7 @@ export function encodeScheduledIntervention(
 	input: ScheduledInterventionInput,
 ): string {
 	validateScheduledIntervention(input);
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.ScheduledIntervention);
+	const encoder = newSchemaEncoder(SCHEMA_STRINGS.ScheduledIntervention);
 	return encoder.encodeData([
 		{ name: "areaUID", value: input.areaUID, type: "bytes32" },
 		{ name: "interventionId", value: input.interventionId, type: "string" },
@@ -155,7 +178,7 @@ export function encodeScheduledIntervention(
 
 export function encodeGardenerCheckin(input: GardenerCheckinInput): string {
 	validateGardenerCheckin(input);
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.GardenerCheckin);
+	const encoder = newSchemaEncoder(SCHEMA_STRINGS.GardenerCheckin);
 	return encoder.encodeData([
 		{ name: "interventionUID", value: input.interventionUID, type: "bytes32" },
 		{ name: "latitude", value: toMicrodegrees(input.latitude), type: "int32" },
@@ -175,7 +198,7 @@ export function encodeGardenerCheckin(input: GardenerCheckinInput): string {
 
 export function encodeGardenerCheckout(input: GardenerCheckoutInput): string {
 	validateGardenerCheckout(input);
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.GardenerCheckout);
+	const encoder = newSchemaEncoder(SCHEMA_STRINGS.GardenerCheckout);
 	return encoder.encodeData([
 		{ name: "checkinUID", value: input.checkinUID, type: "bytes32" },
 		{
@@ -189,7 +212,7 @@ export function encodeGardenerCheckout(input: GardenerCheckoutInput): string {
 
 export function encodeGardenerReport(input: GardenerReportInput): string {
 	validateGardenerReport(input);
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.GardenerReport);
+	const encoder = newSchemaEncoder(SCHEMA_STRINGS.GardenerReport);
 	return encoder.encodeData([
 		{ name: "interventionUID", value: input.interventionUID, type: "bytes32" },
 		{ name: "checkoutUID", value: input.checkoutUID, type: "bytes32" },
@@ -202,7 +225,7 @@ export function encodeGardenerReport(input: GardenerReportInput): string {
 
 export function encodeAdminValidation(input: AdminValidationInput): string {
 	validateAdminValidation(input);
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.AdminValidation);
+	const encoder = newSchemaEncoder(SCHEMA_STRINGS.AdminValidation);
 	return encoder.encodeData([
 		{ name: "scheduleUID", value: input.scheduleUID, type: "bytes32" },
 		{ name: "approved", value: input.approved, type: "bool" },
@@ -218,7 +241,7 @@ export function encodeAdminValidation(input: AdminValidationInput): string {
 
 export function encodeCitizenFeedback(input: CitizenFeedbackInput): string {
 	validateCitizenFeedback(input);
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.CitizenFeedback);
+	const encoder = newSchemaEncoder(SCHEMA_STRINGS.CitizenFeedback);
 	return encoder.encodeData([
 		{ name: "areaUID", value: input.areaUID, type: "bytes32" },
 		{ name: "rating", value: input.rating, type: "uint8" },
@@ -229,7 +252,7 @@ export function encodeCitizenFeedback(input: CitizenFeedbackInput): string {
 
 export function encodeHealthcheck(input: HealthcheckInput): string {
 	validateHealthcheck(input);
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.Healthcheck);
+	const encoder = newSchemaEncoder(SCHEMA_STRINGS.Healthcheck);
 	return encoder.encodeData([
 		{ name: "areaUID", value: input.areaUID, type: "bytes32" },
 		{ name: "interventionUID", value: input.interventionUID, type: "bytes32" },
@@ -267,7 +290,7 @@ function getFieldValue(decoded: DecodedField[], name: string): unknown {
 }
 
 export function decodeAreaRegistration(data: string) {
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.AreaRegistration);
+	const encoder = newSchemaEncoder(SCHEMA_STRINGS.AreaRegistration);
 	const decoded = encoder.decodeData(data) as unknown as DecodedField[];
 	return {
 		areaId: getFieldValue(decoded, "areaId") as string,
@@ -281,7 +304,7 @@ export function decodeAreaRegistration(data: string) {
 }
 
 export function decodePublishedIntervention(data: string) {
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.PublishedIntervention);
+	const encoder = newSchemaEncoder(SCHEMA_STRINGS.PublishedIntervention);
 	const decoded = encoder.decodeData(data) as unknown as DecodedField[];
 	return {
 		areaUID: String(getFieldValue(decoded, "areaUID")),
@@ -300,7 +323,7 @@ export function decodePublishedIntervention(data: string) {
 }
 
 export function decodeGardenerMilestone(data: string) {
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.GardenerMilestone);
+	const encoder = newSchemaEncoder(SCHEMA_STRINGS.GardenerMilestone);
 	const decoded = encoder.decodeData(data) as unknown as DecodedField[];
 	return {
 		milestoneLevel: Number(
@@ -318,7 +341,7 @@ export function decodeGardenerMilestone(data: string) {
 }
 
 export function decodeScheduledIntervention(data: string) {
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.ScheduledIntervention);
+	const encoder = newSchemaEncoder(SCHEMA_STRINGS.ScheduledIntervention);
 	const decoded = encoder.decodeData(data) as unknown as DecodedField[];
 	return {
 		areaUID: String(getFieldValue(decoded, "areaUID")),
@@ -335,7 +358,7 @@ export function decodeScheduledIntervention(data: string) {
 }
 
 export function decodeHealthcheck(data: string) {
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.Healthcheck);
+	const encoder = newSchemaEncoder(SCHEMA_STRINGS.Healthcheck);
 	const decoded = encoder.decodeData(data) as unknown as DecodedField[];
 	return {
 		areaUID: String(getFieldValue(decoded, "areaUID")),
@@ -349,7 +372,7 @@ export function decodeHealthcheck(data: string) {
 }
 
 export function decodeCitizenFeedback(data: string) {
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.CitizenFeedback);
+	const encoder = newSchemaEncoder(SCHEMA_STRINGS.CitizenFeedback);
 	const decoded = encoder.decodeData(data) as unknown as DecodedField[];
 	return {
 		areaUID: String(getFieldValue(decoded, "areaUID")),

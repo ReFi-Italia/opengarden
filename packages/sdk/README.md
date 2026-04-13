@@ -24,17 +24,21 @@ pnpm add @refi-italia/opengarden ethers
 
 ```ts
 import { ethers } from 'ethers';
-import { OpenGardenClient, OPTIMISM_MAINNET, ZERO_BYTES32 } from '@refi-italia/opengarden';
+import { createOpenGardenClient } from '@refi-italia/opengarden';
 
 const provider = new ethers.JsonRpcProvider('https://mainnet.optimism.io');
 const signer = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
 
-const client = new OpenGardenClient({
+// `createOpenGardenClient` lazy-loads `eas-sdk` and wires the EAS +
+// SchemaRegistry dependencies automatically. Chain can be a name string
+// (`"optimism-mainnet"`) or a full `ChainConfig` object for custom chains.
+const client = await createOpenGardenClient({
   signer,
-  chain: OPTIMISM_MAINNET,
+  chain: 'optimism-mainnet',
 });
 
-// Register schemas (once per chain)
+// Schema UIDs ship pre-registered for chains tracked in `chains/schemas.json`,
+// so on those chains you can skip `registerAllSchemas` entirely.
 await client.registerAllSchemas();
 
 // Register an area
@@ -160,58 +164,78 @@ const result = await client.verifyEvidenceBundle(interventionUID);
 Evidence bundle upload/download requires a storage adapter. The SDK doesn't bundle one — bring your own:
 
 ```ts
-import { OpenGardenClient, OPTIMISM_MAINNET } from '@refi-italia/opengarden';
+import { createOpenGardenClient } from '@refi-italia/opengarden';
 import type { StorageAdapter } from '@refi-italia/opengarden';
 
 const ipfsStorage: StorageAdapter = {
   async upload(data) {
-    // Pin to IPFS, return CID as bytes32 hash
     const cid = await pinToIPFS(data);
     return cidToBytes32(cid);
   },
   async download(hash) {
-    // Fetch from IPFS by hash
     return await fetchFromIPFS(bytes32ToCid(hash));
   },
 };
 
-const client = new OpenGardenClient({
+const client = await createOpenGardenClient({
   signer,
-  chain: OPTIMISM_MAINNET,
+  chain: 'optimism-mainnet',
   storage: ipfsStorage,
 });
 ```
 
 ## Pre-registered schemas
 
-If schemas are already registered on-chain, pass their UIDs to skip registration:
+Canonical UIDs for chains listed in `packages/sdk/src/chains/schemas.json` ship with the SDK — `createOpenGardenClient` merges them into the client automatically. To override a UID (custom deployment) or provide UIDs for a chain not in the JSON, pass `schemaUIDs`:
 
 ```ts
-const client = new OpenGardenClient({
+const client = await createOpenGardenClient({
   signer,
-  chain: OPTIMISM_MAINNET,
+  chain: 'optimism-mainnet',
   schemaUIDs: {
-    AreaRegistration: '0x948b...',
-    PublishedIntervention: '0x4208...',
-    // ...all 10 schemas
+    AreaRegistration: '0xcustom…',
   },
 });
 ```
 
 ## API reference
 
-### Constructor
+### `createOpenGardenClient(config)` — async helper
+
+Lazy-loads `eas-sdk`, constructs connected `EAS` + `SchemaRegistry` instances, and returns a fully-initialised `OpenGardenClient`. This is the common path.
+
+| Config field | Type | Required | Description |
+|---|---|---|---|
+| `signer` | `ethers.Signer` | Yes | Wallet signer for transactions |
+| `chain` | `ChainName \| ChainConfig` | Yes | Chain name string (e.g. `"optimism-mainnet"`) or full `ChainConfig` |
+| `schemaUIDs` | `Partial<SchemaUIDs>` | No | Override canonical UIDs (merged on top of chain defaults) |
+| `storage` | `StorageAdapter` | No | Storage adapter for evidence bundles |
+| `graphqlUrl` | `string` | No | Override the EAS GraphQL endpoint used for reads |
+| `storeUrl` | `string` | No | Override the off-chain attestation store endpoint |
+
+### `new OpenGardenClient(config)` — direct DI
+
+For consumers that already hold `eas-sdk` instances (or want to inject mocks in tests), construct the client directly:
 
 ```ts
-new OpenGardenClient(config: OpenGardenConfig)
+import { EAS, SchemaRegistry } from '@ethereum-attestation-service/eas-sdk';
+import { OpenGardenClient, OPTIMISM_MAINNET } from '@refi-italia/opengarden';
+
+const eas = new EAS(OPTIMISM_MAINNET.easAddress).connect(signer);
+const registry = new SchemaRegistry(OPTIMISM_MAINNET.schemaRegistryAddress).connect(signer);
+const client = new OpenGardenClient({ signer, chain: OPTIMISM_MAINNET, eas, registry });
 ```
 
 | Config field | Type | Required | Description |
 |---|---|---|---|
 | `signer` | `ethers.Signer` | Yes | Wallet signer for transactions |
-| `chain` | `ChainConfig` | Yes | Chain configuration (use exported constants) |
-| `schemaUIDs` | `Partial<SchemaUIDs>` | No | Pre-registered schema UIDs |
+| `eas` | `EAS` | Yes | Connected EAS instance (DI) |
+| `registry` | `SchemaRegistry` | Yes | Connected SchemaRegistry instance (DI) |
+| `chain` | `ChainName \| ChainConfig` | Yes | Chain name string or full `ChainConfig` |
+| `schemaUIDs` | `Partial<SchemaUIDs>` | No | Override canonical UIDs |
 | `storage` | `StorageAdapter` | No | Storage adapter for evidence bundles |
+| `graphqlUrl` | `string` | No | Override the EAS GraphQL endpoint used for reads |
+| `storeUrl` | `string` | No | Override the off-chain attestation store endpoint |
 
 ### Schema registration
 

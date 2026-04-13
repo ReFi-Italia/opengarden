@@ -1,4 +1,4 @@
-import { InterventionType } from "@refi-italia/opengarden/helpers";
+import { InterventionType } from "@refi-italia/opengarden";
 import type {
 	CollectionAfterReadHook,
 	CollectionBeforeValidateHook,

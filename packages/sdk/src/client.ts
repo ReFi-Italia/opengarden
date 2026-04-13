@@ -1,6 +1,5 @@
-import {
+import type {
 	EAS,
-	SchemaEncoder,
 	SchemaRegistry,
 } from "@ethereum-attestation-service/eas-sdk";
 import type { Signer } from "ethers";
@@ -42,6 +41,7 @@ import {
 	encodeHealthcheck,
 	encodePublishedIntervention,
 	encodeScheduledIntervention,
+	newSchemaEncoder,
 } from "./schemas/encoders";
 import type {
 	Area,
@@ -119,6 +119,12 @@ export class OpenGardenClient {
 				"Signer is required",
 			);
 		}
+		if (!config.eas || !config.registry) {
+			throw new OpenGardenError(
+				OpenGardenErrorCode.INVALID_INPUT,
+				"eas and registry are required. Use `createOpenGardenClient` from the SDK root entry if you want the helper to construct them for you.",
+			);
+		}
 
 		const chain = resolveChain(config.chain);
 
@@ -129,11 +135,8 @@ export class OpenGardenClient {
 		this.graphqlUrl = config.graphqlUrl ?? getGraphqlUrl(this.chainId);
 		this.storeUrl = config.storeUrl ?? getStoreUrl(this.chainId);
 
-		this.eas = new EAS(chain.easAddress);
-		this.eas.connect(this.signer);
-
-		this.registry = new SchemaRegistry(chain.schemaRegistryAddress);
-		this.registry.connect(this.signer);
+		this.eas = config.eas;
+		this.registry = config.registry;
 	}
 
 	// --- Schema Registration ---
@@ -173,7 +176,7 @@ export class OpenGardenClient {
 
 	private async nameSchema(schemaUID: string, name: string): Promise<void> {
 		try {
-			const encoder = new SchemaEncoder("bytes32 schemaId, string name");
+			const encoder = newSchemaEncoder("bytes32 schemaId, string name");
 			const encodedData = encoder.encodeData([
 				{ name: "schemaId", value: schemaUID, type: "bytes32" },
 				{ name: "name", value: name, type: "string" },

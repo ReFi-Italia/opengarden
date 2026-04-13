@@ -1,3 +1,7 @@
+import type {
+	EAS,
+	SchemaRegistry,
+} from "@ethereum-attestation-service/eas-sdk";
 import type { Provider, Signer } from "ethers";
 import type { ChainName } from "../constants";
 import type { SchemaName } from "./enums";
@@ -24,6 +28,10 @@ export interface StorageAdapter {
 export type SchemaUIDs = Record<SchemaName, string>;
 
 export interface OpenGardenConfig {
+	/** Connected EAS instance. Use `createOpenGardenClient` to wire this and `registry` automatically. */
+	eas: EAS;
+	/** Connected SchemaRegistry instance. Paired with `eas`. */
+	registry: SchemaRegistry;
 	signer: Signer;
 	provider?: Provider;
 	/**

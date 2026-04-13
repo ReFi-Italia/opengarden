@@ -1,4 +1,4 @@
-import { hashIdentifier } from "@refi-italia/opengarden/helpers";
+import { hashIdentifier } from "@refi-italia/opengarden";
 import type { CollectionBeforeChangeHook } from "payload";
 import { APIError } from "payload";
 

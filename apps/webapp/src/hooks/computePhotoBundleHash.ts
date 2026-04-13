@@ -1,4 +1,4 @@
-import { hashPhotoBundle } from "@refi-italia/opengarden/helpers";
+import { hashPhotoBundle } from "@refi-italia/opengarden";
 import type { CollectionBeforeChangeHook, Payload } from "payload";
 import { APIError } from "payload";
 

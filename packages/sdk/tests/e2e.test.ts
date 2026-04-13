@@ -13,6 +13,7 @@ import "dotenv/config";
 import { ethers } from "ethers";
 import { beforeAll, describe, expect, it } from "vitest";
 import { OpenGardenClient } from "../src/client";
+import { createOpenGardenClient } from "../src/connect";
 import {
 	BASE_SEPOLIA,
 	EVIDENCE_BUNDLE_VERSION,
@@ -98,7 +99,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 		walletAddress = await signer.getAddress();
 		storage = createMemoryStorage();
 
-		client = new OpenGardenClient({
+		client = await createOpenGardenClient({
 			signer,
 			chain,
 			storage,
@@ -436,7 +437,7 @@ describe.skipIf(skip)("E2E: indexBundleAttestations", () => {
 		const signer = new ethers.Wallet(PRIVATE_KEY, provider);
 		walletAddress = await signer.getAddress();
 
-		indexerClient = new OpenGardenClient({
+		indexerClient = await createOpenGardenClient({
 			signer,
 			chain,
 		});

@@ -2,7 +2,7 @@ import {
 	type SponsorRef,
 	serializeSponsorRef,
 	ZERO_BYTES32,
-} from "@refi-italia/opengarden/helpers";
+} from "@refi-italia/opengarden";
 import { keccak256, toUtf8Bytes } from "ethers";
 
 export interface DerivedSponsorHash {

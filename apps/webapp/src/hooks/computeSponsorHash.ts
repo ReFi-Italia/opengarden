@@ -1,4 +1,4 @@
-import type { SponsorRef } from "@refi-italia/opengarden/helpers";
+import type { SponsorRef } from "@refi-italia/opengarden";
 import type { CollectionBeforeChangeHook } from "payload";
 import { APIError } from "payload";
 import { deriveSponsorHash } from "../lib/serializeSponsorRef";

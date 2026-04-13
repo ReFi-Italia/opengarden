@@ -2,6 +2,11 @@
 
 // Client
 export { OpenGardenClient } from "./client";
+// Lazy DX helper
+export {
+	type CreateOpenGardenClientConfig,
+	createOpenGardenClient,
+} from "./connect";
 // Constants
 export type { ChainName } from "./constants";
 export {
@@ -37,6 +42,8 @@ export {
 	validateFinalizeInput,
 } from "./preflight";
 export type { SchemaDefinition } from "./schemas/definitions";
+// Schema encoder runtime (advanced — most consumers should use createOpenGardenClient)
+export { initEncoders } from "./schemas/encoders";
 // Sponsor reference helpers
 export type { SponsorRef } from "./sponsor";
 export { serializeSponsorRef } from "./sponsor";

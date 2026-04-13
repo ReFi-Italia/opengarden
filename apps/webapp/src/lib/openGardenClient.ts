@@ -1,37 +1,23 @@
 import {
 	CHAIN_CONFIGS,
 	type ChainName,
+	createOpenGardenClient,
 	getChainConfig,
-} from "@refi-italia/opengarden/helpers";
+	type OpenGardenClient,
+} from "@refi-italia/opengarden";
 import { ethers } from "ethers";
 import type { Payload } from "payload";
 
 const CHAIN_ENV_VAR = "PROTOCOL_CHAIN";
 
 export type OpenGardenContext = {
-	/**
-	 * The configured `OpenGardenClient` instance, ready to make chain calls.
-	 * Imported lazily so that loading this module from the Payload CLI / Vitest
-	 * never triggers the `@ethereum-attestation-service/eas-sdk` ESM crash.
-	 */
-	client: import("@refi-italia/opengarden").OpenGardenClient;
-	/** Chain id resolved from `PROTOCOL_CHAIN` at the time the client was built. */
+	client: OpenGardenClient;
 	chainId: number;
-	/** Resolved attester address from the env-provided private key. */
 	attesterWallet: string;
 };
 
-// Per-process cache — once we've verified the current chain id matches the
-// historical chainTransactions audit trail, skip the DB query on subsequent
-// calls. Env vars don't change at runtime so this is safe for the lifetime
-// of the process.
 let verifiedChainId: bigint | null = null;
 
-/**
- * Refuses to boot if `chainTransactions` already has activity against a
- * different `chainId`. Catches "deployed with the wrong PROTOCOL_CHAIN"
- * before any new on-chain writes corrupt the audit trail.
- */
 async function verifyChainConsistency(
 	payload: Payload,
 	chainId: bigint,
@@ -52,17 +38,6 @@ async function verifyChainConsistency(
 	verifiedChainId = chainId;
 }
 
-/**
- * Builds an `OpenGardenClient` from the env-provided chain name, signer,
- * and RPC. Lazy-imports the SDK root entry so that this module is safe to
- * import from `payload.config.ts` (the Payload CLI and Vitest both crash
- * when statically loading the EAS SDK due to upstream missing-extension
- * ESM specifiers — see apps/webapp/README.md).
- *
- * Throws with an actionable message if any required env var is missing,
- * and enforces per-deploy chain consistency against the existing
- * `chainTransactions` audit trail.
- */
 export async function getOpenGardenContext(
 	payload: Payload,
 ): Promise<OpenGardenContext> {
@@ -95,8 +70,7 @@ export async function getOpenGardenContext(
 	const signer = new ethers.Wallet(privateKey, provider);
 	const attesterWallet = await signer.getAddress();
 
-	const { OpenGardenClient } = await import("@refi-italia/opengarden");
-	const client = new OpenGardenClient({
+	const client = await createOpenGardenClient({
 		signer,
 		chain: chainName,
 	});

@@ -22,6 +22,7 @@ import type { EvidenceBundle } from "../src/types/evidence";
 import {
 	createMockSigner,
 	createTestClient,
+	createTestConfig,
 	DEFAULT_TEST_CHAIN,
 	FAKE_TX_RECEIPT,
 	MOCK_SIGNER_ADDRESS,
@@ -34,14 +35,18 @@ describe("OpenGardenClient construction", () => {
 	it("throws SIGNER_ERROR when signer is missing", () => {
 		expect(
 			() =>
-				new OpenGardenClient({
-					signer: undefined as any,
-					chain: TEST_CHAIN,
-				}),
+				new OpenGardenClient(
+					createTestConfig({
+						signer: undefined as any,
+						chain: TEST_CHAIN,
+					}),
+				),
 		).toThrow(OpenGardenError);
 
 		try {
-			new OpenGardenClient({ signer: undefined as any, chain: TEST_CHAIN });
+			new OpenGardenClient(
+				createTestConfig({ signer: undefined as any, chain: TEST_CHAIN }),
+			);
 		} catch (e) {
 			expect(e).toBeInstanceOf(OpenGardenError);
 			expect((e as OpenGardenError).code).toBe(
@@ -51,42 +56,50 @@ describe("OpenGardenClient construction", () => {
 	});
 
 	it("constructs with valid config", () => {
-		const client = new OpenGardenClient({
-			signer: createMockSigner(),
-			chain: TEST_CHAIN,
-		});
+		const client = new OpenGardenClient(
+			createTestConfig({
+				signer: createMockSigner(),
+				chain: TEST_CHAIN,
+			}),
+		);
 
 		expect(client).toBeInstanceOf(OpenGardenClient);
 	});
 
 	it("accepts pre-registered schema UIDs", () => {
-		const client = new OpenGardenClient({
-			signer: createMockSigner(),
-			chain: TEST_CHAIN,
-			schemaUIDs: {
-				AreaRegistration: "0xschema123",
-			},
-		});
+		const client = new OpenGardenClient(
+			createTestConfig({
+				signer: createMockSigner(),
+				chain: TEST_CHAIN,
+				schemaUIDs: {
+					AreaRegistration: "0xschema123",
+				},
+			}),
+		);
 
 		const uids = client.getSchemaUIDs();
 		expect(uids.AreaRegistration).toBe("0xschema123");
 	});
 
 	it("resolves a known chain name via the built-in registry", () => {
-		const client = new OpenGardenClient({
-			signer: createMockSigner(),
-			chain: "optimism-mainnet",
-		});
+		const client = new OpenGardenClient(
+			createTestConfig({
+				signer: createMockSigner(),
+				chain: "optimism-mainnet",
+			}),
+		);
 
 		expect(client).toBeInstanceOf(OpenGardenClient);
 	});
 
 	it("throws INVALID_INPUT for an unknown chain name", () => {
 		try {
-			new OpenGardenClient({
-				signer: createMockSigner(),
-				chain: "not-a-chain" as any,
-			});
+			new OpenGardenClient(
+				createTestConfig({
+					signer: createMockSigner(),
+					chain: "not-a-chain" as any,
+				}),
+			);
 			expect.fail("expected OpenGardenError");
 		} catch (e) {
 			expect(e).toBeInstanceOf(OpenGardenError);
@@ -97,10 +110,12 @@ describe("OpenGardenClient construction", () => {
 	});
 
 	it("inherits schemaUIDs from the chain config when the chain carries them", () => {
-		const client = new OpenGardenClient({
-			signer: createMockSigner(),
-			chain: "optimism-sepolia",
-		});
+		const client = new OpenGardenClient(
+			createTestConfig({
+				signer: createMockSigner(),
+				chain: "optimism-sepolia",
+			}),
+		);
 
 		const uids = client.getSchemaUIDs();
 		expect(uids.AreaRegistration).toBe(
@@ -112,13 +127,15 @@ describe("OpenGardenClient construction", () => {
 	});
 
 	it("lets explicit config.schemaUIDs override chain defaults", () => {
-		const client = new OpenGardenClient({
-			signer: createMockSigner(),
-			chain: "optimism-sepolia",
-			schemaUIDs: {
-				AreaRegistration: "0xoverridearea",
-			},
-		});
+		const client = new OpenGardenClient(
+			createTestConfig({
+				signer: createMockSigner(),
+				chain: "optimism-sepolia",
+				schemaUIDs: {
+					AreaRegistration: "0xoverridearea",
+				},
+			}),
+		);
 
 		const uids = client.getSchemaUIDs();
 		expect(uids.AreaRegistration).toBe("0xoverridearea");
@@ -131,10 +148,12 @@ describe("OpenGardenClient construction", () => {
 
 describe("OpenGardenClient schema validation", () => {
 	it("throws SCHEMA_NOT_REGISTERED when calling write without registration", async () => {
-		const client = new OpenGardenClient({
-			signer: createMockSigner(),
-			chain: TEST_CHAIN,
-		});
+		const client = new OpenGardenClient(
+			createTestConfig({
+				signer: createMockSigner(),
+				chain: TEST_CHAIN,
+			}),
+		);
 
 		await expect(
 			client.registerArea({
@@ -183,12 +202,14 @@ describe("OpenGardenClient endpoint overrides", () => {
 		});
 		vi.stubGlobal("fetch", fetchMock);
 
-		const client = new OpenGardenClient({
-			signer: createMockSigner(),
-			chain: TEST_CHAIN,
-			schemaUIDs: { PublishedIntervention: "0xschema" },
-			graphqlUrl: "https://self-hosted-indexer.example.com/graphql",
-		});
+		const client = new OpenGardenClient(
+			createTestConfig({
+				signer: createMockSigner(),
+				chain: TEST_CHAIN,
+				schemaUIDs: { PublishedIntervention: "0xschema" },
+				graphqlUrl: "https://self-hosted-indexer.example.com/graphql",
+			}),
+		);
 
 		await client.getAreaInterventions(CUSTOM_AREA_UID);
 
@@ -202,12 +223,14 @@ describe("OpenGardenClient endpoint overrides", () => {
 		const fetchMock = vi.fn().mockResolvedValue({ ok: true });
 		vi.stubGlobal("fetch", fetchMock);
 
-		const client = new OpenGardenClient({
-			signer: createMockSigner(),
-			chain: TEST_CHAIN,
-			schemaUIDs: { PublishedIntervention: "0xschema" },
-			storeUrl: "https://self-hosted-store.example.com/offchain/store",
-		});
+		const client = new OpenGardenClient(
+			createTestConfig({
+				signer: createMockSigner(),
+				chain: TEST_CHAIN,
+				schemaUIDs: { PublishedIntervention: "0xschema" },
+				storeUrl: "https://self-hosted-store.example.com/offchain/store",
+			}),
+		);
 
 		const results = await client.indexBundleAttestations({
 			interventionId: "INT-001",
@@ -245,12 +268,14 @@ describe("OpenGardenClient endpoint overrides", () => {
 			schemaRegistryAddress: "0x4200000000000000000000000000000000000020",
 		};
 
-		const client = new OpenGardenClient({
-			signer: createMockSigner(),
-			chain: unknownChain,
-			schemaUIDs: { PublishedIntervention: "0xschema" },
-			graphqlUrl: "https://private.example.com/graphql",
-		});
+		const client = new OpenGardenClient(
+			createTestConfig({
+				signer: createMockSigner(),
+				chain: unknownChain,
+				schemaUIDs: { PublishedIntervention: "0xschema" },
+				graphqlUrl: "https://private.example.com/graphql",
+			}),
+		);
 
 		await client.getAreaInterventions(CUSTOM_AREA_UID);
 		expect(fetchMock.mock.calls[0][0]).toBe(
@@ -261,10 +286,12 @@ describe("OpenGardenClient endpoint overrides", () => {
 
 describe("OpenGardenClient storage validation", () => {
 	it("throws STORAGE_NOT_CONFIGURED when uploading without adapter", async () => {
-		const client = new OpenGardenClient({
-			signer: createMockSigner(),
-			chain: TEST_CHAIN,
-		});
+		const client = new OpenGardenClient(
+			createTestConfig({
+				signer: createMockSigner(),
+				chain: TEST_CHAIN,
+			}),
+		);
 
 		await expect(client.uploadEvidenceBundle({} as any)).rejects.toThrow(
 			OpenGardenError,
@@ -286,21 +313,20 @@ describe("OpenGardenClient schema naming", () => {
 
 	function createSchemaClient() {
 		const attestCalls: any[] = [];
-		const client = createTestClient();
-
-		(client as any).registry = {
-			register: async () => ({
-				wait: async () => FAKE_SCHEMA_UID,
-				receipt: FAKE_TX_RECEIPT,
-			}),
-		};
-
-		(client as any).eas = {
-			attest: async (params: any) => {
-				attestCalls.push(params);
-				return { wait: async () => "0xnameuid", receipt: FAKE_TX_RECEIPT };
-			},
-		};
+		const client = createTestClient({
+			registry: {
+				register: async () => ({
+					wait: async () => FAKE_SCHEMA_UID,
+					receipt: FAKE_TX_RECEIPT,
+				}),
+			} as any,
+			eas: {
+				attest: async (params: any) => {
+					attestCalls.push(params);
+					return { wait: async () => "0xnameuid", receipt: FAKE_TX_RECEIPT };
+				},
+			} as any,
+		});
 
 		return { client, attestCalls };
 	}
@@ -346,35 +372,35 @@ describe("OpenGardenClient schema naming", () => {
 
 	it("skips already-registered schemas but names new ones", async () => {
 		const attestCalls: any[] = [];
-		const client = new OpenGardenClient({
-			signer: createMockSigner(),
-			chain: TEST_CHAIN,
-			schemaUIDs: {
-				AreaRegistration: "0xexisting",
-				PublishedIntervention: "0xexisting2",
-				GardenerMilestone: "0xexisting3",
-				ScheduledIntervention: "0xexisting4",
-				GardenerCheckin: "0xexisting5",
-				GardenerCheckout: "0xexisting6",
-				GardenerReport: "0xexisting7",
-				AdminValidation: "0xexisting8",
-				CitizenFeedback: "0xexisting9",
-			},
-		});
-
-		(client as any).registry = {
-			register: async () => ({
-				wait: async () => FAKE_SCHEMA_UID,
-				receipt: FAKE_TX_RECEIPT,
+		const client = new OpenGardenClient(
+			createTestConfig({
+				signer: createMockSigner(),
+				chain: TEST_CHAIN,
+				schemaUIDs: {
+					AreaRegistration: "0xexisting",
+					PublishedIntervention: "0xexisting2",
+					GardenerMilestone: "0xexisting3",
+					ScheduledIntervention: "0xexisting4",
+					GardenerCheckin: "0xexisting5",
+					GardenerCheckout: "0xexisting6",
+					GardenerReport: "0xexisting7",
+					AdminValidation: "0xexisting8",
+					CitizenFeedback: "0xexisting9",
+				},
+				registry: {
+					register: async () => ({
+						wait: async () => FAKE_SCHEMA_UID,
+						receipt: FAKE_TX_RECEIPT,
+					}),
+				} as any,
+				eas: {
+					attest: async (params: any) => {
+						attestCalls.push(params);
+						return { wait: async () => "0xnameuid", receipt: FAKE_TX_RECEIPT };
+					},
+				} as any,
 			}),
-		};
-
-		(client as any).eas = {
-			attest: async (params: any) => {
-				attestCalls.push(params);
-				return { wait: async () => "0xnameuid", receipt: FAKE_TX_RECEIPT };
-			},
-		};
+		);
 
 		const results = await client.registerAllSchemas();
 
@@ -385,23 +411,23 @@ describe("OpenGardenClient schema naming", () => {
 	});
 
 	it("still registers schema when naming schema is unavailable on chain", async () => {
-		const client = new OpenGardenClient({
-			signer: createMockSigner(),
-			chain: TEST_CHAIN,
-		});
-
-		(client as any).registry = {
-			register: async () => ({
-				wait: async () => FAKE_SCHEMA_UID,
-				receipt: FAKE_TX_RECEIPT,
+		const client = new OpenGardenClient(
+			createTestConfig({
+				signer: createMockSigner(),
+				chain: TEST_CHAIN,
+				registry: {
+					register: async () => ({
+						wait: async () => FAKE_SCHEMA_UID,
+						receipt: FAKE_TX_RECEIPT,
+					}),
+				} as any,
+				eas: {
+					attest: async () => {
+						throw new Error("NotFound");
+					},
+				} as any,
 			}),
-		};
-
-		(client as any).eas = {
-			attest: async () => {
-				throw new Error("NotFound");
-			},
-		};
+		);
 
 		const result = await client.registerSchema("AreaRegistration");
 
@@ -585,13 +611,16 @@ describe("OpenGardenClient indexBundleAttestations", () => {
 		const fetchMock = vi.fn();
 		vi.stubGlobal("fetch", fetchMock);
 
-		const client = createClient();
-		(client as any).eas = {
-			attest: async () => ({
-				wait: async () => "0xuid",
-				receipt: FAKE_TX_RECEIPT,
-			}),
-		};
+		const client = createTestClient({
+			chain: TEST_CHAIN,
+			schemaUIDs: { PublishedIntervention: "0xschema" },
+			eas: {
+				attest: async () => ({
+					wait: async () => "0xuid",
+					receipt: FAKE_TX_RECEIPT,
+				}),
+			} as any,
+		});
 
 		const result = await client.publishIntervention({
 			areaUID: "0xarea",
@@ -631,19 +660,20 @@ describe("OpenGardenClient finalizeIntervention", () => {
 			download: vi.fn(),
 		};
 
-		const client = new OpenGardenClient({
-			signer: createMockSigner(),
-			chain: TEST_CHAIN,
-			schemaUIDs: { PublishedIntervention: "0xschema" },
-			storage: storageMock,
-		});
-
-		(client as any).eas = {
-			attest: async () => ({
-				wait: async () => "0xpublishuid",
-				receipt: FAKE_TX_RECEIPT,
+		const client = new OpenGardenClient(
+			createTestConfig({
+				signer: createMockSigner(),
+				chain: TEST_CHAIN,
+				schemaUIDs: { PublishedIntervention: "0xschema" },
+				storage: storageMock,
+				eas: {
+					attest: async () => ({
+						wait: async () => "0xpublishuid",
+						receipt: FAKE_TX_RECEIPT,
+					}),
+				} as any,
 			}),
-		};
+		);
 
 		const result = await client.finalizeIntervention({
 			interventionId: "INT-001",
@@ -689,22 +719,23 @@ describe("OpenGardenClient finalizeIntervention", () => {
 			download: vi.fn(),
 		};
 
-		const client = new OpenGardenClient({
-			signer: createMockSigner(),
-			chain: TEST_CHAIN,
-			schemaUIDs: { PublishedIntervention: "0xschema" },
-			storage: storageMock,
-		});
-
-		(client as any).eas = {
-			attest: async (params: any) => {
-				attestCalls.push(params);
-				return {
-					wait: async () => "0xpublishuid",
-					receipt: FAKE_TX_RECEIPT,
-				};
-			},
-		};
+		const client = new OpenGardenClient(
+			createTestConfig({
+				signer: createMockSigner(),
+				chain: TEST_CHAIN,
+				schemaUIDs: { PublishedIntervention: "0xschema" },
+				storage: storageMock,
+				eas: {
+					attest: async (params: any) => {
+						attestCalls.push(params);
+						return {
+							wait: async () => "0xpublishuid",
+							receipt: FAKE_TX_RECEIPT,
+						};
+					},
+				} as any,
+			}),
+		);
 
 		await client.finalizeIntervention({
 			interventionId: "INT-001",
@@ -757,12 +788,14 @@ describe("OpenGardenClient finalizeIntervention", () => {
 			download: vi.fn(),
 		};
 
-		const client = new OpenGardenClient({
-			signer: createMockSigner(),
-			chain: TEST_CHAIN,
-			schemaUIDs: { PublishedIntervention: "0xschema" },
-			storage: storageMock,
-		});
+		const client = new OpenGardenClient(
+			createTestConfig({
+				signer: createMockSigner(),
+				chain: TEST_CHAIN,
+				schemaUIDs: { PublishedIntervention: "0xschema" },
+				storage: storageMock,
+			}),
+		);
 
 		const backfilledInput = {
 			interventionId: "INT-001",
@@ -811,8 +844,6 @@ describe("OpenGardenClient getArea", () => {
 	const FAKE_AREA_UID =
 		"0x000000000000000000000000000000000000000000000000000000000000abcd";
 
-	const createReadClient = () => createTestClient();
-
 	function makeEncodedArea() {
 		return encodeAreaRegistration({
 			areaId: "RM-PIGN-042",
@@ -827,17 +858,17 @@ describe("OpenGardenClient getArea", () => {
 	}
 
 	it("returns decoded area for valid uid", async () => {
-		const client = createReadClient();
 		const encodedData = makeEncodedArea();
-
-		(client as any).eas = {
-			getAttestation: async () => ({
-				uid: FAKE_AREA_UID,
-				data: encodedData,
-				attester: MOCK_SIGNER_ADDRESS,
-				time: 1700000000n,
-			}),
-		};
+		const client = createTestClient({
+			eas: {
+				getAttestation: async () => ({
+					uid: FAKE_AREA_UID,
+					data: encodedData,
+					attester: MOCK_SIGNER_ADDRESS,
+					time: 1700000000n,
+				}),
+			} as any,
+		});
 
 		const area = await client.getArea(FAKE_AREA_UID);
 
@@ -850,16 +881,16 @@ describe("OpenGardenClient getArea", () => {
 	});
 
 	it("throws ATTESTATION_NOT_FOUND for ZERO_BYTES32 uid", async () => {
-		const client = createReadClient();
-
-		(client as any).eas = {
-			getAttestation: async () => ({
-				uid: ZERO_BYTES32,
-				data: "0x",
-				attester: "0x0000000000000000000000000000000000000000",
-				time: 0n,
-			}),
-		};
+		const client = createTestClient({
+			eas: {
+				getAttestation: async () => ({
+					uid: ZERO_BYTES32,
+					data: "0x",
+					attester: "0x0000000000000000000000000000000000000000",
+					time: 0n,
+				}),
+			} as any,
+		});
 
 		await expect(client.getArea(FAKE_AREA_UID)).rejects.toThrow(
 			OpenGardenError,
@@ -879,8 +910,6 @@ describe("OpenGardenClient getIntervention", () => {
 	const FAKE_INTERVENTION_UID =
 		"0x000000000000000000000000000000000000000000000000000000000000beef";
 
-	const createReadClient = () => createTestClient();
-
 	function makeEncodedIntervention() {
 		return encodePublishedIntervention({
 			areaUID:
@@ -899,18 +928,18 @@ describe("OpenGardenClient getIntervention", () => {
 	}
 
 	it("returns decoded intervention for valid uid", async () => {
-		const client = createReadClient();
 		const encodedData = makeEncodedIntervention();
-
-		(client as any).eas = {
-			getAttestation: async () => ({
-				uid: FAKE_INTERVENTION_UID,
-				data: encodedData,
-				attester: MOCK_SIGNER_ADDRESS,
-				recipient: ZERO_ADDRESS,
-				time: 1700000000n,
-			}),
-		};
+		const client = createTestClient({
+			eas: {
+				getAttestation: async () => ({
+					uid: FAKE_INTERVENTION_UID,
+					data: encodedData,
+					attester: MOCK_SIGNER_ADDRESS,
+					recipient: ZERO_ADDRESS,
+					time: 1700000000n,
+				}),
+			} as any,
+		});
 
 		const intervention = await client.getIntervention(FAKE_INTERVENTION_UID);
 
@@ -925,17 +954,17 @@ describe("OpenGardenClient getIntervention", () => {
 	});
 
 	it("throws ATTESTATION_NOT_FOUND for ZERO_BYTES32 uid", async () => {
-		const client = createReadClient();
-
-		(client as any).eas = {
-			getAttestation: async () => ({
-				uid: ZERO_BYTES32,
-				data: "0x",
-				attester: "0x0000000000000000000000000000000000000000",
-				recipient: "0x0000000000000000000000000000000000000000",
-				time: 0n,
-			}),
-		};
+		const client = createTestClient({
+			eas: {
+				getAttestation: async () => ({
+					uid: ZERO_BYTES32,
+					data: "0x",
+					attester: "0x0000000000000000000000000000000000000000",
+					recipient: "0x0000000000000000000000000000000000000000",
+					time: 0n,
+				}),
+			} as any,
+		});
 
 		await expect(client.getIntervention(FAKE_INTERVENTION_UID)).rejects.toThrow(
 			OpenGardenError,
@@ -1202,12 +1231,6 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 				.mockResolvedValue(new TextEncoder().encode(JSON.stringify(bundle))),
 		};
 
-		const client = new OpenGardenClient({
-			signer: createMockSigner(),
-			chain: TEST_CHAIN,
-			storage: storageMock,
-		});
-
 		const tsMap = timestampMap ?? {
 			"0xsched": 100,
 			"0xcheckin": 200,
@@ -1222,16 +1245,23 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 			crewSize: interventionOverrides?.crewSize,
 		});
 
-		(client as any).eas = {
-			getAttestation: async () => ({
-				uid: FAKE_INTERVENTION_UID,
-				data: encodedData,
-				attester: MOCK_SIGNER_ADDRESS,
-				recipient: ZERO_ADDRESS,
-				time: interventionOverrides?.time ?? 600n,
+		const client = new OpenGardenClient(
+			createTestConfig({
+				signer: createMockSigner(),
+				chain: TEST_CHAIN,
+				storage: storageMock,
+				eas: {
+					getAttestation: async () => ({
+						uid: FAKE_INTERVENTION_UID,
+						data: encodedData,
+						attester: MOCK_SIGNER_ADDRESS,
+						recipient: ZERO_ADDRESS,
+						time: interventionOverrides?.time ?? 600n,
+					}),
+					getTimestamp: async (uid: string) => BigInt(tsMap[uid] ?? 0),
+				} as any,
 			}),
-			getTimestamp: async (uid: string) => BigInt(tsMap[uid] ?? 0),
-		};
+		);
 
 		return { client, storageMock };
 	}
@@ -1519,10 +1549,12 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 	});
 
 	it("throws STORAGE_NOT_CONFIGURED without storage adapter", async () => {
-		const client = new OpenGardenClient({
-			signer: createMockSigner(),
-			chain: TEST_CHAIN,
-		});
+		const client = new OpenGardenClient(
+			createTestConfig({
+				signer: createMockSigner(),
+				chain: TEST_CHAIN,
+			}),
+		);
 
 		await expect(
 			client.verifyEvidenceBundle(FAKE_INTERVENTION_UID),

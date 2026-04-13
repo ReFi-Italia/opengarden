@@ -12,11 +12,6 @@
 			"import": "./dist/index.mjs",
 			"require": "./dist/index.cjs",
 			"types": "./dist/index.d.ts"
-		},
-		"./helpers": {
-			"import": "./dist/exports/helpers.mjs",
-			"require": "./dist/exports/helpers.cjs",
-			"types": "./dist/exports/helpers.d.ts"
 		}
 	},
 	"files": [

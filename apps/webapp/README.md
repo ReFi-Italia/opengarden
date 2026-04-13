@@ -93,21 +93,6 @@ To bring up a new chain:
 
 **Chain-switch safety.** The webapp refuses to boot (at the first `getOpenGardenContext` call) if `chainTransactions` already contains activity against a different `chainId` than the one `PROTOCOL_CHAIN` currently resolves to. Redeploying with the wrong chain set will fail loudly before any new on-chain writes corrupt the audit trail.
 
-## SDK imports
-
-The webapp only consumes pure helpers from the SDK — `serializeSponsorRef`, `hashIdentifier`, `hashPhotoBundle`, the chain config constants, and the `AreaType` / `InterventionType` enums. Always import from the **`/helpers`** subpath:
-
-```ts
-import {
-  serializeSponsorRef,
-  hashIdentifier,
-  AreaType,
-  CELO_MAINNET,
-} from '@refi-italia/opengarden/helpers'
-```
-
-The default `@refi-italia/opengarden` entry transitively loads `OpenGardenClient`, which imports the EAS SDK. The upstream `@ethereum-attestation-service/eas-sdk` ships ESM with missing `.js` extensions, so any tool that uses Node's native ESM loader (Payload CLI, Vitest, scripts) crashes on the root entry. The helpers subpath bypasses that entire chain.
-
 ## Scripts
 
 | Script | What it does |
@@ -153,7 +138,7 @@ Every task file under `src/tasks/*.ts` follows the same shape, so adding the nex
 
 1. Load the target row, short-circuit to the existing `chain.*` mirror if the row is already in the terminal state (idempotent retries).
 2. Transition `lifecycleStatus` to the in-flight state via `payload.update` with `overrideAccess: true` and `req.context.skipLifecycleHooks: true` — the only sanctioned way around the form-level freeze and the `validateInterventionTransition` guard.
-3. Build the SDK input, fetch an `OpenGardenContext` from `lib/openGardenClient.ts` (lazy-imports the SDK root entry — see "SDK imports" below), and call the SDK method.
+3. Build the SDK input, fetch an `OpenGardenContext` from `lib/openGardenClient.ts`, and call the SDK method.
 4. On success, populate the row's `chain.*` mirror + flip to the terminal state, then append a `chainTransactions` audit row via `lib/recordChainTransaction.ts`.
 5. On error, flip to `failed`, append a failed audit row, and rethrow so Payload's retry machinery picks it up. Retries use `shouldRestore: true` (the default), so a previously-succeeded task inside a retried job is skipped.
 
@@ -170,7 +155,6 @@ The following are intentionally not in this package yet:
 - Admin UI action buttons on each relevant edit view (`Schedule`, `Validate`, `Publish`, `Register Area`, `Build / Verify Bundle`). The `registerAreaAction` server action already exists; wiring a React button that calls it is the next step.
 - Task handlers for the intervention state machine (`scheduleIntervention`, `validateIntervention`, `publishIntervention`) and evidence bundles (`buildBundle`, `publishBundle`, `verifyBundle`). Each follows the same shape as `registerArea.ts`.
 - **Switching from the local SQLite file adapter to Postgres / Turso before the first Vercel deploy.** Vercel's filesystem is ephemeral and per-function, so `file:./webapp.db` cannot survive there — the jobs collection needs a shared, persistent datastore.
-- SDK refactor: make `packages/sdk/src/client.ts` lazy-import `@ethereum-attestation-service/eas-sdk` inside its methods so the root entry becomes safe to statically import. This retires the `/helpers` split and the `await import(...)` dance in `lib/openGardenClient.ts`.
 - Composite and partial-unique indexes (`sponsors.canonicalJson` for non-volunteer, `gardeners.wallet` for non-null, the `(intervention, gardener)` checkin uniqueness, etc.) — currently enforced at the application level via hooks. The DB-level partial indexes need a hand-edited migration file.
 - IPFS pin pipeline beyond the stub `inMemory` storage adapter.
 - `gardenerMilestones` and `citizenFeedback` collections.
