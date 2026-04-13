@@ -1,9 +1,13 @@
-import { serializeSponsorRef, type SponsorRef, ZERO_BYTES32 } from '@refi-italia/opengarden/helpers'
-import { keccak256, toUtf8Bytes } from 'ethers'
+import {
+	type SponsorRef,
+	serializeSponsorRef,
+	ZERO_BYTES32,
+} from "@refi-italia/opengarden/helpers";
+import { keccak256, toUtf8Bytes } from "ethers";
 
 export interface DerivedSponsorHash {
-  canonicalJson: string
-  hash: string
+	canonicalJson: string;
+	hash: string;
 }
 
 /**
@@ -16,12 +20,12 @@ export interface DerivedSponsorHash {
  * `serializeSponsorRef` so that any future schema change lands in one place.
  */
 export function deriveSponsorHash(ref: SponsorRef): DerivedSponsorHash {
-  const canonical = serializeSponsorRef(ref)
-  if (canonical === null) {
-    return { canonicalJson: 'null', hash: ZERO_BYTES32 }
-  }
-  return {
-    canonicalJson: canonical,
-    hash: keccak256(toUtf8Bytes(canonical)),
-  }
+	const canonical = serializeSponsorRef(ref);
+	if (canonical === null) {
+		return { canonicalJson: "null", hash: ZERO_BYTES32 };
+	}
+	return {
+		canonicalJson: canonical,
+		hash: keccak256(toUtf8Bytes(canonical)),
+	};
 }

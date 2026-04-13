@@ -1,5 +1,5 @@
-import type { CollectionBeforeChangeHook } from 'payload'
-import { APIError } from 'payload'
+import type { CollectionBeforeChangeHook } from "payload";
+import { APIError } from "payload";
 
 /**
  * Generic beforeChange helper used by `sponsors` and `staff` to enforce the
@@ -11,35 +11,35 @@ import { APIError } from 'payload'
  * action (never by this hook). This hook only reads it.
  */
 export interface FreezeOnFirstUseOptions {
-  /** Fields whose value contributes to the canonical hash. Edits to these are refused when `frozen === true`. */
-  hashInputFields: readonly string[]
+	/** Fields whose value contributes to the canonical hash. Edits to these are refused when `frozen === true`. */
+	hashInputFields: readonly string[];
 }
 
 export const freezeOnFirstUse = (
-  options: FreezeOnFirstUseOptions,
+	options: FreezeOnFirstUseOptions,
 ): CollectionBeforeChangeHook => {
-  return async ({ data, originalDoc, operation }) => {
-    if (operation !== 'update' || !originalDoc) return data
-    if (!originalDoc.frozen) return data
+	return async ({ data, originalDoc, operation }) => {
+		if (operation !== "update" || !originalDoc) return data;
+		if (!originalDoc.frozen) return data;
 
-    for (const field of options.hashInputFields) {
-      const before = (originalDoc as Record<string, unknown>)[field]
-      const after = (data as Record<string, unknown>)[field]
-      if (after !== undefined && !deepEqual(before, after)) {
-        throw new APIError(
-          `Cannot modify frozen field "${field}" — row is already referenced by an attested intervention.`,
-          403,
-        )
-      }
-    }
+		for (const field of options.hashInputFields) {
+			const before = (originalDoc as Record<string, unknown>)[field];
+			const after = (data as Record<string, unknown>)[field];
+			if (after !== undefined && !deepEqual(before, after)) {
+				throw new APIError(
+					`Cannot modify frozen field "${field}" — row is already referenced by an attested intervention.`,
+					403,
+				);
+			}
+		}
 
-    return data
-  }
-}
+		return data;
+	};
+};
 
 const deepEqual = (a: unknown, b: unknown): boolean => {
-  if (a === b) return true
-  if (a == null || b == null) return a === b
-  if (typeof a !== 'object' || typeof b !== 'object') return false
-  return JSON.stringify(a) === JSON.stringify(b)
-}
+	if (a === b) return true;
+	if (a == null || b == null) return a === b;
+	if (typeof a !== "object" || typeof b !== "object") return false;
+	return JSON.stringify(a) === JSON.stringify(b);
+};

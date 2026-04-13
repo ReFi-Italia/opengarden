@@ -1,4 +1,4 @@
-import type { Field } from 'payload'
+import type { Field } from "payload";
 
 /**
  * Field factory for the `interventions.commissioning` group. Returns the
@@ -13,20 +13,20 @@ import type { Field } from 'payload'
  * deliberate action-button click can.
  */
 export const commissioningFields = (): Field[] => [
-  {
-    name: 'sponsor',
-    type: 'relationship',
-    relationTo: 'sponsors',
-    required: true,
-  },
-  {
-    name: 'commissionRefHashAtSchedule',
-    type: 'text',
-    admin: {
-      readOnly: true,
-      description:
-        'Snapshotted from sponsor.commissionRefHash the moment the intervention is scheduled. Populated by the schedule-intervention server action.',
-    },
-    index: true,
-  },
-]
+	{
+		name: "sponsor",
+		type: "relationship",
+		relationTo: "sponsors",
+		required: true,
+	},
+	{
+		name: "commissionRefHashAtSchedule",
+		type: "text",
+		admin: {
+			readOnly: true,
+			description:
+				"Snapshotted from sponsor.commissionRefHash the moment the intervention is scheduled. Populated by the schedule-intervention server action.",
+		},
+		index: true,
+	},
+];

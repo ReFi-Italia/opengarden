@@ -1,6 +1,6 @@
-import type { CollectionBeforeChangeHook, Payload } from 'payload'
-import { APIError } from 'payload'
-import { hashPhotoBundle } from '@refi-italia/opengarden/helpers'
+import { hashPhotoBundle } from "@refi-italia/opengarden/helpers";
+import type { CollectionBeforeChangeHook, Payload } from "payload";
+import { APIError } from "payload";
 
 /**
  * Derives the `photosHash` field on a row that holds a `photos:
@@ -13,65 +13,65 @@ import { hashPhotoBundle } from '@refi-italia/opengarden/helpers'
  * attestation bundle.
  */
 export interface ComputePhotoBundleHashOptions {
-  relationshipField: string
-  hashField: string
+	relationshipField: string;
+	hashField: string;
 }
 
 export const computePhotoBundleHash = (
-  options: ComputePhotoBundleHashOptions,
+	options: ComputePhotoBundleHashOptions,
 ): CollectionBeforeChangeHook => {
-  return async ({ data, req }) => {
-    const rawIds = (data as Record<string, unknown>)[options.relationshipField]
-    const mediaIds = normalizeMediaRefs(rawIds)
+	return async ({ data, req }) => {
+		const rawIds = (data as Record<string, unknown>)[options.relationshipField];
+		const mediaIds = normalizeMediaRefs(rawIds);
 
-    if (mediaIds.length === 0) {
-      return data
-    }
+		if (mediaIds.length === 0) {
+			return data;
+		}
 
-    const storageHashes = await loadStorageHashes(req.payload, mediaIds, req)
+		const storageHashes = await loadStorageHashes(req.payload, mediaIds, req);
 
-    return {
-      ...data,
-      [options.hashField]: hashPhotoBundle(storageHashes),
-    }
-  }
-}
+		return {
+			...data,
+			[options.hashField]: hashPhotoBundle(storageHashes),
+		};
+	};
+};
 
 const normalizeMediaRefs = (value: unknown): (number | string)[] => {
-  if (!Array.isArray(value)) return []
-  return value
-    .map((item) => {
-      if (typeof item === 'number' || typeof item === 'string') return item
-      if (item && typeof item === 'object' && 'id' in item) {
-        const id = (item as { id: unknown }).id
-        if (typeof id === 'number' || typeof id === 'string') return id
-      }
-      return null
-    })
-    .filter((id): id is number | string => id !== null)
-}
+	if (!Array.isArray(value)) return [];
+	return value
+		.map((item) => {
+			if (typeof item === "number" || typeof item === "string") return item;
+			if (item && typeof item === "object" && "id" in item) {
+				const id = (item as { id: unknown }).id;
+				if (typeof id === "number" || typeof id === "string") return id;
+			}
+			return null;
+		})
+		.filter((id): id is number | string => id !== null);
+};
 
 const loadStorageHashes = async (
-  payload: Payload,
-  ids: (number | string)[],
-  req: unknown,
+	payload: Payload,
+	ids: (number | string)[],
+	req: unknown,
 ): Promise<string[]> => {
-  const out: string[] = []
-  for (const id of ids) {
-    const media = await payload.findByID({
-      collection: 'media',
-      id,
-      depth: 0,
-      req: req as never,
-    })
-    const storageHash = (media as { storageHash?: string | null }).storageHash
-    if (!storageHash) {
-      throw new APIError(
-        `Media ${id} has no storageHash yet — upload and pin the file before referencing it from an attestation.`,
-        400,
-      )
-    }
-    out.push(storageHash)
-  }
-  return out
-}
+	const out: string[] = [];
+	for (const id of ids) {
+		const media = await payload.findByID({
+			collection: "media",
+			id,
+			depth: 0,
+			req: req as never,
+		});
+		const storageHash = (media as { storageHash?: string | null }).storageHash;
+		if (!storageHash) {
+			throw new APIError(
+				`Media ${id} has no storageHash yet — upload and pin the file before referencing it from an attestation.`,
+				400,
+			);
+		}
+		out.push(storageHash);
+	}
+	return out;
+};
