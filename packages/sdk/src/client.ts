@@ -5,6 +5,7 @@ import {
 } from "@ethereum-attestation-service/eas-sdk";
 import type { Signer } from "ethers";
 import {
+	CHAIN_CONFIGS,
 	SCHEMA_NAME_UID,
 	ZERO_ADDRESS,
 	ZERO_BYTES32,
@@ -52,6 +53,7 @@ import type {
 	ScheduledIntervention,
 } from "./types/attestation";
 import type {
+	ChainConfig,
 	OpenGardenConfig,
 	SchemaUIDs,
 	StorageAdapter,
@@ -85,6 +87,21 @@ import type {
 } from "./types/schemas";
 import { toUnixSeconds } from "./utils";
 
+function resolveChain(chain: OpenGardenConfig["chain"]): ChainConfig {
+	if (typeof chain === "string") {
+		if (!Object.prototype.hasOwnProperty.call(CHAIN_CONFIGS, chain)) {
+			throw new OpenGardenError(
+				OpenGardenErrorCode.INVALID_INPUT,
+				`Unknown chain name "${chain}". Known chains: ${Object.keys(
+					CHAIN_CONFIGS,
+				).join(", ")}. Pass a ChainConfig object for custom deployments.`,
+			);
+		}
+		return CHAIN_CONFIGS[chain];
+	}
+	return chain;
+}
+
 export class OpenGardenClient {
 	private readonly eas: EAS;
 	private readonly registry: SchemaRegistry;
@@ -103,17 +120,19 @@ export class OpenGardenClient {
 			);
 		}
 
+		const chain = resolveChain(config.chain);
+
 		this.signer = config.signer;
 		this.storage = config.storage;
 		this.schemaUIDs = { ...config.schemaUIDs };
-		this.chainId = config.chain.chainId;
+		this.chainId = chain.chainId;
 		this.graphqlUrl = config.graphqlUrl ?? getGraphqlUrl(this.chainId);
 		this.storeUrl = config.storeUrl ?? getStoreUrl(this.chainId);
 
-		this.eas = new EAS(config.chain.easAddress);
+		this.eas = new EAS(chain.easAddress);
 		this.eas.connect(this.signer);
 
-		this.registry = new SchemaRegistry(config.chain.schemaRegistryAddress);
+		this.registry = new SchemaRegistry(chain.schemaRegistryAddress);
 		this.registry.connect(this.signer);
 	}
 

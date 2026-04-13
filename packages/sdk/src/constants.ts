@@ -52,3 +52,24 @@ export const BASE_SEPOLIA: ChainConfig = {
 	easAddress: OP_STACK_EAS,
 	schemaRegistryAddress: OP_STACK_SCHEMA_REGISTRY,
 };
+
+/**
+ * Registry of known chains keyed by stable string name. Lets consumers pass
+ * `chain: "optimism-mainnet"` to `OpenGardenClient` instead of importing a
+ * `ChainConfig` constant and threading it through. `ChainConfig` objects are
+ * still accepted for custom deployments or chains not listed here.
+ */
+export const CHAIN_CONFIGS = {
+	"celo-mainnet": CELO_MAINNET,
+	"celo-alfajores": CELO_ALFAJORES,
+	"optimism-mainnet": OPTIMISM_MAINNET,
+	"optimism-sepolia": OPTIMISM_SEPOLIA,
+	"base-mainnet": BASE_MAINNET,
+	"base-sepolia": BASE_SEPOLIA,
+} as const satisfies Record<string, ChainConfig>;
+
+export type ChainName = keyof typeof CHAIN_CONFIGS;
+
+export function getChainConfig(name: ChainName): ChainConfig {
+	return CHAIN_CONFIGS[name];
+}

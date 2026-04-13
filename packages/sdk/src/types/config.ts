@@ -1,4 +1,5 @@
 import type { Provider, Signer } from "ethers";
+import type { ChainName } from "../constants";
 import type { SchemaName } from "./enums";
 
 export interface ChainConfig {
@@ -17,7 +18,11 @@ export type SchemaUIDs = Record<SchemaName, string>;
 export interface OpenGardenConfig {
 	signer: Signer;
 	provider?: Provider;
-	chain: ChainConfig;
+	/**
+	 * Either a known chain name (resolved internally via `CHAIN_CONFIGS`) or a
+	 * full `ChainConfig` object for custom / unsupported deployments.
+	 */
+	chain: ChainName | ChainConfig;
 	schemaUIDs?: Partial<SchemaUIDs>;
 	storage?: StorageAdapter;
 	/**

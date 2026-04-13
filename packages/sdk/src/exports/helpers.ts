@@ -12,12 +12,15 @@
  * surface; this subpath is the explicit "no chain client" view.
  */
 
+export type { ChainName } from "../constants";
 export {
 	BASE_MAINNET,
 	BASE_SEPOLIA,
 	CELO_ALFAJORES,
 	CELO_MAINNET,
+	CHAIN_CONFIGS,
 	EVIDENCE_BUNDLE_VERSION,
+	getChainConfig,
 	OPTIMISM_MAINNET,
 	OPTIMISM_SEPOLIA,
 	SCHEMA_NAME_UID,

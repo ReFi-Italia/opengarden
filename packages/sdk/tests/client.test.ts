@@ -71,6 +71,30 @@ describe("OpenGardenClient construction", () => {
 		const uids = client.getSchemaUIDs();
 		expect(uids.AreaRegistration).toBe("0xschema123");
 	});
+
+	it("resolves a known chain name via the built-in registry", () => {
+		const client = new OpenGardenClient({
+			signer: createMockSigner(),
+			chain: "optimism-mainnet",
+		});
+
+		expect(client).toBeInstanceOf(OpenGardenClient);
+	});
+
+	it("throws INVALID_INPUT for an unknown chain name", () => {
+		try {
+			new OpenGardenClient({
+				signer: createMockSigner(),
+				chain: "not-a-chain" as any,
+			});
+			expect.fail("expected OpenGardenError");
+		} catch (e) {
+			expect(e).toBeInstanceOf(OpenGardenError);
+			expect((e as OpenGardenError).code).toBe(
+				OpenGardenErrorCode.INVALID_INPUT,
+			);
+		}
+	});
 });
 
 describe("OpenGardenClient schema validation", () => {
