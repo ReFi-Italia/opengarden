@@ -114,12 +114,10 @@ export interface Config {
   };
   fallbackLocale: null;
   globals: {
-    protocolConfig: ProtocolConfig;
     organizationProfile: OrganizationProfile;
     taskCatalog: TaskCatalog;
   };
   globalsSelect: {
-    protocolConfig: ProtocolConfigSelect<false> | ProtocolConfigSelect<true>;
     organizationProfile: OrganizationProfileSelect<false> | OrganizationProfileSelect<true>;
     taskCatalog: TaskCatalogSelect<false> | TaskCatalogSelect<true>;
   };
@@ -1537,52 +1535,6 @@ export interface PayloadMigrationsSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "protocolConfig".
- */
-export interface ProtocolConfig {
-  id: number;
-  chain: 'celo-mainnet' | 'celo-alfajores' | 'optimism-mainnet' | 'optimism-sepolia' | 'base-mainnet' | 'base-sepolia';
-  chainIdSnapshot?: number | null;
-  easAddress?: string | null;
-  schemaRegistryAddress?: string | null;
-  /**
-   * Operator flow: run `packages/sdk/scripts/register-schemas.ts` against the chain, copy the 10 UIDs from stdout, paste them here.
-   */
-  schemaUIDs?: {
-    AreaRegistration?: string | null;
-    PublishedIntervention?: string | null;
-    GardenerMilestone?: string | null;
-    ScheduledIntervention?: string | null;
-    GardenerCheckin?: string | null;
-    GardenerCheckout?: string | null;
-    GardenerReport?: string | null;
-    AdminValidation?: string | null;
-    CitizenFeedback?: string | null;
-    Healthcheck?: string | null;
-  };
-  /**
-   * Display only — the private key lives in OPENGARDEN_SIGNER_PRIVATE_KEY.
-   */
-  signerWalletPublic?: string | null;
-  storage: {
-    provider: 'inMemory' | 'ipfs' | 's3';
-    gatewayUrl?: string | null;
-  };
-  graphqlUrl?: string | null;
-  storeUrl?: string | null;
-  /**
-   * When true, only ScheduledIntervention is on-chain-timestamped (matches spec §4.4).
-   */
-  mvpMode?: boolean | null;
-  /**
-   * One-shot acknowledgement required when switching to a new chain after historical activity.
-   */
-  confirmChainSwitch?: boolean | null;
-  updatedAt?: string | null;
-  createdAt?: string | null;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "organizationProfile".
  */
 export interface OrganizationProfile {
@@ -1612,44 +1564,6 @@ export interface TaskCatalog {
     | null;
   updatedAt?: string | null;
   createdAt?: string | null;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "protocolConfig_select".
- */
-export interface ProtocolConfigSelect<T extends boolean = true> {
-  chain?: T;
-  chainIdSnapshot?: T;
-  easAddress?: T;
-  schemaRegistryAddress?: T;
-  schemaUIDs?:
-    | T
-    | {
-        AreaRegistration?: T;
-        PublishedIntervention?: T;
-        GardenerMilestone?: T;
-        ScheduledIntervention?: T;
-        GardenerCheckin?: T;
-        GardenerCheckout?: T;
-        GardenerReport?: T;
-        AdminValidation?: T;
-        CitizenFeedback?: T;
-        Healthcheck?: T;
-      };
-  signerWalletPublic?: T;
-  storage?:
-    | T
-    | {
-        provider?: T;
-        gatewayUrl?: T;
-      };
-  graphqlUrl?: T;
-  storeUrl?: T;
-  mvpMode?: T;
-  confirmChainSwitch?: T;
-  updatedAt?: T;
-  createdAt?: T;
-  globalType?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema

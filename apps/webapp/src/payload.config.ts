@@ -19,7 +19,6 @@ import { Sponsors } from "./collections/Sponsors";
 import { Staff } from "./collections/Staff";
 import { Users } from "./collections/Users";
 import { OrganizationProfile } from "./globals/OrganizationProfile";
-import { ProtocolConfig } from "./globals/ProtocolConfig";
 import { TaskCatalog } from "./globals/TaskCatalog";
 import { tasks } from "./tasks";
 
@@ -49,7 +48,7 @@ export default buildConfig({
 		EvidenceBundles,
 		ChainTransactions,
 	],
-	globals: [ProtocolConfig, OrganizationProfile, TaskCatalog],
+	globals: [OrganizationProfile, TaskCatalog],
 	editor: lexicalEditor(),
 	secret: process.env.PAYLOAD_SECRET || "",
 	typescript: {

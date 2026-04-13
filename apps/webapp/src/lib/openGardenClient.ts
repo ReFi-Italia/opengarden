@@ -1,10 +1,12 @@
 import {
+	CHAIN_CONFIGS,
 	type ChainName,
 	getChainConfig,
-	type SchemaName,
 } from "@refi-italia/opengarden/helpers";
 import { ethers } from "ethers";
 import type { Payload } from "payload";
+
+const CHAIN_ENV_VAR = "PROTOCOL_CHAIN";
 
 export type OpenGardenContext = {
 	/**
@@ -13,21 +15,53 @@ export type OpenGardenContext = {
 	 * never triggers the `@ethereum-attestation-service/eas-sdk` ESM crash.
 	 */
 	client: import("@refi-italia/opengarden").OpenGardenClient;
-	/** Chain id snapshotted from `protocolConfig` at the time the client was built. */
+	/** Chain id resolved from `PROTOCOL_CHAIN` at the time the client was built. */
 	chainId: number;
 	/** Resolved attester address from the env-provided private key. */
 	attesterWallet: string;
 };
 
+// Per-process cache — once we've verified the current chain id matches the
+// historical chainTransactions audit trail, skip the DB query on subsequent
+// calls. Env vars don't change at runtime so this is safe for the lifetime
+// of the process.
+let verifiedChainId: bigint | null = null;
+
 /**
- * Builds an `OpenGardenClient` from the live `protocolConfig` global plus
- * env-provided signer + RPC. Lazy-imports the SDK root entry so that this
- * module is safe to import from `payload.config.ts` (the Payload CLI and
- * Vitest both crash when statically loading the EAS SDK due to upstream
- * missing-extension ESM specifiers — see apps/webapp/README.md).
+ * Refuses to boot if `chainTransactions` already has activity against a
+ * different `chainId`. Catches "deployed with the wrong PROTOCOL_CHAIN"
+ * before any new on-chain writes corrupt the audit trail.
+ */
+async function verifyChainConsistency(
+	payload: Payload,
+	chainId: bigint,
+): Promise<void> {
+	if (verifiedChainId === chainId) return;
+	const mismatched = await payload.find({
+		collection: "chainTransactions",
+		where: { chainId: { not_equals: Number(chainId) } },
+		limit: 1,
+		depth: 0,
+	});
+	if (mismatched.totalDocs > 0) {
+		const otherChainId = mismatched.docs[0]?.chainId;
+		throw new Error(
+			`${CHAIN_ENV_VAR} resolves to chain id ${chainId}, but chainTransactions already has activity for chain id ${otherChainId}. Refusing to mix chains across a deploy.`,
+		);
+	}
+	verifiedChainId = chainId;
+}
+
+/**
+ * Builds an `OpenGardenClient` from the env-provided chain name, signer,
+ * and RPC. Lazy-imports the SDK root entry so that this module is safe to
+ * import from `payload.config.ts` (the Payload CLI and Vitest both crash
+ * when statically loading the EAS SDK due to upstream missing-extension
+ * ESM specifiers — see apps/webapp/README.md).
  *
- * Throws with an actionable message if any required piece is missing so
- * that task handlers fail fast instead of producing partial chain state.
+ * Throws with an actionable message if any required env var is missing,
+ * and enforces per-deploy chain consistency against the existing
+ * `chainTransactions` audit trail.
  */
 export async function getOpenGardenContext(
 	payload: Payload,
@@ -44,15 +78,18 @@ export async function getOpenGardenContext(
 			"OPENGARDEN_RPC_URL is not set. Chain calls require a JSON-RPC endpoint for the configured chain.",
 		);
 	}
+	const chainInput = process.env[CHAIN_ENV_VAR];
+	if (!chainInput || !(chainInput in CHAIN_CONFIGS)) {
+		throw new Error(
+			`${CHAIN_ENV_VAR} is not set or unknown (got "${chainInput ?? ""}"). Set it to one of: ${Object.keys(
+				CHAIN_CONFIGS,
+			).join(", ")}.`,
+		);
+	}
+	const chainName = chainInput as ChainName;
+	const chainConfig = getChainConfig(chainName);
 
-	const config = await payload.findGlobal({ slug: "protocolConfig", depth: 0 });
-	const chainName = config.chain as ChainName;
-
-	const schemaUIDs = Object.fromEntries(
-		Object.entries(config.schemaUIDs ?? {}).filter(
-			([, value]) => typeof value === "string" && value.length > 0,
-		),
-	) as Partial<Record<SchemaName, string>>;
+	await verifyChainConsistency(payload, chainConfig.chainId);
 
 	const provider = new ethers.JsonRpcProvider(rpcUrl);
 	const signer = new ethers.Wallet(privateKey, provider);
@@ -62,14 +99,11 @@ export async function getOpenGardenContext(
 	const client = new OpenGardenClient({
 		signer,
 		chain: chainName,
-		schemaUIDs,
-		graphqlUrl: config.graphqlUrl ?? undefined,
-		storeUrl: config.storeUrl ?? undefined,
 	});
 
 	return {
 		client,
-		chainId: Number(getChainConfig(chainName).chainId),
+		chainId: Number(chainConfig.chainId),
 		attesterWallet,
 	};
 }
