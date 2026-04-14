@@ -177,5 +177,17 @@ export const Areas: CollectionConfig = {
 			})),
 			index: true,
 		},
+		{
+			name: "registerAction",
+			type: "ui",
+			admin: {
+				components: {
+					Field: "@/components/buttons/RegisterAreaButton",
+				},
+				condition: (data) =>
+					data?.lifecycleStatus === "draft" ||
+					data?.lifecycleStatus === "failed",
+			},
+		},
 	],
 };
