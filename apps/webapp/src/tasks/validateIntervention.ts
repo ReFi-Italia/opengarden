@@ -6,6 +6,7 @@ import {
 	type OpenGardenContext,
 } from "../lib/openGardenClient";
 import { recordChainTransaction } from "../lib/recordChainTransaction";
+import { serializeBigInts } from "../lib/serializeBigInts";
 
 type ValidateInterventionInput = {
 	/** Payload document id of the `interventions` row to validate. */
@@ -139,7 +140,7 @@ export const validateInterventionTask: TaskConfig<{
 						onchainTimestamp: Number(result.onchainTimestamp),
 						attesterWallet: context.attesterWallet,
 						chainIdSnapshot: context.chainId,
-						signedAttestation: result.signedAttestation,
+						signedAttestation: serializeBigInts(result.signedAttestation),
 					},
 				},
 				overrideAccess: true,

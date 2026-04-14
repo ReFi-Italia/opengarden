@@ -34,19 +34,32 @@ const INTERVENTION_TYPE_OPTIONS = [
 ];
 
 /**
- * Stage groups (scheduling / validation / execution / revocation) are
- * populated only by server actions that pass
- * `req.context.skipLifecycleHooks: true`. Form-based updates have their
- * changes to these groups silently reset to the original value — the admin
- * UI hides them via `admin.readOnly: true`, this hook is defense-in-depth
- * against direct REST writes.
+ * Per-stage form-write rules. Each stage group exposes a small set of
+ * operator-editable input fields while the row is in the matching
+ * `lifecycleStatus`; everything else (chain mirrors, snapshots, task-set
+ * fields) is always frozen at the form level. Server actions still bypass
+ * via `req.context.skipLifecycleHooks: true`.
+ *
+ * The `revocation` group is always frozen at the form level — only the
+ * (future) revocation server action writes it.
  */
-const STAGE_GROUPS = [
-	"scheduling",
-	"validation",
-	"execution",
-	"revocation",
-] as const;
+const STAGE_INPUT_RULES: Record<
+	"scheduling" | "validation" | "execution",
+	{ editableIn: ReadonlyArray<string>; inputFields: ReadonlyArray<string> }
+> = {
+	scheduling: {
+		editableIn: ["draft", "failed"],
+		inputFields: ["scheduledDate", "estimatedMinutes"],
+	},
+	validation: {
+		editableIn: ["in_progress"],
+		inputFields: ["validator", "approved", "qualityScore", "feedback"],
+	},
+	execution: {
+		editableIn: ["validated"],
+		inputFields: ["executionDate", "healthBefore", "healthAfter"],
+	},
+};
 
 const guardInterventionInvariants: CollectionBeforeValidateHook = async ({
 	data,
@@ -72,9 +85,43 @@ const guardInterventionInvariants: CollectionBeforeValidateHook = async ({
 	if (operation !== "update" || !originalDoc) return data;
 
 	const guarded: Record<string, unknown> = { ...data };
-	for (const group of STAGE_GROUPS) {
-		guarded[group] = (originalDoc as Record<string, unknown>)[group];
+	const currentStatus = (originalDoc as { lifecycleStatus?: string })
+		.lifecycleStatus;
+
+	for (const [groupName, rule] of Object.entries(STAGE_INPUT_RULES)) {
+		const incomingGroup = (data as Record<string, unknown>)[groupName] as
+			| Record<string, unknown>
+			| undefined;
+		const originalGroup =
+			((originalDoc as Record<string, unknown>)[groupName] as
+				| Record<string, unknown>
+				| undefined) ?? {};
+
+		if (!incomingGroup) {
+			guarded[groupName] = originalGroup;
+			continue;
+		}
+
+		const allowEdit =
+			currentStatus !== undefined && rule.editableIn.includes(currentStatus);
+		if (!allowEdit) {
+			guarded[groupName] = originalGroup;
+			continue;
+		}
+
+		// Merge: input fields from `incoming`, everything else from `original`.
+		// Chain mirror sub-fields and task-set snapshots stay frozen even while
+		// the input fields are open for edit.
+		const merged: Record<string, unknown> = { ...originalGroup };
+		for (const fieldName of rule.inputFields) {
+			if (fieldName in incomingGroup) {
+				merged[fieldName] = incomingGroup[fieldName];
+			}
+		}
+		guarded[groupName] = merged;
 	}
+
+	guarded.revocation = (originalDoc as Record<string, unknown>).revocation;
 	return guarded;
 };
 
@@ -297,5 +344,47 @@ export const Interventions: CollectionConfig = {
 		executionGroup,
 		revocationGroup,
 		lifecycleStatusField(),
+		{
+			name: "scheduleAction",
+			type: "ui",
+			admin: {
+				components: {
+					Field: "@/components/buttons/ScheduleButton",
+				},
+				condition: (data) =>
+					data?.lifecycleStatus === "draft" ||
+					data?.lifecycleStatus === "failed",
+			},
+		},
+		{
+			name: "startWorkAction",
+			type: "ui",
+			admin: {
+				components: {
+					Field: "@/components/buttons/StartWorkButton",
+				},
+				condition: (data) => data?.lifecycleStatus === "scheduled",
+			},
+		},
+		{
+			name: "validateAction",
+			type: "ui",
+			admin: {
+				components: {
+					Field: "@/components/buttons/ValidateButton",
+				},
+				condition: (data) => data?.lifecycleStatus === "in_progress",
+			},
+		},
+		{
+			name: "publishAction",
+			type: "ui",
+			admin: {
+				components: {
+					Field: "@/components/buttons/PublishInterventionButton",
+				},
+				condition: (data) => data?.lifecycleStatus === "validated",
+			},
+		},
 	],
 };

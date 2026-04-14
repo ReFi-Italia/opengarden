@@ -184,5 +184,26 @@ export const EvidenceBundles: CollectionConfig = {
 					'Captured on any "failed" transition so the admin can inspect.',
 			},
 		},
+		{
+			name: "buildAction",
+			type: "ui",
+			admin: {
+				components: {
+					Field: "@/components/buttons/BuildBundleButton",
+				},
+				condition: (data) =>
+					data?.bundleState === "draft" || data?.bundleState === "failed",
+			},
+		},
+		{
+			name: "verifyAction",
+			type: "ui",
+			admin: {
+				components: {
+					Field: "@/components/buttons/VerifyBundleButton",
+				},
+				condition: (data) => data?.bundleState === "published",
+			},
+		},
 	],
 };
