@@ -38,6 +38,7 @@ export const Healthchecks: CollectionConfig = {
 	slug: "healthchecks",
 	admin: {
 		group: "Lifecycle",
+		hidden: true,
 		useAsTitle: "id",
 		defaultColumns: ["area", "kind", "healthScore", "assessor"],
 	},

@@ -62,6 +62,7 @@ export const GardenerCheckins: CollectionConfig = {
 	slug: "gardenerCheckins",
 	admin: {
 		group: "Lifecycle",
+		hidden: true,
 		useAsTitle: "id",
 		defaultColumns: ["intervention", "gardener", "claimedTimestamp"],
 	},

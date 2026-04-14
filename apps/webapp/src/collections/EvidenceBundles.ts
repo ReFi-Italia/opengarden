@@ -9,7 +9,7 @@ import {
 export const EvidenceBundles: CollectionConfig = {
 	slug: "evidenceBundles",
 	admin: {
-		group: "Settlement",
+		group: "Lifecycle",
 		useAsTitle: "interventionIdSnapshot",
 		defaultColumns: [
 			"interventionIdSnapshot",

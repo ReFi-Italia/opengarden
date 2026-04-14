@@ -18,6 +18,7 @@ export const Users: CollectionConfig = {
 	admin: {
 		useAsTitle: "displayName",
 		group: "System",
+		hidden: true,
 	},
 	auth: true,
 	access: {

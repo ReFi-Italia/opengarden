@@ -56,6 +56,7 @@ export const GardenerReports: CollectionConfig = {
 	slug: "gardenerReports",
 	admin: {
 		group: "Lifecycle",
+		hidden: true,
 		useAsTitle: "id",
 		defaultColumns: ["intervention", "checkout", "taskCount"],
 	},

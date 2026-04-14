@@ -26,6 +26,7 @@ export const ChainTransactions: CollectionConfig = {
 	slug: "chainTransactions",
 	admin: {
 		group: "Settlement",
+		hidden: true,
 		useAsTitle: "id",
 		defaultColumns: [
 			"kind",

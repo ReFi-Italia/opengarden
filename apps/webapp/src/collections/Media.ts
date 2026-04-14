@@ -14,6 +14,7 @@ export const Media: CollectionConfig = {
 	slug: "media",
 	admin: {
 		group: "System",
+		hidden: true,
 	},
 	access: {
 		read: authenticated,

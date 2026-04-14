@@ -37,6 +37,7 @@ export const GardenerCheckouts: CollectionConfig = {
 	slug: "gardenerCheckouts",
 	admin: {
 		group: "Lifecycle",
+		hidden: true,
 		useAsTitle: "id",
 		defaultColumns: ["checkin", "claimedTimestamp", "actualMinutes"],
 	},

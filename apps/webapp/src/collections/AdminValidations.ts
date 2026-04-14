@@ -15,6 +15,7 @@ export const AdminValidations: CollectionConfig = {
 	slug: "adminValidations",
 	admin: {
 		group: "Lifecycle",
+		hidden: true,
 		useAsTitle: "id",
 		defaultColumns: ["intervention", "validator", "approved", "revoked"],
 	},
