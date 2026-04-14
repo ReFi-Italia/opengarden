@@ -13,7 +13,7 @@ import { serializeBigInts } from "../lib/serializeBigInts";
 
 type ScheduleInterventionInput = {
 	/** Payload document id of the `interventions` row to schedule. */
-	interventionId: number;
+	interventionId: string;
 };
 
 type ScheduleInterventionOutput = {
@@ -40,7 +40,7 @@ export const scheduleInterventionTask: TaskConfig<{
 	inputSchema: [
 		{
 			name: "interventionId",
-			type: "number",
+			type: "text",
 			required: true,
 		},
 	],

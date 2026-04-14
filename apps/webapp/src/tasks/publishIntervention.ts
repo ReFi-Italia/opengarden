@@ -12,7 +12,7 @@ import { recordChainTransaction } from "../lib/recordChainTransaction";
 
 type PublishInterventionInput = {
 	/** Payload document id of the `interventions` row to publish. */
-	interventionId: number;
+	interventionId: string;
 };
 
 type PublishInterventionOutput = {
@@ -46,7 +46,7 @@ export const publishInterventionTask: TaskConfig<{
 	inputSchema: [
 		{
 			name: "interventionId",
-			type: "number",
+			type: "text",
 			required: true,
 		},
 	],

@@ -9,7 +9,7 @@ import { recordChainTransaction } from "../lib/recordChainTransaction";
 
 type RegisterAreaInput = {
 	/** Payload document id of the `areas` row to register on-chain. */
-	areaId: number;
+	areaId: string;
 };
 
 type RegisterAreaOutput = {
@@ -45,7 +45,7 @@ export const registerAreaTask: TaskConfig<{
 	inputSchema: [
 		{
 			name: "areaId",
-			type: "number",
+			type: "text",
 			required: true,
 		},
 	],

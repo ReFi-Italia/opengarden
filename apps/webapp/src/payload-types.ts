@@ -110,7 +110,7 @@ export interface Config {
     'payload-migrations': PayloadMigrationsSelect<false> | PayloadMigrationsSelect<true>;
   };
   db: {
-    defaultIDType: number;
+    defaultIDType: string;
   };
   fallbackLocale: null;
   globals: {
@@ -165,13 +165,13 @@ export interface UserAuthOperations {
  * via the `definition` "users".
  */
 export interface User {
-  id: number;
+  id: string;
   displayName: string;
   roles: ('admin' | 'manager' | 'validator' | 'assessor' | 'authoring' | 'viewer')[];
   /**
    * Optional link to the hashable staff identifier so users can be archived without losing staff id continuity.
    */
-  staffRecord?: (number | null) | Staff;
+  staffRecord?: (string | null) | Staff;
   updatedAt: string;
   createdAt: string;
   email: string;
@@ -196,25 +196,25 @@ export interface User {
  * via the `definition` "staff".
  */
 export interface Staff {
-  id: number;
+  id: string;
   displayName: string;
   /**
-   * Org-supplied stable string (NOT email). Hashed per spec §9.1.
+   * Organisation-issued identifier — not an email.
    */
   staffId: string;
-  /**
-   * keccak256(utf8Bytes(staffId)) — derived automatically.
-   */
   staffIdHash?: string | null;
-  frozen?: boolean | null;
   /**
-   * Optional 1:1 link to a Payload admin user.
-   */
-  linkedUser?: (number | null) | User;
-  /**
-   * Filters the dropdowns on validations, healthchecks, and crew lead selection.
+   * Drives who appears in validator, healthcheck, and crew-lead dropdowns.
    */
   capabilities?: ('validator' | 'assessor' | 'crewLead')[] | null;
+  /**
+   * Locks automatically on first on-chain reference. After that, the Staff ID can't change.
+   */
+  frozen?: boolean | null;
+  /**
+   * Optional — lets this person log in to the dashboard.
+   */
+  linkedUser?: (string | null) | User;
   updatedAt: string;
   createdAt: string;
 }
@@ -223,7 +223,7 @@ export interface Staff {
  * via the `definition` "media".
  */
 export interface Media {
-  id: number;
+  id: string;
   alt: string;
   caption?: string | null;
   purpose?: ('area-metadata' | 'checkin' | 'report' | 'healthcheck' | 'misc') | null;
@@ -252,39 +252,27 @@ export interface Media {
  * via the `definition` "sponsors".
  */
 export interface Sponsor {
-  id: number;
+  id: string;
   displayName: string;
   kind: 'corporate' | 'municipal' | 'grant' | 'volunteer';
-  /**
-   * Fields contributing to the canonical JSON hash. Exactly one sub-field is populated depending on `kind`.
-   */
   canonicalKey?: {
-    /**
-     * Corporate sponsor identifier.
-     */
     sponsorId?: string | null;
-    /**
-     * Municipal contract number.
-     */
     contractNumber?: string | null;
-    /**
-     * Grant identifier.
-     */
     grantId?: string | null;
   };
-  /**
-   * Literal JSON bytes used for hashing (spec §9.1). Derived automatically — never edit by hand.
-   */
+  notes?: string | null;
   canonicalJson?: string | null;
   /**
-   * keccak256(canonicalJson) — matches the on-chain commissionRef. ZERO_BYTES32 for volunteer.
+   * Empty for volunteer sponsors.
    */
   commissionRefHash?: string | null;
   /**
-   * Flipped true on first reference from a scheduled-or-later intervention. Once frozen, hash-affecting fields cannot change.
+   * Locks automatically on first use. After that, identification fields can't change.
    */
   frozen?: boolean | null;
-  notes?: string | null;
+  /**
+   * Hide from dropdowns without deleting history.
+   */
   archived?: boolean | null;
   updatedAt: string;
   createdAt: string;
@@ -294,15 +282,18 @@ export interface Sponsor {
  * via the `definition` "gardeners".
  */
 export interface Gardener {
-  id: number;
+  id: string;
   displayName: string;
+  email?: string | null;
   /**
-   * Optional until the mobile app ships; required once gardeners self-attest.
+   * Optional for now — required once gardeners self-attest from the mobile app.
    */
   wallet?: string | null;
-  email?: string | null;
-  status: 'onboarding' | 'active' | 'inactive';
   notes?: string | null;
+  /**
+   * Only active gardeners can be assigned to intervention crews.
+   */
+  status: 'onboarding' | 'active' | 'inactive';
   updatedAt: string;
   createdAt: string;
 }
@@ -311,12 +302,12 @@ export interface Gardener {
  * via the `definition` "areas".
  */
 export interface Area {
-  id: number;
+  id: string;
+  name: string;
   /**
    * Internal identifier such as RM-PIGN-042.
    */
   areaId: string;
-  name: string;
   municipality: string;
   areaType: '0' | '1' | '2' | '3' | '4';
   latitude: number;
@@ -332,16 +323,13 @@ export interface Area {
       | number
       | boolean
       | null;
-    coverPhoto?: (number | null) | Media;
-    gallery?: (number | Media)[] | null;
+    coverPhoto?: (string | null) | Media;
+    gallery?: (string | Media)[] | null;
   };
   /**
-   * IPFS CID of the extended metadata JSON uploaded by the register-area server action. ZERO_BYTES32 if none.
+   * Empty when no extended details are set.
    */
   metadataHash?: string | null;
-  /**
-   * Populated by the register-area server action. Empty until the area is registered on-chain.
-   */
   chain?: {
     chainUID?: string | null;
     txHash?: string | null;
@@ -374,20 +362,20 @@ export interface Area {
  * via the `definition` "interventions".
  */
 export interface Intervention {
-  id: number;
+  id: string;
   interventionId: string;
-  area: number | Area;
+  area: string | Area;
   interventionType: '0' | '1' | '2' | '3' | '4' | '5';
   description: string;
   commissioning: {
-    sponsor: number | Sponsor;
+    sponsor: string | Sponsor;
     /**
      * Snapshotted from sponsor.commissionRefHash the moment the intervention is scheduled. Populated by the schedule-intervention server action.
      */
     commissionRefHashAtSchedule?: string | null;
   };
   crew: {
-    gardener: number | Gardener;
+    gardener: string | Gardener;
     isCrewLead?: boolean | null;
     id?: string | null;
   }[];
@@ -426,7 +414,7 @@ export interface Intervention {
    * Populated by the validate-intervention server action. Wiped by revoke-validation before re-validation.
    */
   validation?: {
-    validator?: (number | null) | Staff;
+    validator?: (string | null) | Staff;
     approved?: boolean | null;
     qualityScore?: number | null;
     feedback?: string | null;
@@ -437,7 +425,7 @@ export interface Intervention {
     /**
      * Points at the current non-revoked adminValidations row.
      */
-    currentAttestation?: (number | null) | AdminValidation;
+    currentAttestation?: (string | null) | AdminValidation;
     chainUID?: string | null;
     txHash?: string | null;
     /**
@@ -469,7 +457,7 @@ export interface Intervention {
     /**
      * Denormalized back-reference — maintained by publish-intervention, not by hooks. Source of truth is evidenceBundles.intervention.
      */
-    evidenceBundle?: (number | null) | EvidenceBundle;
+    evidenceBundle?: (string | null) | EvidenceBundle;
     offchainCount?: number | null;
     chainUID?: string | null;
     txHash?: string | null;
@@ -517,9 +505,9 @@ export interface Intervention {
  * via the `definition` "adminValidations".
  */
 export interface AdminValidation {
-  id: number;
-  intervention: number | Intervention;
-  validator: number | Staff;
+  id: string;
+  intervention: string | Intervention;
+  validator: string | Staff;
   approved: boolean;
   qualityScore?: number | null;
   feedback?: string | null;
@@ -556,11 +544,11 @@ export interface AdminValidation {
  * via the `definition` "evidenceBundles".
  */
 export interface EvidenceBundle {
-  id: number;
+  id: string;
   /**
    * Source of truth for the 1:1 link. Set at bundle creation and never nulled.
    */
-  intervention: number | Intervention;
+  intervention: string | Intervention;
   /**
    * Mutated only by build / upload / publish / verify / reset server actions.
    */
@@ -579,17 +567,17 @@ export interface EvidenceBundle {
    */
   crewMembers?:
     | {
-        gardener?: (number | null) | Gardener;
+        gardener?: (string | null) | Gardener;
         attesterWallet?: string | null;
-        checkin?: (number | null) | GardenerCheckin;
-        checkout?: (number | null) | GardenerCheckout;
-        report?: (number | null) | GardenerReport;
+        checkin?: (string | null) | GardenerCheckin;
+        checkout?: (string | null) | GardenerCheckout;
+        report?: (string | null) | GardenerReport;
         id?: string | null;
       }[]
     | null;
-  validationRef?: (number | null) | AdminValidation;
-  healthcheckBefore?: (number | null) | Healthcheck;
-  healthcheckAfter?: (number | null) | Healthcheck;
+  validationRef?: (string | null) | AdminValidation;
+  healthcheckBefore?: (string | null) | Healthcheck;
+  healthcheckAfter?: (string | null) | Healthcheck;
   /**
    * Exact bytes uploaded to IPFS — preserved for re-verification.
    */
@@ -651,16 +639,16 @@ export interface EvidenceBundle {
  * via the `definition` "gardenerCheckins".
  */
 export interface GardenerCheckin {
-  id: number;
-  intervention: number | Intervention;
-  gardener: number | Gardener;
+  id: string;
+  intervention: string | Intervention;
+  gardener: string | Gardener;
   latitude: number;
   longitude: number;
   /**
    * Device-reported arrival time (Unix seconds under the hood).
    */
   claimedTimestamp: string;
-  photo?: (number | null) | Media;
+  photo?: (string | null) | Media;
   /**
    * Mirrored from media.storageHash at the time of attestation.
    */
@@ -695,8 +683,8 @@ export interface GardenerCheckin {
  * via the `definition` "gardenerCheckouts".
  */
 export interface GardenerCheckout {
-  id: number;
-  checkin: number | GardenerCheckin;
+  id: string;
+  checkin: string | GardenerCheckin;
   claimedTimestamp: string;
   actualMinutes: number;
   chain?: {
@@ -729,9 +717,9 @@ export interface GardenerCheckout {
  * via the `definition` "gardenerReports".
  */
 export interface GardenerReport {
-  id: number;
-  intervention: number | Intervention;
-  checkout: number | GardenerCheckout;
+  id: string;
+  intervention: string | Intervention;
+  checkout: string | GardenerCheckout;
   /**
    * Comma-separated task codes. Each code must exist in the taskCatalog global.
    */
@@ -740,7 +728,7 @@ export interface GardenerReport {
    * Derived from tasksCompleted length on save.
    */
   taskCount: number;
-  photos?: (number | Media)[] | null;
+  photos?: (string | Media)[] | null;
   /**
    * keccak256 of the canonical manifest of media.storageHash values. Computed on save via the SDK helper.
    */
@@ -776,19 +764,19 @@ export interface GardenerReport {
  * via the `definition` "healthchecks".
  */
 export interface Healthcheck {
-  id: number;
-  area: number | Area;
-  intervention?: (number | null) | Intervention;
+  id: string;
+  area: string | Area;
+  intervention?: (string | null) | Intervention;
   kind: 'standalone' | 'before' | 'after';
   healthScore: number;
-  assessor?: (number | null) | Staff;
+  assessor?: (string | null) | Staff;
   /**
    * Snapshotted from staff.staffIdHash at attestation time; ZERO_BYTES32 when no assessor is assigned.
    */
   assessorIdHashSnapshot?: string | null;
   assessorNotes?: string | null;
   interventionNeeded?: boolean | null;
-  photo?: (number | null) | Media;
+  photo?: (string | null) | Media;
   /**
    * Mirrored from media.storageHash at the time of attestation.
    */
@@ -823,7 +811,7 @@ export interface Healthcheck {
  * via the `definition` "chainTransactions".
  */
 export interface ChainTransaction {
-  id: number;
+  id: string;
   kind:
     | 'registerSchema'
     | 'registerArea'
@@ -870,7 +858,7 @@ export interface ChainTransaction {
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
-  id: number;
+  id: string;
   key: string;
   data:
     | {
@@ -887,7 +875,7 @@ export interface PayloadKv {
  * via the `definition` "payload-jobs".
  */
 export interface PayloadJob {
-  id: number;
+  id: string;
   /**
    * Input data provided to the job
    */
@@ -996,68 +984,68 @@ export interface PayloadJob {
  * via the `definition` "payload-locked-documents".
  */
 export interface PayloadLockedDocument {
-  id: number;
+  id: string;
   document?:
     | ({
         relationTo: 'users';
-        value: number | User;
+        value: string | User;
       } | null)
     | ({
         relationTo: 'media';
-        value: number | Media;
+        value: string | Media;
       } | null)
     | ({
         relationTo: 'sponsors';
-        value: number | Sponsor;
+        value: string | Sponsor;
       } | null)
     | ({
         relationTo: 'staff';
-        value: number | Staff;
+        value: string | Staff;
       } | null)
     | ({
         relationTo: 'gardeners';
-        value: number | Gardener;
+        value: string | Gardener;
       } | null)
     | ({
         relationTo: 'areas';
-        value: number | Area;
+        value: string | Area;
       } | null)
     | ({
         relationTo: 'interventions';
-        value: number | Intervention;
+        value: string | Intervention;
       } | null)
     | ({
         relationTo: 'gardenerCheckins';
-        value: number | GardenerCheckin;
+        value: string | GardenerCheckin;
       } | null)
     | ({
         relationTo: 'gardenerCheckouts';
-        value: number | GardenerCheckout;
+        value: string | GardenerCheckout;
       } | null)
     | ({
         relationTo: 'gardenerReports';
-        value: number | GardenerReport;
+        value: string | GardenerReport;
       } | null)
     | ({
         relationTo: 'adminValidations';
-        value: number | AdminValidation;
+        value: string | AdminValidation;
       } | null)
     | ({
         relationTo: 'healthchecks';
-        value: number | Healthcheck;
+        value: string | Healthcheck;
       } | null)
     | ({
         relationTo: 'evidenceBundles';
-        value: number | EvidenceBundle;
+        value: string | EvidenceBundle;
       } | null)
     | ({
         relationTo: 'chainTransactions';
-        value: number | ChainTransaction;
+        value: string | ChainTransaction;
       } | null);
   globalSlug?: string | null;
   user: {
     relationTo: 'users';
-    value: number | User;
+    value: string | User;
   };
   updatedAt: string;
   createdAt: string;
@@ -1067,10 +1055,10 @@ export interface PayloadLockedDocument {
  * via the `definition` "payload-preferences".
  */
 export interface PayloadPreference {
-  id: number;
+  id: string;
   user: {
     relationTo: 'users';
-    value: number | User;
+    value: string | User;
   };
   key?: string | null;
   value?:
@@ -1090,7 +1078,7 @@ export interface PayloadPreference {
  * via the `definition` "payload-migrations".
  */
 export interface PayloadMigration {
-  id: number;
+  id: string;
   name?: string | null;
   batch?: number | null;
   updatedAt: string;
@@ -1157,10 +1145,10 @@ export interface SponsorsSelect<T extends boolean = true> {
         contractNumber?: T;
         grantId?: T;
       };
+  notes?: T;
   canonicalJson?: T;
   commissionRefHash?: T;
   frozen?: T;
-  notes?: T;
   archived?: T;
   updatedAt?: T;
   createdAt?: T;
@@ -1173,9 +1161,9 @@ export interface StaffSelect<T extends boolean = true> {
   displayName?: T;
   staffId?: T;
   staffIdHash?: T;
+  capabilities?: T;
   frozen?: T;
   linkedUser?: T;
-  capabilities?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -1185,10 +1173,10 @@ export interface StaffSelect<T extends boolean = true> {
  */
 export interface GardenersSelect<T extends boolean = true> {
   displayName?: T;
-  wallet?: T;
   email?: T;
-  status?: T;
+  wallet?: T;
   notes?: T;
+  status?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -1197,8 +1185,8 @@ export interface GardenersSelect<T extends boolean = true> {
  * via the `definition` "areas_select".
  */
 export interface AreasSelect<T extends boolean = true> {
-  areaId?: T;
   name?: T;
+  areaId?: T;
   municipality?: T;
   areaType?: T;
   latitude?: T;
@@ -1571,12 +1559,12 @@ export interface PayloadMigrationsSelect<T extends boolean = true> {
  * via the `definition` "organizationProfile".
  */
 export interface OrganizationProfile {
-  id: number;
+  id: string;
   name: string;
   legalEntity?: string | null;
   description?: string | null;
   website?: string | null;
-  logo?: (number | null) | Media;
+  logo?: (string | null) | Media;
   attesterWalletPublic?: string | null;
   updatedAt?: string | null;
   createdAt?: string | null;
@@ -1586,7 +1574,7 @@ export interface OrganizationProfile {
  * via the `definition` "taskCatalog".
  */
 export interface TaskCatalog {
-  id: number;
+  id: string;
   tasks?:
     | {
         code: string;
@@ -1646,7 +1634,7 @@ export interface CollectionsWidget {
  */
 export interface TaskRegisterArea {
   input: {
-    areaId: number;
+    areaId: string;
   };
   output: {
     chainUID: string;
@@ -1659,7 +1647,7 @@ export interface TaskRegisterArea {
  */
 export interface TaskScheduleIntervention {
   input: {
-    interventionId: number;
+    interventionId: string;
   };
   output: {
     chainUID: string;
@@ -1672,7 +1660,7 @@ export interface TaskScheduleIntervention {
  */
 export interface TaskValidateIntervention {
   input: {
-    interventionId: number;
+    interventionId: string;
   };
   output: {
     chainUID: string;
@@ -1685,7 +1673,7 @@ export interface TaskValidateIntervention {
  */
 export interface TaskPublishIntervention {
   input: {
-    interventionId: number;
+    interventionId: string;
   };
   output: {
     chainUID: string;
@@ -1698,7 +1686,7 @@ export interface TaskPublishIntervention {
  */
 export interface TaskBuildBundle {
   input: {
-    bundleId: number;
+    bundleId: string;
   };
   output: {
     evidenceBundleHash: string;
@@ -1711,7 +1699,7 @@ export interface TaskBuildBundle {
  */
 export interface TaskVerifyBundle {
   input: {
-    bundleId: number;
+    bundleId: string;
   };
   output: {
     valid: boolean;

@@ -10,7 +10,7 @@ import { serializeBigInts } from "../lib/serializeBigInts";
 
 type ValidateInterventionInput = {
 	/** Payload document id of the `interventions` row to validate. */
-	interventionId: number;
+	interventionId: string;
 };
 
 type ValidateInterventionOutput = {
@@ -39,7 +39,7 @@ export const validateInterventionTask: TaskConfig<{
 	inputSchema: [
 		{
 			name: "interventionId",
-			type: "number",
+			type: "text",
 			required: true,
 		},
 	],

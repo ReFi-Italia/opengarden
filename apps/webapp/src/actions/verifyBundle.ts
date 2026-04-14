@@ -6,7 +6,7 @@ import { after } from "next/server";
 import { getPayload } from "payload";
 
 export type VerifyBundleActionResult =
-	| { ok: true; jobId: number | string }
+	| { ok: true; jobId: string }
 	| { ok: false; error: string };
 
 /**
@@ -15,7 +15,7 @@ export type VerifyBundleActionResult =
  * via `OpenGardenClient.verifyEvidenceBundle`.
  */
 export async function verifyBundleAction(
-	bundleId: number,
+	bundleId: string,
 ): Promise<VerifyBundleActionResult> {
 	const config = await configPromise;
 	const payload = await getPayload({ config });

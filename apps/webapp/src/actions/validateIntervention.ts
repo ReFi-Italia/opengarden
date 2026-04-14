@@ -6,7 +6,7 @@ import { after } from "next/server";
 import { getPayload } from "payload";
 
 export type ValidateInterventionActionResult =
-	| { ok: true; jobId: number | string }
+	| { ok: true; jobId: string }
 	| { ok: false; error: string };
 
 /**
@@ -17,7 +17,7 @@ export type ValidateInterventionActionResult =
  * commit the off-chain attestation.
  */
 export async function validateInterventionAction(
-	interventionId: number,
+	interventionId: string,
 ): Promise<ValidateInterventionActionResult> {
 	const config = await configPromise;
 	const payload = await getPayload({ config });

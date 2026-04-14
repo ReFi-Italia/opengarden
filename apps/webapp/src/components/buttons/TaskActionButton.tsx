@@ -8,7 +8,7 @@ type ActionResult =
 	| { ok: true; jobId?: number | string }
 	| { ok: false; error: string };
 
-export type TaskAction = (id: number) => Promise<ActionResult>;
+export type TaskAction = (id: string) => Promise<ActionResult>;
 
 interface TaskActionButtonProps {
 	label: string;
@@ -44,7 +44,7 @@ export function TaskActionButton({
 		setState("loading");
 		setError(null);
 		try {
-			const result = await action(Number(id));
+			const result = await action(String(id));
 			if (result.ok) {
 				setState("success");
 				// Give Next.js `after()` a moment to drain the queued task,

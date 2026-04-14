@@ -12,7 +12,7 @@ import { recordChainTransaction } from "../lib/recordChainTransaction";
 
 type BuildBundleInput = {
 	/** Payload document id of the `evidenceBundles` row to build. */
-	bundleId: number;
+	bundleId: string;
 };
 
 type BuildBundleOutput = {
@@ -50,7 +50,7 @@ export const buildBundleTask: TaskConfig<{
 	inputSchema: [
 		{
 			name: "bundleId",
-			type: "number",
+			type: "text",
 			required: true,
 		},
 	],
@@ -138,11 +138,11 @@ export const buildBundleTask: TaskConfig<{
 		}
 
 		const crewRows: Array<{
-			gardenerId: number;
+			gardenerId: string;
 			attesterWallet: string;
-			checkinId: number;
-			checkoutId: number;
-			reportId: number;
+			checkinId: string;
+			checkoutId: string;
+			reportId: string;
 			checkin: TimestampedOffChainResult;
 			checkout: TimestampedOffChainResult;
 			report: TimestampedOffChainResult;
@@ -197,11 +197,11 @@ export const buildBundleTask: TaskConfig<{
 			}
 
 			crewRows.push({
-				gardenerId: Number(gardenerId),
+				gardenerId: String(gardenerId),
 				attesterWallet: checkinRow.chain?.attesterWallet ?? "",
-				checkinId: Number(checkinRow.id),
-				checkoutId: Number(checkoutRow.id),
-				reportId: Number(reportRow.id),
+				checkinId: String(checkinRow.id),
+				checkoutId: String(checkoutRow.id),
+				reportId: String(reportRow.id),
 				checkin: chainGroupToTimestampedResult(
 					checkinRow.chain,
 					`gardenerCheckins ${checkinRow.id}`,

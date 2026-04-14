@@ -6,7 +6,7 @@ import { after } from "next/server";
 import { getPayload } from "payload";
 
 export type RegisterAreaActionResult =
-	| { ok: true; jobId: number | string }
+	| { ok: true; jobId: string }
 	| { ok: false; error: string };
 
 /**
@@ -23,7 +23,7 @@ export type RegisterAreaActionResult =
  *      `after()` execution context is torn down before completion.
  */
 export async function registerAreaAction(
-	areaId: number,
+	areaId: string,
 ): Promise<RegisterAreaActionResult> {
 	const config = await configPromise;
 	const payload = await getPayload({ config });

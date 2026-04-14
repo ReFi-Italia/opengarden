@@ -164,16 +164,16 @@ await findOrCreate(
 			collection: "interventions",
 			data: {
 				interventionId: INTERVENTION_ID,
-				area: (registeredArea as { id: number }).id,
+				area: (registeredArea as { id: string }).id,
 				interventionType: String(InterventionType.RoutineMaintenance) as "1",
 				description:
 					"Spring cleanup and routine maintenance for the demo garden.",
 				commissioning: {
-					sponsor: (sponsor as { id: number }).id,
+					sponsor: (sponsor as { id: string }).id,
 				},
 				crew: [
 					{
-						gardener: (gardener as { id: number }).id,
+						gardener: (gardener as { id: string }).id,
 						isCrewLead: true,
 					},
 				],

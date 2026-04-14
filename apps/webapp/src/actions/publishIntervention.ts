@@ -6,7 +6,7 @@ import { after } from "next/server";
 import { getPayload } from "payload";
 
 export type PublishInterventionActionResult =
-	| { ok: true; jobId: number | string }
+	| { ok: true; jobId: string }
 	| { ok: false; error: string };
 
 /**
@@ -18,7 +18,7 @@ export type PublishInterventionActionResult =
  * on-chain `PublishedIntervention` attestation.
  */
 export async function publishInterventionAction(
-	interventionId: number,
+	interventionId: string,
 ): Promise<PublishInterventionActionResult> {
 	const config = await configPromise;
 	const payload = await getPayload({ config });

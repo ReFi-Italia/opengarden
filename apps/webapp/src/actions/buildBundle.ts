@@ -6,7 +6,7 @@ import { after } from "next/server";
 import { getPayload } from "payload";
 
 export type BuildBundleActionResult =
-	| { ok: true; jobId: number | string }
+	| { ok: true; jobId: string }
 	| { ok: false; error: string };
 
 /**
@@ -16,7 +16,7 @@ export type BuildBundleActionResult =
  * snapshots the hash + crew references onto the bundle row.
  */
 export async function buildBundleAction(
-	bundleId: number,
+	bundleId: string,
 ): Promise<BuildBundleActionResult> {
 	const config = await configPromise;
 	const payload = await getPayload({ config });

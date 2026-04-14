@@ -13,7 +13,7 @@ export type StartWorkActionResult = { ok: true } | { ok: false; error: string };
  * before the validate flow.
  */
 export async function startWorkAction(
-	interventionId: number,
+	interventionId: string,
 ): Promise<StartWorkActionResult> {
 	const config = await configPromise;
 	const payload = await getPayload({ config });

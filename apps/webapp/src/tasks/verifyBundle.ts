@@ -8,7 +8,7 @@ import { recordChainTransaction } from "../lib/recordChainTransaction";
 
 type VerifyBundleInput = {
 	/** Payload document id of the `evidenceBundles` row to verify. */
-	bundleId: number;
+	bundleId: string;
 };
 
 type VerifyBundleOutput = {
@@ -37,7 +37,7 @@ export const verifyBundleTask: TaskConfig<{
 	inputSchema: [
 		{
 			name: "bundleId",
-			type: "number",
+			type: "text",
 			required: true,
 		},
 	],

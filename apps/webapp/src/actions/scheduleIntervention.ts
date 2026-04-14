@@ -6,7 +6,7 @@ import { after } from "next/server";
 import { getPayload } from "payload";
 
 export type ScheduleInterventionActionResult =
-	| { ok: true; jobId: number | string }
+	| { ok: true; jobId: string }
 	| { ok: false; error: string };
 
 /**
@@ -15,7 +15,7 @@ export type ScheduleInterventionActionResult =
  * Next.js `after()` so the UI gets a fast ack.
  */
 export async function scheduleInterventionAction(
-	interventionId: number,
+	interventionId: string,
 ): Promise<ScheduleInterventionActionResult> {
 	const config = await configPromise;
 	const payload = await getPayload({ config });
