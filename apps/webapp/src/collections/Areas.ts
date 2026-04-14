@@ -88,8 +88,15 @@ export const Areas: CollectionConfig = {
 	},
 	fields: [
 		{
+			name: "name",
+			type: "text",
+			label: "Name",
+			required: true,
+		},
+		{
 			name: "areaId",
 			type: "text",
+			label: "Area ID",
 			required: true,
 			unique: true,
 			index: true,
@@ -98,73 +105,107 @@ export const Areas: CollectionConfig = {
 			},
 		},
 		{
-			name: "name",
-			type: "text",
-			required: true,
-		},
-		{
 			name: "municipality",
 			type: "text",
+			label: "Municipality",
 			required: true,
 			index: true,
 		},
 		{
 			name: "areaType",
 			type: "select",
+			label: "Type",
 			required: true,
 			options: AREA_TYPE_OPTIONS,
 		},
 		{
-			name: "latitude",
-			type: "number",
-			required: true,
-			min: -90,
-			max: 90,
-		},
-		{
-			name: "longitude",
-			type: "number",
-			required: true,
-			min: -180,
-			max: 180,
-		},
-		{
-			name: "extendedMetadata",
-			type: "group",
+			type: "row",
 			fields: [
-				{ name: "surfaceAreaSqm", type: "number" },
-				{ name: "boundaryGeojson", type: "json" },
-				{ name: "coverPhoto", type: "upload", relationTo: "media" },
 				{
-					name: "gallery",
-					type: "relationship",
-					relationTo: "media",
-					hasMany: true,
+					name: "latitude",
+					type: "number",
+					label: "Latitude",
+					required: true,
+					min: -90,
+					max: 90,
+				},
+				{
+					name: "longitude",
+					type: "number",
+					label: "Longitude",
+					required: true,
+					min: -180,
+					max: 180,
 				},
 			],
 		},
 		{
-			name: "metadataHash",
-			type: "text",
-			index: true,
-			admin: {
-				readOnly: true,
-				description:
-					"IPFS CID of the extended metadata JSON uploaded by the register-area server action. ZERO_BYTES32 if none.",
-			},
+			type: "collapsible",
+			label: "Extended details",
+			admin: { initCollapsed: true },
+			fields: [
+				{
+					name: "extendedMetadata",
+					type: "group",
+					label: false,
+					fields: [
+						{
+							name: "surfaceAreaSqm",
+							type: "number",
+							label: "Surface area (m²)",
+						},
+						{
+							name: "boundaryGeojson",
+							type: "json",
+							label: "Boundary (GeoJSON)",
+						},
+						{
+							name: "coverPhoto",
+							type: "upload",
+							relationTo: "media",
+							label: "Cover photo",
+						},
+						{
+							name: "gallery",
+							type: "relationship",
+							relationTo: "media",
+							hasMany: true,
+							label: "Gallery",
+						},
+					],
+				},
+			],
 		},
 		{
-			name: "chain",
-			type: "group",
+			type: "collapsible",
+			label: "Blockchain record",
 			admin: {
-				description:
-					"Populated by the register-area server action. Empty until the area is registered on-chain.",
+				initCollapsed: true,
+				description: "Populated on registration — inspect only.",
 			},
-			fields: chainMirror(),
+			fields: [
+				{
+					name: "metadataHash",
+					type: "text",
+					label: "Verification fingerprint",
+					index: true,
+					admin: {
+						readOnly: true,
+						description: "Empty when no extended details are set.",
+					},
+				},
+				{
+					name: "chain",
+					type: "group",
+					label: false,
+					fields: chainMirror(),
+				},
+			],
 		},
 		{
 			name: "lifecycleStatus",
 			type: "select",
+			label: "Status",
 			required: true,
 			defaultValue: "draft",
 			admin: {
@@ -181,6 +222,7 @@ export const Areas: CollectionConfig = {
 			name: "registerAction",
 			type: "ui",
 			admin: {
+				position: "sidebar",
 				components: {
 					Field: "@/components/buttons/RegisterAreaButton",
 				},

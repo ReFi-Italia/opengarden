@@ -17,16 +17,14 @@ export const commissioningFields = (): Field[] => [
 		name: "sponsor",
 		type: "relationship",
 		relationTo: "sponsors",
+		label: "Sponsor",
 		required: true,
 	},
 	{
 		name: "commissionRefHashAtSchedule",
 		type: "text",
-		admin: {
-			readOnly: true,
-			description:
-				"Snapshotted from sponsor.commissionRefHash the moment the intervention is scheduled. Populated by the schedule-intervention server action.",
-		},
+		label: "Verification fingerprint (at schedule)",
+		admin: { readOnly: true },
 		index: true,
 	},
 ];

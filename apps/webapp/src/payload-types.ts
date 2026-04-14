@@ -333,14 +333,8 @@ export interface Area {
   chain?: {
     chainUID?: string | null;
     txHash?: string | null;
-    /**
-     * Unix seconds as recorded by EAS.timestamp().
-     */
     onchainTimestamp?: number | null;
     attesterWallet?: string | null;
-    /**
-     * Chain id at attestation time — snapshotted per row for migration safety.
-     */
     chainIdSnapshot?: number | null;
     signedAttestation?:
       | {
@@ -369,9 +363,6 @@ export interface Intervention {
   description: string;
   commissioning: {
     sponsor: string | Sponsor;
-    /**
-     * Snapshotted from sponsor.commissionRefHash the moment the intervention is scheduled. Populated by the schedule-intervention server action.
-     */
     commissionRefHashAtSchedule?: string | null;
   };
   crew: {
@@ -379,26 +370,14 @@ export interface Intervention {
     isCrewLead?: boolean | null;
     id?: string | null;
   }[];
-  /**
-   * Derived from crew.length at read time.
-   */
   crewSize?: number | null;
-  /**
-   * Populated by the schedule-intervention server action. Frozen once populated.
-   */
   scheduling?: {
     scheduledDate?: string | null;
     estimatedMinutes?: number | null;
     chainUID?: string | null;
     txHash?: string | null;
-    /**
-     * Unix seconds as recorded by EAS.timestamp().
-     */
     onchainTimestamp?: number | null;
     attesterWallet?: string | null;
-    /**
-     * Chain id at attestation time — snapshotted per row for migration safety.
-     */
     chainIdSnapshot?: number | null;
     signedAttestation?:
       | {
@@ -410,32 +389,17 @@ export interface Intervention {
       | boolean
       | null;
   };
-  /**
-   * Populated by the validate-intervention server action. Wiped by revoke-validation before re-validation.
-   */
   validation?: {
     validator?: (string | null) | Staff;
     approved?: boolean | null;
     qualityScore?: number | null;
     feedback?: string | null;
-    /**
-     * Snapshotted from staff.staffIdHash at validate time; ZERO_BYTES32 for null validators.
-     */
     validatorIdHashAtValidation?: string | null;
-    /**
-     * Points at the current non-revoked adminValidations row.
-     */
     currentAttestation?: (string | null) | AdminValidation;
     chainUID?: string | null;
     txHash?: string | null;
-    /**
-     * Unix seconds as recorded by EAS.timestamp().
-     */
     onchainTimestamp?: number | null;
     attesterWallet?: string | null;
-    /**
-     * Chain id at attestation time — snapshotted per row for migration safety.
-     */
     chainIdSnapshot?: number | null;
     signedAttestation?:
       | {
@@ -447,28 +411,16 @@ export interface Intervention {
       | boolean
       | null;
   };
-  /**
-   * Populated by the publish-intervention server action. Immutable once published.
-   */
   execution?: {
     executionDate?: string | null;
     healthBefore?: number | null;
     healthAfter?: number | null;
-    /**
-     * Denormalized back-reference — maintained by publish-intervention, not by hooks. Source of truth is evidenceBundles.intervention.
-     */
     evidenceBundle?: (string | null) | EvidenceBundle;
     offchainCount?: number | null;
     chainUID?: string | null;
     txHash?: string | null;
-    /**
-     * Unix seconds as recorded by EAS.timestamp().
-     */
     onchainTimestamp?: number | null;
     attesterWallet?: string | null;
-    /**
-     * Chain id at attestation time — snapshotted per row for migration safety.
-     */
     chainIdSnapshot?: number | null;
     signedAttestation?:
       | {
@@ -481,20 +433,14 @@ export interface Intervention {
       | null;
   };
   /**
-   * Holds revocation details (when lifecycleStatus === "revoked") and transient failure details (when lifecycleStatus === "failed").
+   * Populated when the intervention is revoked or fails mid-lifecycle.
    */
   revocation?: {
     reason?: string | null;
     revokedAt?: string | null;
     revokedScheduleUID?: string | null;
-    /**
-     * Snapshot of the prior state when an SDK error flipped the row to "failed". Cleared on successful admin-recover.
-     */
     failedFrom?: ('draft' | 'scheduled' | 'in_progress' | 'validated') | null;
   };
-  /**
-   * Lifecycle state — mutated only by server actions, never directly editable.
-   */
   lifecycleStatus: 'draft' | 'scheduled' | 'in_progress' | 'validated' | 'published' | 'revoked' | 'failed';
   updatedAt: string;
   createdAt: string;
@@ -517,14 +463,8 @@ export interface AdminValidation {
   chain?: {
     chainUID?: string | null;
     txHash?: string | null;
-    /**
-     * Unix seconds as recorded by EAS.timestamp().
-     */
     onchainTimestamp?: number | null;
     attesterWallet?: string | null;
-    /**
-     * Chain id at attestation time — snapshotted per row for migration safety.
-     */
     chainIdSnapshot?: number | null;
     signedAttestation?:
       | {
@@ -546,25 +486,16 @@ export interface AdminValidation {
 export interface EvidenceBundle {
   id: string;
   /**
-   * Source of truth for the 1:1 link. Set at bundle creation and never nulled.
+   * Set at creation — can't be changed later.
    */
   intervention: string | Intervention;
   /**
-   * Mutated only by build / upload / publish / verify / reset server actions.
-   */
-  bundleState: 'draft' | 'built' | 'uploaded' | 'published' | 'verified' | 'failed';
-  /**
-   * Captured at build so the bundle stays legible if the parent is renamed.
+   * Captured at build time.
    */
   interventionIdSnapshot?: string | null;
   areaUIDSnapshot?: string | null;
-  /**
-   * UID of the ScheduledIntervention attestation.
-   */
-  scheduledRef?: string | null;
-  /**
-   * Denormalized per-crew-member attestation refs.
-   */
+  bundleVersion?: string | null;
+  evidenceBundleHash?: string | null;
   crewMembers?:
     | {
         gardener?: (string | null) | Gardener;
@@ -575,26 +506,10 @@ export interface EvidenceBundle {
         id?: string | null;
       }[]
     | null;
+  scheduledRef?: string | null;
   validationRef?: (string | null) | AdminValidation;
   healthcheckBefore?: (string | null) | Healthcheck;
   healthcheckAfter?: (string | null) | Healthcheck;
-  /**
-   * Exact bytes uploaded to IPFS — preserved for re-verification.
-   */
-  bundleJson?:
-    | {
-        [k: string]: unknown;
-      }
-    | unknown[]
-    | string
-    | number
-    | boolean
-    | null;
-  bundleVersion?: string | null;
-  evidenceBundleHash?: string | null;
-  /**
-   * Populated by the verify-bundle server action after publish. Drives the "valid?" column in list views.
-   */
   verification?: {
     valid?: boolean | null;
     attestationCount?: number | null;
@@ -616,7 +531,7 @@ export interface EvidenceBundle {
       | null;
   };
   /**
-   * Last validateFinalizeInput result; publish is disabled until empty.
+   * Publish is disabled until empty.
    */
   buildIssuesJson?:
     | {
@@ -627,10 +542,17 @@ export interface EvidenceBundle {
     | number
     | boolean
     | null;
-  /**
-   * Captured on any "failed" transition so the admin can inspect.
-   */
   lastError?: string | null;
+  bundleJson?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  bundleState: 'draft' | 'built' | 'uploaded' | 'published' | 'verified' | 'failed';
   updatedAt: string;
   createdAt: string;
 }
@@ -656,14 +578,8 @@ export interface GardenerCheckin {
   chain?: {
     chainUID?: string | null;
     txHash?: string | null;
-    /**
-     * Unix seconds as recorded by EAS.timestamp().
-     */
     onchainTimestamp?: number | null;
     attesterWallet?: string | null;
-    /**
-     * Chain id at attestation time — snapshotted per row for migration safety.
-     */
     chainIdSnapshot?: number | null;
     signedAttestation?:
       | {
@@ -690,14 +606,8 @@ export interface GardenerCheckout {
   chain?: {
     chainUID?: string | null;
     txHash?: string | null;
-    /**
-     * Unix seconds as recorded by EAS.timestamp().
-     */
     onchainTimestamp?: number | null;
     attesterWallet?: string | null;
-    /**
-     * Chain id at attestation time — snapshotted per row for migration safety.
-     */
     chainIdSnapshot?: number | null;
     signedAttestation?:
       | {
@@ -737,14 +647,8 @@ export interface GardenerReport {
   chain?: {
     chainUID?: string | null;
     txHash?: string | null;
-    /**
-     * Unix seconds as recorded by EAS.timestamp().
-     */
     onchainTimestamp?: number | null;
     attesterWallet?: string | null;
-    /**
-     * Chain id at attestation time — snapshotted per row for migration safety.
-     */
     chainIdSnapshot?: number | null;
     signedAttestation?:
       | {
@@ -784,14 +688,8 @@ export interface Healthcheck {
   chain?: {
     chainUID?: string | null;
     txHash?: string | null;
-    /**
-     * Unix seconds as recorded by EAS.timestamp().
-     */
     onchainTimestamp?: number | null;
     attesterWallet?: string | null;
-    /**
-     * Chain id at attestation time — snapshotted per row for migration safety.
-     */
     chainIdSnapshot?: number | null;
     signedAttestation?:
       | {
@@ -1425,10 +1323,10 @@ export interface HealthchecksSelect<T extends boolean = true> {
  */
 export interface EvidenceBundlesSelect<T extends boolean = true> {
   intervention?: T;
-  bundleState?: T;
   interventionIdSnapshot?: T;
   areaUIDSnapshot?: T;
-  scheduledRef?: T;
+  bundleVersion?: T;
+  evidenceBundleHash?: T;
   crewMembers?:
     | T
     | {
@@ -1439,12 +1337,10 @@ export interface EvidenceBundlesSelect<T extends boolean = true> {
         report?: T;
         id?: T;
       };
+  scheduledRef?: T;
   validationRef?: T;
   healthcheckBefore?: T;
   healthcheckAfter?: T;
-  bundleJson?: T;
-  bundleVersion?: T;
-  evidenceBundleHash?: T;
   verification?:
     | T
     | {
@@ -1461,6 +1357,8 @@ export interface EvidenceBundlesSelect<T extends boolean = true> {
       };
   buildIssuesJson?: T;
   lastError?: T;
+  bundleJson?: T;
+  bundleState?: T;
   updatedAt?: T;
   createdAt?: T;
 }

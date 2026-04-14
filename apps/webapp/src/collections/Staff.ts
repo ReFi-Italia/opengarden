@@ -34,48 +34,63 @@ export const Staff: CollectionConfig = {
 			name: "displayName",
 			type: "text",
 			required: true,
+			label: "Display name",
 		},
 		{
-			name: "staffId",
-			type: "text",
-			required: true,
-			unique: true,
+			type: "collapsible",
+			label: "Identification",
+			admin: { initCollapsed: false },
+			fields: [
+				{
+					name: "staffId",
+					type: "text",
+					label: "Staff ID",
+					required: true,
+					unique: true,
+					admin: {
+						description: "Organisation-issued identifier — not an email.",
+					},
+				},
+				{
+					name: "staffIdHash",
+					type: "text",
+					label: "Verification fingerprint",
+					index: true,
+					admin: { readOnly: true },
+				},
+			],
+		},
+		{
+			name: "capabilities",
+			type: "select",
+			label: "On-site roles",
+			hasMany: true,
+			options: STAFF_CAPABILITIES.map((value) => ({ label: value, value })),
 			admin: {
 				description:
-					"Org-supplied stable string (NOT email). Hashed per spec §9.1.",
-			},
-		},
-		{
-			name: "staffIdHash",
-			type: "text",
-			index: true,
-			admin: {
-				readOnly: true,
-				description: "keccak256(utf8Bytes(staffId)) — derived automatically.",
+					"Drives who appears in validator, healthcheck, and crew-lead dropdowns.",
 			},
 		},
 		{
 			name: "frozen",
 			type: "checkbox",
+			label: "Locked",
 			defaultValue: false,
-			admin: { readOnly: true },
+			admin: {
+				position: "sidebar",
+				readOnly: true,
+				description:
+					"Locks automatically on first on-chain reference. After that, the Staff ID can't change.",
+			},
 		},
 		{
 			name: "linkedUser",
 			type: "relationship",
 			relationTo: "users",
+			label: "Linked admin account",
 			admin: {
-				description: "Optional 1:1 link to a Payload admin user.",
-			},
-		},
-		{
-			name: "capabilities",
-			type: "select",
-			hasMany: true,
-			options: STAFF_CAPABILITIES.map((value) => ({ label: value, value })),
-			admin: {
-				description:
-					"Filters the dropdowns on validations, healthchecks, and crew lead selection.",
+				position: "sidebar",
+				description: "Optional — lets this person log in to the dashboard.",
 			},
 		},
 	],

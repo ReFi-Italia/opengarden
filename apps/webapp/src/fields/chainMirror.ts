@@ -15,39 +15,38 @@ export const chainMirror = (): Field[] => [
 	{
 		name: "chainUID",
 		type: "text",
+		label: "Attestation ID",
 		admin: { readOnly: true },
 		index: true,
 	},
 	{
 		name: "txHash",
 		type: "text",
+		label: "Transaction",
 		admin: { readOnly: true },
 	},
 	{
 		name: "onchainTimestamp",
 		type: "number",
-		admin: {
-			readOnly: true,
-			description: "Unix seconds as recorded by EAS.timestamp().",
-		},
+		label: "Timestamp",
+		admin: { readOnly: true },
 	},
 	{
 		name: "attesterWallet",
 		type: "text",
+		label: "Signer",
 		admin: { readOnly: true },
 	},
 	{
 		name: "chainIdSnapshot",
 		type: "number",
-		admin: {
-			readOnly: true,
-			description:
-				"Chain id at attestation time — snapshotted per row for migration safety.",
-		},
+		label: "Chain ID",
+		admin: { readOnly: true },
 	},
 	{
 		name: "signedAttestation",
 		type: "json",
+		label: "Signed data",
 		admin: { readOnly: true },
 	},
 ];

@@ -136,103 +136,129 @@ const deriveCrewSize: CollectionAfterReadHook = async ({ doc }) => {
 const schedulingGroup: Field = {
 	name: "scheduling",
 	type: "group",
-	admin: {
-		readOnly: true,
-		description:
-			"Populated by the schedule-intervention server action. Frozen once populated.",
-	},
+	label: false,
+	admin: { readOnly: true },
 	fields: [
-		{ name: "scheduledDate", type: "date" },
-		{ name: "estimatedMinutes", type: "number" },
-		...chainMirror(),
+		{ name: "scheduledDate", type: "date", label: "Scheduled date" },
+		{ name: "estimatedMinutes", type: "number", label: "Estimated minutes" },
+		{
+			type: "collapsible",
+			label: "Blockchain record",
+			admin: { initCollapsed: true },
+			fields: chainMirror(),
+		},
 	],
 };
 
 const validationGroup: Field = {
 	name: "validation",
 	type: "group",
-	admin: {
-		readOnly: true,
-		description:
-			"Populated by the validate-intervention server action. Wiped by revoke-validation before re-validation.",
-	},
+	label: false,
+	admin: { readOnly: true },
 	fields: [
 		{
 			name: "validator",
 			type: "relationship",
 			relationTo: "staff",
+			label: "Validator",
 			filterOptions: {
 				capabilities: { contains: "validator" },
 			},
 		},
-		{ name: "approved", type: "checkbox" },
-		{ name: "qualityScore", type: "number", min: 0, max: 10 },
-		{ name: "feedback", type: "textarea" },
+		{ name: "approved", type: "checkbox", label: "Approved" },
 		{
-			name: "validatorIdHashAtValidation",
-			type: "text",
-			admin: {
-				description:
-					"Snapshotted from staff.staffIdHash at validate time; ZERO_BYTES32 for null validators.",
-			},
+			name: "qualityScore",
+			type: "number",
+			label: "Quality score",
+			min: 0,
+			max: 10,
 		},
+		{ name: "feedback", type: "textarea", label: "Feedback" },
 		{
-			name: "currentAttestation",
-			type: "relationship",
-			relationTo: "adminValidations",
-			admin: {
-				description: "Points at the current non-revoked adminValidations row.",
-			},
+			type: "collapsible",
+			label: "Blockchain record",
+			admin: { initCollapsed: true },
+			fields: [
+				{
+					name: "validatorIdHashAtValidation",
+					type: "text",
+					label: "Validator fingerprint (snapshot)",
+				},
+				{
+					name: "currentAttestation",
+					type: "relationship",
+					relationTo: "adminValidations",
+					label: "Current attestation",
+				},
+				...chainMirror(),
+			],
 		},
-		...chainMirror(),
 	],
 };
 
 const executionGroup: Field = {
 	name: "execution",
 	type: "group",
-	admin: {
-		readOnly: true,
-		description:
-			"Populated by the publish-intervention server action. Immutable once published.",
-	},
+	label: false,
+	admin: { readOnly: true },
 	fields: [
-		{ name: "executionDate", type: "date" },
-		{ name: "healthBefore", type: "number", min: 0, max: 10 },
-		{ name: "healthAfter", type: "number", min: 0, max: 10 },
+		{ name: "executionDate", type: "date", label: "Execution date" },
+		{
+			name: "healthBefore",
+			type: "number",
+			label: "Health before",
+			min: 0,
+			max: 10,
+		},
+		{
+			name: "healthAfter",
+			type: "number",
+			label: "Health after",
+			min: 0,
+			max: 10,
+		},
 		{
 			name: "evidenceBundle",
 			type: "relationship",
 			relationTo: "evidenceBundles",
-			admin: {
-				description:
-					"Denormalized back-reference — maintained by publish-intervention, not by hooks. Source of truth is evidenceBundles.intervention.",
-			},
+			label: "Evidence bundle",
 		},
 		{
 			name: "offchainCount",
 			type: "number",
+			label: "Off-chain records",
 			admin: { readOnly: true },
 		},
-		...chainMirror(),
+		{
+			type: "collapsible",
+			label: "Blockchain record",
+			admin: { initCollapsed: true },
+			fields: chainMirror(),
+		},
 	],
 };
 
 const revocationGroup: Field = {
 	name: "revocation",
 	type: "group",
+	label: false,
 	admin: {
 		readOnly: true,
 		description:
-			'Holds revocation details (when lifecycleStatus === "revoked") and transient failure details (when lifecycleStatus === "failed").',
+			"Populated when the intervention is revoked or fails mid-lifecycle.",
 	},
 	fields: [
-		{ name: "reason", type: "textarea" },
-		{ name: "revokedAt", type: "date" },
-		{ name: "revokedScheduleUID", type: "text" },
+		{ name: "reason", type: "textarea", label: "Reason" },
+		{ name: "revokedAt", type: "date", label: "Revoked at" },
+		{
+			name: "revokedScheduleUID",
+			type: "text",
+			label: "Revoked attestation ID",
+		},
 		{
 			name: "failedFrom",
 			type: "select",
+			label: "Failed from stage",
 			options: INTERVENTION_LIFECYCLE_STATUSES.filter(
 				(s) =>
 					s === "draft" ||
@@ -240,10 +266,6 @@ const revocationGroup: Field = {
 					s === "in_progress" ||
 					s === "validated",
 			).map((value) => ({ label: value, value })),
-			admin: {
-				description:
-					'Snapshot of the prior state when an SDK error flipped the row to "failed". Cleared on successful admin-recover.',
-			},
 		},
 	],
 };
@@ -277,77 +299,106 @@ export const Interventions: CollectionConfig = {
 	},
 	fields: [
 		{
-			name: "interventionId",
-			type: "text",
-			required: true,
-			unique: true,
-			index: true,
-		},
-		{
-			name: "area",
-			type: "relationship",
-			relationTo: "areas",
-			required: true,
-			filterOptions: {
-				lifecycleStatus: { equals: "registered" },
-			},
-		},
-		{
-			name: "interventionType",
-			type: "select",
-			required: true,
-			options: INTERVENTION_TYPE_OPTIONS,
-		},
-		{
-			name: "description",
-			type: "textarea",
-			required: true,
-		},
-		{
-			name: "commissioning",
-			type: "group",
-			fields: commissioningFields(),
-		},
-		{
-			name: "crew",
-			type: "array",
-			required: true,
-			minRows: 0,
-			fields: [
+			type: "tabs",
+			tabs: [
 				{
-					name: "gardener",
-					type: "relationship",
-					relationTo: "gardeners",
-					required: true,
-					filterOptions: {
-						status: { equals: "active" },
-					},
+					label: "Overview",
+					fields: [
+						{
+							name: "interventionId",
+							type: "text",
+							label: "Intervention ID",
+							required: true,
+							unique: true,
+							index: true,
+						},
+						{
+							name: "area",
+							type: "relationship",
+							relationTo: "areas",
+							label: "Area",
+							required: true,
+							filterOptions: {
+								lifecycleStatus: { equals: "registered" },
+							},
+						},
+						{
+							name: "interventionType",
+							type: "select",
+							label: "Type",
+							required: true,
+							options: INTERVENTION_TYPE_OPTIONS,
+						},
+						{
+							name: "description",
+							type: "textarea",
+							label: "Description",
+							required: true,
+						},
+						{
+							name: "commissioning",
+							type: "group",
+							label: "Commissioning",
+							fields: commissioningFields(),
+						},
+						{
+							name: "crew",
+							type: "array",
+							label: "Crew",
+							required: true,
+							minRows: 0,
+							fields: [
+								{
+									name: "gardener",
+									type: "relationship",
+									relationTo: "gardeners",
+									label: "Gardener",
+									required: true,
+									filterOptions: {
+										status: { equals: "active" },
+									},
+								},
+								{
+									name: "isCrewLead",
+									type: "checkbox",
+									label: "Crew lead",
+									defaultValue: false,
+								},
+							],
+						},
+						{
+							name: "crewSize",
+							type: "number",
+							label: "Crew size",
+							virtual: true,
+							admin: { readOnly: true },
+						},
+					],
 				},
 				{
-					name: "isCrewLead",
-					type: "checkbox",
-					defaultValue: false,
+					label: "Scheduling",
+					fields: [schedulingGroup],
+				},
+				{
+					label: "Validation",
+					fields: [validationGroup],
+				},
+				{
+					label: "Execution",
+					fields: [executionGroup],
+				},
+				{
+					label: "Incidents",
+					fields: [revocationGroup],
 				},
 			],
 		},
-		{
-			name: "crewSize",
-			type: "number",
-			virtual: true,
-			admin: {
-				readOnly: true,
-				description: "Derived from crew.length at read time.",
-			},
-		},
-		schedulingGroup,
-		validationGroup,
-		executionGroup,
-		revocationGroup,
 		lifecycleStatusField(),
 		{
 			name: "scheduleAction",
 			type: "ui",
 			admin: {
+				position: "sidebar",
 				components: {
 					Field: "@/components/buttons/ScheduleButton",
 				},
@@ -360,6 +411,7 @@ export const Interventions: CollectionConfig = {
 			name: "startWorkAction",
 			type: "ui",
 			admin: {
+				position: "sidebar",
 				components: {
 					Field: "@/components/buttons/StartWorkButton",
 				},
@@ -370,6 +422,7 @@ export const Interventions: CollectionConfig = {
 			name: "validateAction",
 			type: "ui",
 			admin: {
+				position: "sidebar",
 				components: {
 					Field: "@/components/buttons/ValidateButton",
 				},
@@ -380,6 +433,7 @@ export const Interventions: CollectionConfig = {
 			name: "publishAction",
 			type: "ui",
 			admin: {
+				position: "sidebar",
 				components: {
 					Field: "@/components/buttons/PublishInterventionButton",
 				},

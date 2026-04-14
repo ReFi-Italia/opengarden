@@ -60,30 +60,39 @@ export const Gardeners: CollectionConfig = {
 			name: "displayName",
 			type: "text",
 			required: true,
-		},
-		{
-			name: "wallet",
-			type: "text",
-			index: true,
-			admin: {
-				description:
-					"Optional until the mobile app ships; required once gardeners self-attest.",
-			},
+			label: "Display name",
 		},
 		{
 			name: "email",
 			type: "text",
+			label: "Email",
 		},
 		{
-			name: "status",
-			type: "select",
-			required: true,
-			defaultValue: "onboarding",
-			options: GARDENER_STATUSES.map((value) => ({ label: value, value })),
+			name: "wallet",
+			type: "text",
+			label: "Wallet address",
+			index: true,
+			admin: {
+				description:
+					"Optional for now — required once gardeners self-attest from the mobile app.",
+			},
 		},
 		{
 			name: "notes",
 			type: "textarea",
+		},
+		{
+			name: "status",
+			type: "select",
+			label: "Status",
+			required: true,
+			defaultValue: "onboarding",
+			options: GARDENER_STATUSES.map((value) => ({ label: value, value })),
+			admin: {
+				position: "sidebar",
+				description:
+					"Only active gardeners can be assigned to intervention crews.",
+			},
 		},
 	],
 };

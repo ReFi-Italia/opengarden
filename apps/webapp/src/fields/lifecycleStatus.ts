@@ -22,13 +22,12 @@ export type InterventionLifecycleStatus =
 export const lifecycleStatusField = (): Field => ({
 	name: "lifecycleStatus",
 	type: "select",
+	label: "Status",
 	required: true,
 	defaultValue: "draft",
 	admin: {
 		readOnly: true,
 		position: "sidebar",
-		description:
-			"Lifecycle state — mutated only by server actions, never directly editable.",
 	},
 	options: INTERVENTION_LIFECYCLE_STATUSES.map((value) => ({
 		label: value,

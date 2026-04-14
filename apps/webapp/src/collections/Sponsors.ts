@@ -39,85 +39,104 @@ export const Sponsors: CollectionConfig = {
 			name: "displayName",
 			type: "text",
 			required: true,
+			label: "Display name",
 		},
 		{
-			name: "kind",
-			type: "select",
-			required: true,
-			options: SPONSOR_KINDS.map((value) => ({ label: value, value })),
-		},
-		{
-			name: "canonicalKey",
-			type: "group",
-			admin: {
-				description:
-					"Fields contributing to the canonical JSON hash. Exactly one sub-field is populated depending on `kind`.",
-			},
+			type: "collapsible",
+			label: "Identification",
+			admin: { initCollapsed: false },
 			fields: [
 				{
-					name: "sponsorId",
-					type: "text",
-					admin: {
-						condition: (data) => data?.kind === "corporate",
-						description: "Corporate sponsor identifier.",
-					},
+					name: "kind",
+					type: "select",
+					label: "Type",
+					required: true,
+					options: SPONSOR_KINDS.map((value) => ({ label: value, value })),
 				},
 				{
-					name: "contractNumber",
-					type: "text",
-					admin: {
-						condition: (data) => data?.kind === "municipal",
-						description: "Municipal contract number.",
-					},
-				},
-				{
-					name: "grantId",
-					type: "text",
-					admin: {
-						condition: (data) => data?.kind === "grant",
-						description: "Grant identifier.",
-					},
+					name: "canonicalKey",
+					type: "group",
+					label: false,
+					fields: [
+						{
+							name: "sponsorId",
+							type: "text",
+							label: "Sponsor ID",
+							admin: {
+								condition: (data) => data?.kind === "corporate",
+							},
+						},
+						{
+							name: "contractNumber",
+							type: "text",
+							label: "Contract number",
+							admin: {
+								condition: (data) => data?.kind === "municipal",
+							},
+						},
+						{
+							name: "grantId",
+							type: "text",
+							label: "Grant ID",
+							admin: {
+								condition: (data) => data?.kind === "grant",
+							},
+						},
+					],
 				},
 			],
-		},
-		{
-			name: "canonicalJson",
-			type: "text",
-			index: true,
-			admin: {
-				readOnly: true,
-				description:
-					"Literal JSON bytes used for hashing (spec §9.1). Derived automatically — never edit by hand.",
-			},
-		},
-		{
-			name: "commissionRefHash",
-			type: "text",
-			index: true,
-			admin: {
-				readOnly: true,
-				description:
-					"keccak256(canonicalJson) — matches the on-chain commissionRef. ZERO_BYTES32 for volunteer.",
-			},
-		},
-		{
-			name: "frozen",
-			type: "checkbox",
-			defaultValue: false,
-			admin: {
-				readOnly: true,
-				description:
-					"Flipped true on first reference from a scheduled-or-later intervention. Once frozen, hash-affecting fields cannot change.",
-			},
 		},
 		{
 			name: "notes",
 			type: "textarea",
 		},
 		{
+			type: "collapsible",
+			label: "Blockchain record",
+			admin: {
+				initCollapsed: true,
+				description: "Populated automatically — inspect only.",
+			},
+			fields: [
+				{
+					name: "canonicalJson",
+					type: "text",
+					label: "Signed payload",
+					index: true,
+					admin: { readOnly: true },
+				},
+				{
+					name: "commissionRefHash",
+					type: "text",
+					label: "Verification fingerprint",
+					index: true,
+					admin: {
+						readOnly: true,
+						description: "Empty for volunteer sponsors.",
+					},
+				},
+			],
+		},
+		{
+			name: "frozen",
+			type: "checkbox",
+			label: "Locked",
+			defaultValue: false,
+			admin: {
+				position: "sidebar",
+				readOnly: true,
+				description:
+					"Locks automatically on first use. After that, identification fields can't change.",
+			},
+		},
+		{
 			name: "archived",
 			type: "checkbox",
 			defaultValue: false,
+			admin: {
+				position: "sidebar",
+				description: "Hide from dropdowns without deleting history.",
+			},
 		},
 	],
 };
