@@ -1,14 +1,23 @@
 import type { TaskConfig } from "payload";
 
+import { buildBundleTask } from "./buildBundle";
+import { publishInterventionTask } from "./publishIntervention";
 import { registerAreaTask } from "./registerArea";
+import { scheduleInterventionTask } from "./scheduleIntervention";
+import { validateInterventionTask } from "./validateIntervention";
+import { verifyBundleTask } from "./verifyBundle";
 
 /**
- * All Payload job tasks registered by the webapp. Each task handler is the
- * only place that calls the SDK / writes `chain.*` mirror fields — collection
- * hooks stay pure.
- *
- * Task files are imported eagerly here, but any SDK root-entry import lives
- * inside the handler body (see `lib/openGardenClient.ts`) so loading this
- * module from the Payload CLI does not trigger the `eas-sdk` ESM crash.
+ * All Payload job tasks registered by the webapp. Each handler is the
+ * only place that calls the SDK / writes `chain.*` mirror fields —
+ * collection hooks stay pure.
  */
-export const tasks: TaskConfig<any>[] = [registerAreaTask];
+// biome-ignore lint/suspicious/noExplicitAny: mixed input/output task types
+export const tasks: TaskConfig<any>[] = [
+	registerAreaTask,
+	scheduleInterventionTask,
+	validateInterventionTask,
+	publishInterventionTask,
+	buildBundleTask,
+	verifyBundleTask,
+];

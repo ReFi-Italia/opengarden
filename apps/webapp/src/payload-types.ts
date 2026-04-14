@@ -129,6 +129,11 @@ export interface Config {
   jobs: {
     tasks: {
       registerArea: TaskRegisterArea;
+      scheduleIntervention: TaskScheduleIntervention;
+      validateIntervention: TaskValidateIntervention;
+      publishIntervention: TaskPublishIntervention;
+      buildBundle: TaskBuildBundle;
+      verifyBundle: TaskVerifyBundle;
       inline: {
         input: unknown;
         output: unknown;
@@ -819,7 +824,18 @@ export interface Healthcheck {
  */
 export interface ChainTransaction {
   id: number;
-  kind: 'registerSchema' | 'registerArea' | 'scheduleIntervention' | 'timestamp' | 'validate' | 'publish' | 'revoke';
+  kind:
+    | 'registerSchema'
+    | 'registerArea'
+    | 'scheduleIntervention'
+    | 'validateIntervention'
+    | 'publishIntervention'
+    | 'buildBundle'
+    | 'verifyBundle'
+    | 'timestamp'
+    | 'validate'
+    | 'publish'
+    | 'revoke';
   relatedCollection?: string | null;
   relatedId?: string | null;
   txHash?: string | null;
@@ -918,7 +934,14 @@ export interface PayloadJob {
     | {
         executedAt: string;
         completedAt: string;
-        taskSlug: 'inline' | 'registerArea';
+        taskSlug:
+          | 'inline'
+          | 'registerArea'
+          | 'scheduleIntervention'
+          | 'validateIntervention'
+          | 'publishIntervention'
+          | 'buildBundle'
+          | 'verifyBundle';
         taskID: string;
         input?:
           | {
@@ -951,7 +974,17 @@ export interface PayloadJob {
         id?: string | null;
       }[]
     | null;
-  taskSlug?: ('inline' | 'registerArea') | null;
+  taskSlug?:
+    | (
+        | 'inline'
+        | 'registerArea'
+        | 'scheduleIntervention'
+        | 'validateIntervention'
+        | 'publishIntervention'
+        | 'buildBundle'
+        | 'verifyBundle'
+      )
+    | null;
   queue?: string | null;
   waitUntil?: string | null;
   processing?: boolean | null;
@@ -1618,6 +1651,72 @@ export interface TaskRegisterArea {
   output: {
     chainUID: string;
     txHash: string;
+  };
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskScheduleIntervention".
+ */
+export interface TaskScheduleIntervention {
+  input: {
+    interventionId: number;
+  };
+  output: {
+    chainUID: string;
+    timestampTxHash: string;
+  };
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskValidateIntervention".
+ */
+export interface TaskValidateIntervention {
+  input: {
+    interventionId: number;
+  };
+  output: {
+    chainUID: string;
+    timestampTxHash: string;
+  };
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskPublishIntervention".
+ */
+export interface TaskPublishIntervention {
+  input: {
+    interventionId: number;
+  };
+  output: {
+    chainUID: string;
+    txHash: string;
+  };
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskBuildBundle".
+ */
+export interface TaskBuildBundle {
+  input: {
+    bundleId: number;
+  };
+  output: {
+    evidenceBundleHash: string;
+    attestationCount: number;
+  };
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskVerifyBundle".
+ */
+export interface TaskVerifyBundle {
+  input: {
+    bundleId: number;
+  };
+  output: {
+    valid: boolean;
+    attestationCount: number;
+    expectedCount: number;
   };
 }
 /**

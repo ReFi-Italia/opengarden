@@ -1,7 +1,4 @@
-import type {
-	AreaRegistrationInput,
-	AreaType,
-} from "@refi-italia/opengarden";
+import type { AreaRegistrationInput, AreaType } from "@refi-italia/opengarden";
 import type { TaskConfig } from "payload";
 
 import {

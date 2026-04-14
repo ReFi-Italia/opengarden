@@ -8,8 +8,6 @@ import {
 import { ethers } from "ethers";
 import type { Payload } from "payload";
 
-const CHAIN_ENV_VAR = "PROTOCOL_CHAIN";
-
 export type OpenGardenContext = {
 	client: OpenGardenClient;
 	chainId: number;
@@ -32,7 +30,7 @@ async function verifyChainConsistency(
 	if (mismatched.totalDocs > 0) {
 		const otherChainId = mismatched.docs[0]?.chainId;
 		throw new Error(
-			`${CHAIN_ENV_VAR} resolves to chain id ${chainId}, but chainTransactions already has activity for chain id ${otherChainId}. Refusing to mix chains across a deploy.`,
+			`PROTOCOL_CHAIN resolves to chain id ${chainId}, but chainTransactions already has activity for chain id ${otherChainId}. Refusing to mix chains across a deploy.`,
 		);
 	}
 	verifiedChainId = chainId;
@@ -53,10 +51,10 @@ export async function getOpenGardenContext(
 			"OPENGARDEN_RPC_URL is not set. Chain calls require a JSON-RPC endpoint for the configured chain.",
 		);
 	}
-	const chainInput = process.env[CHAIN_ENV_VAR];
+	const chainInput = process.env.PROTOCOL_CHAIN;
 	if (!chainInput || !(chainInput in CHAIN_CONFIGS)) {
 		throw new Error(
-			`${CHAIN_ENV_VAR} is not set or unknown (got "${chainInput ?? ""}"). Set it to one of: ${Object.keys(
+			`PROTOCOL_CHAIN is not set or unknown (got "${chainInput ?? ""}"). Set it to one of: ${Object.keys(
 				CHAIN_CONFIGS,
 			).join(", ")}.`,
 		);
