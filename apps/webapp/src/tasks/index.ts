@@ -1,8 +1,7 @@
 import type { TaskConfig } from "payload";
 
 import { buildBundleTask } from "./buildBundle";
-import { gardenerCheckinTask } from "./gardenerCheckin";
-import { gardenerCheckoutTask } from "./gardenerCheckout";
+import { commitActivityChainTask } from "./commitActivityChain";
 import { publishInterventionTask } from "./publishIntervention";
 import { registerAreaTask } from "./registerArea";
 import { scheduleInterventionTask } from "./scheduleIntervention";
@@ -11,15 +10,14 @@ import { verifyBundleTask } from "./verifyBundle";
 
 /**
  * All Payload job tasks registered by the webapp. Each handler is the
- * only place that calls the SDK / writes `chain.*` mirror fields —
+ * only place that calls the SDK / writes chain mirror fields —
  * collection hooks stay pure.
  */
 // biome-ignore lint/suspicious/noExplicitAny: mixed input/output task types
 export const tasks: TaskConfig<any>[] = [
 	registerAreaTask,
 	scheduleInterventionTask,
-	gardenerCheckinTask,
-	gardenerCheckoutTask,
+	commitActivityChainTask,
 	validateInterventionTask,
 	publishInterventionTask,
 	buildBundleTask,

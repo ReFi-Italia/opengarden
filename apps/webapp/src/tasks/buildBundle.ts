@@ -2,13 +2,12 @@ import type {
 	EvidenceBundleBuilderInput,
 	TimestampedOffChainResult,
 } from "@refi-italia/opengarden";
-import type { Payload, PayloadRequest, TaskConfig } from "payload";
+import type { TaskConfig } from "payload";
 
 import {
 	getOpenGardenContext,
 	type OpenGardenContext,
 } from "../lib/openGardenClient";
-import { recordChainTransaction } from "../lib/recordChainTransaction";
 
 type BuildBundleInput = {
 	/** Payload document id of the `evidenceBundles` row to build. */
@@ -137,6 +136,32 @@ export const buildBundleTask: TaskConfig<{
 			throw new Error(`Intervention ${intervention.id} has an empty crew.`);
 		}
 
+		// Read all activities for this intervention in one query, depth=3
+		// so the attestation relationship is populated with the signed
+		// off-chain payload each row needs.
+		const activitiesResult = await payload.find({
+			collection: "activities",
+			where: { intervention: { equals: intervention.id } },
+			limit: 200,
+			depth: 3,
+			req,
+			overrideAccess: true,
+		});
+		const activities = activitiesResult.docs;
+
+		// Partition by type
+		// biome-ignore lint/suspicious/noExplicitAny: activities rows are Payload-typed per field
+		const checkins = activities.filter((a: any) => a.type === "checkin");
+		// biome-ignore lint/suspicious/noExplicitAny: same
+		const checkouts = activities.filter((a: any) => a.type === "checkout");
+		// biome-ignore lint/suspicious/noExplicitAny: same
+		const reports = activities.filter((a: any) => a.type === "report");
+		// biome-ignore lint/suspicious/noExplicitAny: same
+		const interventionHcs = activities.filter(
+			// biome-ignore lint/suspicious/noExplicitAny: same
+			(a: any) => a.type === "interventionHealthcheck",
+		);
+
 		const crewRows: Array<{
 			gardenerId: string;
 			attesterWallet: string;
@@ -157,103 +182,92 @@ export const buildBundleTask: TaskConfig<{
 			}
 			const gardenerId = gardener.id;
 
-			const checkinRow = await findOne(
-				payload,
-				"gardenerCheckins",
-				{
-					and: [
-						{ intervention: { equals: intervention.id } },
-						{ gardener: { equals: gardenerId } },
-					],
-				},
-				req,
-			);
-			if (!checkinRow) {
+			// biome-ignore lint/suspicious/noExplicitAny: activities rows are Payload-typed
+			const checkinActivity = checkins.find((a: any) => {
+				const g = a.gardener;
+				if (!g) return false;
+				if (typeof g === "object" && g !== null) return g.id === gardenerId;
+				return g === gardenerId;
+			});
+			if (!checkinActivity) {
 				throw new Error(
-					`No gardenerCheckins row for intervention ${intervention.id} / gardener ${gardenerId}.`,
+					`No checkin activity for intervention ${intervention.id} / gardener ${gardenerId}.`,
 				);
 			}
-			const checkoutRow = await findOne(
-				payload,
-				"gardenerCheckouts",
-				{ checkin: { equals: checkinRow.id } },
-				req,
-			);
-			if (!checkoutRow) {
+
+			// biome-ignore lint/suspicious/noExplicitAny: parentActivity is Payload-populated at depth 3
+			const checkoutActivity = checkouts.find((a: any) => {
+				const p = a.parentActivity;
+				if (!p) return false;
+				if (typeof p === "object" && p !== null) return p.id === checkinActivity.id;
+				return p === checkinActivity.id;
+			});
+			if (!checkoutActivity) {
 				throw new Error(
-					`No gardenerCheckouts row for checkin ${checkinRow.id}.`,
+					`No checkout activity for checkin ${checkinActivity.id}.`,
 				);
 			}
-			const reportRow = await findOne(
-				payload,
-				"gardenerReports",
-				{ checkout: { equals: checkoutRow.id } },
-				req,
-			);
-			if (!reportRow) {
+
+			// biome-ignore lint/suspicious/noExplicitAny: parentActivity is Payload-populated at depth 3
+			const reportActivity = reports.find((a: any) => {
+				const p = a.parentActivity;
+				if (!p) return false;
+				if (typeof p === "object" && p !== null) return p.id === checkoutActivity.id;
+				return p === checkoutActivity.id;
+			});
+			if (!reportActivity) {
 				throw new Error(
-					`No gardenerReports row for checkout ${checkoutRow.id}.`,
+					`No report activity for checkout ${checkoutActivity.id}.`,
 				);
 			}
 
 			crewRows.push({
 				gardenerId: String(gardenerId),
-				attesterWallet: checkinRow.chain?.attesterWallet ?? "",
-				checkinId: String(checkinRow.id),
-				checkoutId: String(checkoutRow.id),
-				reportId: String(reportRow.id),
-				checkin: chainGroupToTimestampedResult(
-					checkinRow.chain,
-					`gardenerCheckins ${checkinRow.id}`,
+				attesterWallet:
+					attestationAttesterWallet(checkinActivity) ?? "",
+				checkinId: String(checkinActivity.id),
+				checkoutId: String(checkoutActivity.id),
+				reportId: String(reportActivity.id),
+				checkin: attestationToTimestampedResult(
+					checkinActivity,
+					`checkin activity ${checkinActivity.id}`,
 				),
-				checkout: chainGroupToTimestampedResult(
-					checkoutRow.chain,
-					`gardenerCheckouts ${checkoutRow.id}`,
+				checkout: attestationToTimestampedResult(
+					checkoutActivity,
+					`checkout activity ${checkoutActivity.id}`,
 				),
-				report: chainGroupToTimestampedResult(
-					reportRow.chain,
-					`gardenerReports ${reportRow.id}`,
+				report: attestationToTimestampedResult(
+					reportActivity,
+					`report activity ${reportActivity.id}`,
 				),
 			});
 		}
 
-		const healthcheckBeforeRow = await findOne(
-			payload,
-			"healthchecks",
-			{
-				and: [
-					{ intervention: { equals: intervention.id } },
-					{ kind: { equals: "before" } },
-				],
-			},
-			req,
+		// biome-ignore lint/suspicious/noExplicitAny: same
+		const healthcheckBeforeRow = interventionHcs.find(
+			// biome-ignore lint/suspicious/noExplicitAny: same
+			(a: any) => a.kind === "before",
 		);
-		const healthcheckAfterRow = await findOne(
-			payload,
-			"healthchecks",
-			{
-				and: [
-					{ intervention: { equals: intervention.id } },
-					{ kind: { equals: "after" } },
-				],
-			},
-			req,
+		// biome-ignore lint/suspicious/noExplicitAny: same
+		const healthcheckAfterRow = interventionHcs.find(
+			// biome-ignore lint/suspicious/noExplicitAny: same
+			(a: any) => a.kind === "after",
 		);
 
 		const healthcheckBefore = healthcheckBeforeRow
 			? {
-					...chainGroupToTimestampedResult(
-						healthcheckBeforeRow.chain,
-						`healthchecks ${healthcheckBeforeRow.id}`,
+					...attestationToTimestampedResult(
+						healthcheckBeforeRow,
+						`healthcheck-before activity ${healthcheckBeforeRow.id}`,
 					),
 					score: healthcheckBeforeRow.healthScore as number,
 				}
 			: undefined;
 		const healthcheckAfter = healthcheckAfterRow
 			? {
-					...chainGroupToTimestampedResult(
-						healthcheckAfterRow.chain,
-						`healthchecks ${healthcheckAfterRow.id}`,
+					...attestationToTimestampedResult(
+						healthcheckAfterRow,
+						`healthcheck-after activity ${healthcheckAfterRow.id}`,
 					),
 					score: healthcheckAfterRow.healthScore as number,
 				}
@@ -339,19 +353,6 @@ export const buildBundleTask: TaskConfig<{
 				req,
 			});
 
-			await recordChainTransaction({
-				payload,
-				req,
-				kind: "buildBundle",
-				relatedCollection: "evidenceBundles",
-				relatedId: bundleId,
-				status: "success",
-				chainId: context.chainId,
-				attesterWallet: context.attesterWallet,
-				payloadJson: { interventionId: intervention.id, offchainCount },
-				resultJson: { evidenceBundleHash, offchainCount },
-			});
-
 			return {
 				output: {
 					evidenceBundleHash,
@@ -375,18 +376,10 @@ export const buildBundleTask: TaskConfig<{
 				})
 				.catch(() => undefined);
 
-			await recordChainTransaction({
-				payload,
-				req,
-				kind: "buildBundle",
-				relatedCollection: "evidenceBundles",
-				relatedId: bundleId,
-				status: "failed",
+			payload.logger.error({
+				msg: `buildBundle task failed for bundle ${bundleId}`,
 				error: message,
-				chainId: context?.chainId,
-				attesterWallet: context?.attesterWallet,
-				payloadJson: { interventionId: intervention.id },
-			}).catch(() => undefined);
+			});
 
 			throw err;
 		}
@@ -395,8 +388,9 @@ export const buildBundleTask: TaskConfig<{
 
 /**
  * Rehydrates a `TimestampedOffChainResult` from a Payload `chain` group
- * populated by an upstream task. Throws with an actionable message if
- * any required mirror field is missing.
+ * populated by an upstream task. Still used by intervention scheduling /
+ * validation / execution groups pending the chain-mirror → Attestations
+ * migration (see project memory).
  */
 function chainGroupToTimestampedResult(
 	// biome-ignore lint/suspicious/noExplicitAny: chain group is Payload-typed at each call site
@@ -425,22 +419,49 @@ function chainGroupToTimestampedResult(
 	};
 }
 
-async function findOne<T extends string>(
-	payload: Payload,
-	collection: T,
-	// biome-ignore lint/suspicious/noExplicitAny: payload where types are per-collection
-	where: any,
-	req: PayloadRequest,
-	// biome-ignore lint/suspicious/noExplicitAny: row shape varies per collection
-): Promise<any | null> {
-	const result = await payload.find({
-		// biome-ignore lint/suspicious/noExplicitAny: generic helper
-		collection: collection as any,
-		where,
-		limit: 1,
-		depth: 1,
-		req,
-		overrideAccess: true,
-	});
-	return result.docs[0] ?? null;
+/**
+ * Rehydrates a `TimestampedOffChainResult` from an activity row whose
+ * `attestation` relationship has been populated (via depth=2+). Throws
+ * if the activity has no committed attestation yet.
+ */
+function attestationToTimestampedResult(
+	// biome-ignore lint/suspicious/noExplicitAny: activity row shape is generic
+	activity: any,
+	context: string,
+): TimestampedOffChainResult {
+	const att = activity?.attestation;
+	if (!att || typeof att !== "object") {
+		throw new Error(`${context} has no attestation relationship populated.`);
+	}
+	if (att.status !== "committed") {
+		throw new Error(
+			`${context} attestation is in status "${att.status}" — expected "committed".`,
+		);
+	}
+	if (!att.uid) {
+		throw new Error(`${context} attestation has no uid.`);
+	}
+	if (!att.signedAttestation) {
+		throw new Error(`${context} attestation has no signedAttestation.`);
+	}
+	if (typeof att.onchainTimestamp !== "number") {
+		throw new Error(`${context} attestation has no onchainTimestamp.`);
+	}
+	return {
+		uid: att.uid,
+		signedAttestation: att.signedAttestation as Record<string, unknown>,
+		timestampTxHash: att.timestampTxHash,
+		onchainTimestamp: BigInt(att.onchainTimestamp),
+		// biome-ignore lint/suspicious/noExplicitAny: receipt isn't persisted
+		timestampReceipt: undefined as any,
+	};
+}
+
+function attestationAttesterWallet(
+	// biome-ignore lint/suspicious/noExplicitAny: activity row shape is generic
+	activity: any,
+): string | undefined {
+	const att = activity?.attestation;
+	if (!att || typeof att !== "object") return undefined;
+	return att.attesterWallet;
 }

@@ -22,15 +22,15 @@ async function verifyChainConsistency(
 ): Promise<void> {
 	if (verifiedChainId === chainId) return;
 	const mismatched = await payload.find({
-		collection: "chainTransactions",
-		where: { chainId: { not_equals: Number(chainId) } },
+		collection: "attestations",
+		where: { chainIdSnapshot: { not_equals: Number(chainId) } },
 		limit: 1,
 		depth: 0,
 	});
 	if (mismatched.totalDocs > 0) {
-		const otherChainId = mismatched.docs[0]?.chainId;
+		const otherChainId = mismatched.docs[0]?.chainIdSnapshot;
 		throw new Error(
-			`PROTOCOL_CHAIN resolves to chain id ${chainId}, but chainTransactions already has activity for chain id ${otherChainId}. Refusing to mix chains across a deploy.`,
+			`PROTOCOL_CHAIN resolves to chain id ${chainId}, but attestations already has rows for chain id ${otherChainId}. Refusing to mix chains across a deploy.`,
 		);
 	}
 	verifiedChainId = chainId;

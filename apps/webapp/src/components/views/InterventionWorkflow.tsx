@@ -7,12 +7,13 @@ import type {
 import { createClientFields } from "payload";
 import { importMap } from "@/app/(payload)/admin/importMap.js";
 import type { Intervention } from "@/payload-types";
-import { RecordCheckinForm } from "./RecordCheckinForm";
-import { RecordCheckoutForm } from "./RecordCheckoutForm";
+import { RecordActivityForm } from "./RecordActivityForm";
 import { SetupForm } from "./SetupForm";
 import { StageForm } from "./StageForm";
 import "./InterventionWorkflow.scss";
 
+// Every activity-form subset. The form renders only these plus `type` +
+// parent reference keys that are pre-filled in initialState.
 const CHECKIN_FORM_FIELDS: readonly string[] = [
 	"gardener",
 	"latitude",
@@ -22,7 +23,7 @@ const CHECKIN_FORM_FIELDS: readonly string[] = [
 ];
 
 const CHECKOUT_FORM_FIELDS: readonly string[] = [
-	"checkin",
+	"parentActivity",
 	"claimedTimestamp",
 	"actualMinutes",
 ];
@@ -216,22 +217,28 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 	let checkoutInitialState: FormState = {};
 
 	if (showCrewActivity) {
-		const checkinFields =
-			payload.collections.gardenerCheckins?.config.fields ?? [];
-		const editableCheckinFields = checkinFields.filter(
-			(f): f is Field & { name: string } =>
-				"name" in f &&
-				typeof f.name === "string" &&
-				CHECKIN_FORM_FIELDS.includes(f.name),
-		);
-		checkinClientFields = createClientFields({
-			fields: editableCheckinFields,
-			defaultIDType: payload.db.defaultIDType ?? "text",
-			i18n: props.i18n,
-			importMap,
-		});
+		// All activity form fields come from a single polymorphic collection
+		// now. Each sub-form renders the subset relevant to its `type` +
+		// carries the `type` + `intervention` + parent keys in form state.
+		const activityFields =
+			payload.collections.activities?.config.fields ?? [];
+		const pickFields = (names: readonly string[]) =>
+			createClientFields({
+				fields: activityFields.filter(
+					(f): f is Field & { name: string } =>
+						"name" in f &&
+						typeof f.name === "string" &&
+						names.includes(f.name),
+				),
+				defaultIDType: payload.db.defaultIDType ?? "text",
+				i18n: props.i18n,
+				importMap,
+			});
 
-		// Pre-populate from the parent intervention's area + first crew member.
+		checkinClientFields = pickFields(CHECKIN_FORM_FIELDS);
+		checkoutClientFields = pickFields(CHECKOUT_FORM_FIELDS);
+
+		// ─── Checkin defaults (gardener + lat/lng from area) ──────────
 		const areaObj = inv?.area;
 		const areaLat =
 			areaObj && typeof areaObj === "object"
@@ -253,13 +260,8 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 
 		const nowISO = new Date().toISOString();
 
-		// Construct a minimal FormState with `value` + `initialValue` for
-		// each pre-filled key. Payload's Form treats this as the starting
-		// state and the rendered fields pick up their defaults from here.
-		// The `intervention` key is not rendered (the operator can't change
-		// it — we're inside that intervention's workflow view) but it IS
-		// part of the state so client validation sees it populated.
 		checkinInitialState = {
+			type: { value: "checkin", initialValue: "checkin" },
 			intervention: {
 				value: String(id),
 				initialValue: String(id),
@@ -282,91 +284,77 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 			},
 		} as FormState;
 
-		// ─── Checkout form prep ────────────────────────────────────────
-		// Pre-fill the checkin relationship with the most recent committed
-		// checkin for this intervention that does NOT yet have a matching
-		// checkout. Falls back to empty if none — operator picks manually.
-		const checkoutFields =
-			payload.collections.gardenerCheckouts?.config.fields ?? [];
-		const editableCheckoutFields = checkoutFields.filter(
-			(f): f is Field & { name: string } =>
-				"name" in f &&
-				typeof f.name === "string" &&
-				CHECKOUT_FORM_FIELDS.includes(f.name),
-		);
-		checkoutClientFields = createClientFields({
-			fields: editableCheckoutFields,
-			defaultIDType: payload.db.defaultIDType ?? "text",
-			i18n: props.i18n,
-			importMap,
-		});
-
-		const openCheckinResult = await payload
+		// ─── Checkout defaults (parentActivity = most recent checkin without a matching checkout) ──
+		const checkinActivitiesResult = await payload
 			.find({
-				collection: "gardenerCheckins",
-				where: { intervention: { equals: String(id) } },
+				collection: "activities",
+				where: {
+					and: [
+						{ intervention: { equals: String(id) } },
+						{ type: { equals: "checkin" } },
+					],
+				},
 				depth: 0,
-				limit: 20,
-				sort: "-createdAt",
+				limit: 50,
+				sort: "-claimedTimestamp",
 				overrideAccess: true,
 			})
-			.catch(() => ({ docs: [] as Array<{ id: string | number }> }));
+			.catch(() => ({
+				docs: [] as Array<{ id: string | number; claimedTimestamp?: string }>,
+			}));
 
-		const allCheckoutsResult = await payload
+		const checkoutActivitiesResult = await payload
 			.find({
-				collection: "gardenerCheckouts",
+				collection: "activities",
 				where: {
-					checkin: {
-						in: (openCheckinResult.docs ?? []).map((d) => d.id),
-					},
+					and: [
+						{ intervention: { equals: String(id) } },
+						{ type: { equals: "checkout" } },
+					],
 				},
 				depth: 0,
 				limit: 50,
 				overrideAccess: true,
 			})
-			.catch(() => ({ docs: [] as Array<{ checkin: string | number }> }));
+			.catch(() => ({
+				docs: [] as Array<{ parentActivity?: string | number | { id?: string | number } }>,
+			}));
 
-		const checkedOutIds = new Set(
-			(allCheckoutsResult.docs ?? []).map((d) =>
-				typeof d.checkin === "object" && d.checkin !== null
-					? String((d.checkin as { id?: string | number }).id ?? "")
-					: String(d.checkin),
-			),
+		const closedCheckinIds = new Set(
+			(checkoutActivitiesResult.docs ?? []).map((d) => {
+				const p = d.parentActivity;
+				if (typeof p === "object" && p !== null) {
+					return String((p as { id?: string | number }).id ?? "");
+				}
+				return String(p ?? "");
+			}),
 		);
-		const defaultCheckin = (openCheckinResult.docs ?? []).find(
-			(ci) => !checkedOutIds.has(String(ci.id)),
+		const openCheckin = (checkinActivitiesResult.docs ?? []).find(
+			(ci) => !closedCheckinIds.has(String(ci.id)),
 		);
-		const defaultCheckinId = defaultCheckin ? String(defaultCheckin.id) : "";
+		const openCheckinId = openCheckin ? String(openCheckin.id) : "";
 
-		// Compute a reasonable default actualMinutes from the checkin
-		// timestamp → now (assumes the operator is recording right after
-		// the crew wrapped up).
+		// Default actualMinutes: now − open checkin's claimedTimestamp.
 		let defaultActualMinutes = 60;
-		if (defaultCheckin) {
-			const fullCheckin = await payload
-				.findByID({
-					collection: "gardenerCheckins",
-					id: String(defaultCheckin.id),
-					depth: 0,
-					overrideAccess: true,
-				})
-				.catch(() => null);
-			const startMs = fullCheckin?.claimedTimestamp
-				? new Date(fullCheckin.claimedTimestamp).getTime()
-				: 0;
+		if (openCheckin?.claimedTimestamp) {
+			const startMs = new Date(openCheckin.claimedTimestamp).getTime();
 			if (startMs > 0) {
-				const diffMinutes = Math.max(
+				defaultActualMinutes = Math.max(
 					1,
 					Math.round((Date.now() - startMs) / 60000),
 				);
-				defaultActualMinutes = diffMinutes;
 			}
 		}
 
 		checkoutInitialState = {
-			checkin: {
-				value: defaultCheckinId || null,
-				initialValue: defaultCheckinId || null,
+			type: { value: "checkout", initialValue: "checkout" },
+			intervention: {
+				value: String(id),
+				initialValue: String(id),
+			},
+			parentActivity: {
+				value: openCheckinId || null,
+				initialValue: openCheckinId || null,
 			},
 			claimedTimestamp: {
 				value: nowISO,
@@ -550,9 +538,24 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 								</div>
 							</div>
 							<div className="iw__panel-body">
-								<RecordCheckinForm
+								<div className="iw-form__section-label">Check-in</div>
+								<RecordActivityForm
+									label="Record check-in"
+									doneLabel="Check-in recorded ✓"
 									clientFields={checkinClientFields}
 									formState={checkinInitialState}
+								/>
+								<div
+									className="iw-form__section-label"
+									style={{ marginTop: 24 }}
+								>
+									Check-out
+								</div>
+								<RecordActivityForm
+									label="Record check-out"
+									doneLabel="Check-out recorded ✓"
+									clientFields={checkoutClientFields}
+									formState={checkoutInitialState}
 								/>
 							</div>
 						</div>

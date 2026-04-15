@@ -1,6 +1,5 @@
 import type { CollectionConfig } from "payload";
 import { authenticated } from "../access/authenticated";
-import { isAuthoringOrAbove } from "../access/isAuthoringOrAbove";
 import {
 	EVIDENCE_BUNDLE_STATES,
 	enforceEvidenceBundleState,
@@ -19,9 +18,9 @@ export const EvidenceBundles: CollectionConfig = {
 	},
 	access: {
 		read: authenticated,
-		create: isAuthoringOrAbove,
-		update: isAuthoringOrAbove,
-		delete: isAuthoringOrAbove,
+		create: () => false,
+		update: () => false,
+		delete: () => false,
 	},
 	hooks: {
 		beforeChange: [enforceEvidenceBundleState],
@@ -41,44 +40,34 @@ export const EvidenceBundles: CollectionConfig = {
 							required: true,
 							unique: true,
 							index: true,
-							admin: {
-								description: "Set at creation — can't be changed later.",
-							},
 						},
 						{
 							name: "interventionIdSnapshot",
 							type: "text",
 							label: "Intervention ID (snapshot)",
-							admin: {
-								readOnly: true,
-								description: "Captured at build time.",
-							},
+							admin: { description: "Captured at build time." },
 						},
 						{
 							name: "areaUIDSnapshot",
 							type: "text",
 							label: "Area attestation ID",
-							admin: { readOnly: true },
 						},
 						{
 							name: "bundleVersion",
 							type: "text",
 							label: "Bundle version",
 							defaultValue: "0.1.0",
-							admin: { readOnly: true },
 						},
 						{
 							name: "evidenceBundleHash",
 							type: "text",
 							label: "Verification fingerprint",
 							index: true,
-							admin: { readOnly: true },
 						},
 						{
 							name: "crewMembers",
 							type: "array",
 							label: "Crew attestations",
-							admin: { readOnly: true },
 							fields: [
 								{
 									name: "gardener",
@@ -94,19 +83,19 @@ export const EvidenceBundles: CollectionConfig = {
 								{
 									name: "checkin",
 									type: "relationship",
-									relationTo: "gardenerCheckins",
+									relationTo: "activities",
 									label: "Check-in",
 								},
 								{
 									name: "checkout",
 									type: "relationship",
-									relationTo: "gardenerCheckouts",
+									relationTo: "activities",
 									label: "Check-out",
 								},
 								{
 									name: "report",
 									type: "relationship",
-									relationTo: "gardenerReports",
+									relationTo: "activities",
 									label: "Report",
 								},
 							],
@@ -120,28 +109,24 @@ export const EvidenceBundles: CollectionConfig = {
 							name: "scheduledRef",
 							type: "text",
 							label: "Scheduling attestation",
-							admin: { readOnly: true },
 						},
 						{
 							name: "validationRef",
 							type: "relationship",
 							relationTo: "adminValidations",
 							label: "Validation attestation",
-							admin: { readOnly: true },
 						},
 						{
 							name: "healthcheckBefore",
 							type: "relationship",
-							relationTo: "healthchecks",
+							relationTo: "activities",
 							label: "Healthcheck before",
-							admin: { readOnly: true },
 						},
 						{
 							name: "healthcheckAfter",
 							type: "relationship",
-							relationTo: "healthchecks",
+							relationTo: "activities",
 							label: "Healthcheck after",
-							admin: { readOnly: true },
 						},
 					],
 				},
@@ -152,7 +137,6 @@ export const EvidenceBundles: CollectionConfig = {
 							name: "verification",
 							type: "group",
 							label: false,
-							admin: { readOnly: true },
 							fields: [
 								{
 									name: "valid",
@@ -229,7 +213,6 @@ export const EvidenceBundles: CollectionConfig = {
 							type: "json",
 							label: "Build issues",
 							admin: {
-								readOnly: true,
 								description: "Publish is disabled until empty.",
 							},
 						},
@@ -237,7 +220,6 @@ export const EvidenceBundles: CollectionConfig = {
 							name: "lastError",
 							type: "textarea",
 							label: "Last error",
-							admin: { readOnly: true },
 						},
 						{
 							type: "collapsible",
@@ -248,7 +230,6 @@ export const EvidenceBundles: CollectionConfig = {
 									name: "bundleJson",
 									type: "json",
 									label: false,
-									admin: { readOnly: true },
 								},
 							],
 						},
@@ -262,10 +243,7 @@ export const EvidenceBundles: CollectionConfig = {
 			label: "Status",
 			required: true,
 			defaultValue: "draft",
-			admin: {
-				readOnly: true,
-				position: "sidebar",
-			},
+			admin: { position: "sidebar" },
 			index: true,
 			options: EVIDENCE_BUNDLE_STATES.map((value) => ({ label: value, value })),
 		},

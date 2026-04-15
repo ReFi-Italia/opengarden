@@ -4,7 +4,6 @@ import {
 	getOpenGardenContext,
 	type OpenGardenContext,
 } from "../lib/openGardenClient";
-import { recordChainTransaction } from "../lib/recordChainTransaction";
 
 type VerifyBundleInput = {
 	/** Payload document id of the `evidenceBundles` row to verify. */
@@ -115,24 +114,6 @@ export const verifyBundleTask: TaskConfig<{
 				req,
 			});
 
-			await recordChainTransaction({
-				payload,
-				req,
-				kind: "verifyBundle",
-				relatedCollection: "evidenceBundles",
-				relatedId: bundleId,
-				status: "success",
-				chainUID: interventionUID,
-				chainId: context.chainId,
-				attesterWallet: context.attesterWallet,
-				payloadJson: { interventionUID },
-				resultJson: {
-					valid: result.valid,
-					attestationCount: result.attestationCount,
-					expectedCount: result.expectedCount,
-				},
-			});
-
 			return {
 				output: {
 					valid: result.valid,
@@ -156,18 +137,10 @@ export const verifyBundleTask: TaskConfig<{
 				})
 				.catch(() => undefined);
 
-			await recordChainTransaction({
-				payload,
-				req,
-				kind: "verifyBundle",
-				relatedCollection: "evidenceBundles",
-				relatedId: bundleId,
-				status: "failed",
+			payload.logger.error({
+				msg: `verifyBundle task failed for bundle ${bundleId}`,
 				error: message,
-				chainId: context?.chainId,
-				attesterWallet: context?.attesterWallet,
-				payloadJson: { interventionUID },
-			}).catch(() => undefined);
+			});
 
 			throw err;
 		}

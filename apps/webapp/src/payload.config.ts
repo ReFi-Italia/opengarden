@@ -4,15 +4,12 @@ import { sqliteAdapter } from "@payloadcms/db-sqlite";
 import { lexicalEditor } from "@payloadcms/richtext-lexical";
 import { buildConfig } from "payload";
 import sharp from "sharp";
+import { Activities } from "./collections/Activities";
 import { AdminValidations } from "./collections/AdminValidations";
 import { Areas } from "./collections/Areas";
-import { ChainTransactions } from "./collections/ChainTransactions";
+import { Attestations } from "./collections/Attestations";
 import { EvidenceBundles } from "./collections/EvidenceBundles";
-import { GardenerCheckins } from "./collections/GardenerCheckins";
-import { GardenerCheckouts } from "./collections/GardenerCheckouts";
-import { GardenerReports } from "./collections/GardenerReports";
 import { Gardeners } from "./collections/Gardeners";
-import { Healthchecks } from "./collections/Healthchecks";
 import { Interventions } from "./collections/Interventions";
 import { Media } from "./collections/Media";
 import { Sponsors } from "./collections/Sponsors";
@@ -40,13 +37,10 @@ export default buildConfig({
 		Gardeners,
 		Areas,
 		Interventions,
-		GardenerCheckins,
-		GardenerCheckouts,
-		GardenerReports,
+		Activities,
 		AdminValidations,
-		Healthchecks,
 		EvidenceBundles,
-		ChainTransactions,
+		Attestations,
 	],
 	globals: [OrganizationProfile, TaskCatalog],
 	editor: lexicalEditor(),

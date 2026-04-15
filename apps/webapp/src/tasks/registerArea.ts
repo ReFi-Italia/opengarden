@@ -5,7 +5,6 @@ import {
 	getOpenGardenContext,
 	type OpenGardenContext,
 } from "../lib/openGardenClient";
-import { recordChainTransaction } from "../lib/recordChainTransaction";
 
 type RegisterAreaInput = {
 	/** Payload document id of the `areas` row to register on-chain. */
@@ -124,21 +123,6 @@ export const registerAreaTask: TaskConfig<{
 				req,
 			});
 
-			await recordChainTransaction({
-				payload,
-				req,
-				kind: "registerArea",
-				relatedCollection: "areas",
-				relatedId: areaId,
-				status: "success",
-				txHash: result.txHash,
-				chainUID: result.uid,
-				chainId: context.chainId,
-				attesterWallet: context.attesterWallet,
-				payloadJson: sdkInput,
-				resultJson: { uid: result.uid, txHash: result.txHash },
-			});
-
 			return {
 				output: { chainUID: result.uid, txHash: result.txHash },
 			};
@@ -156,18 +140,10 @@ export const registerAreaTask: TaskConfig<{
 				})
 				.catch(() => undefined);
 
-			await recordChainTransaction({
-				payload,
-				req,
-				kind: "registerArea",
-				relatedCollection: "areas",
-				relatedId: areaId,
-				status: "failed",
+			payload.logger.error({
+				msg: `registerArea task failed for area ${areaId}`,
 				error: message,
-				chainId: context?.chainId,
-				attesterWallet: context?.attesterWallet,
-				payloadJson: sdkInput,
-			}).catch(() => undefined);
+			});
 
 			throw err;
 		}

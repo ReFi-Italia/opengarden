@@ -5,28 +5,32 @@ import { useRouter } from "next/navigation";
 import type { ClientField, FormState } from "payload";
 import { useState } from "react";
 
-export type RecordCheckoutFormProps = {
+export type RecordActivityFormProps = {
+	label: string;
+	doneLabel: string;
 	clientFields: ClientField[];
 	formState: FormState;
 };
 
 /**
- * Inline checkout form rendered inside the workflow view's `in_progress`
- * stage panel (below the checkin form). Uses Payload's stock `<Form>` +
- * `<RenderFields>` so the relationship picker (checkin), date picker
- * (claimedTimestamp), and number input (actualMinutes) all come from
- * Payload's stock UI — no custom widgets to maintain.
+ * Generic inline activity form. One component renders every activity
+ * type (checkin / checkout / report / interventionHealthcheck /
+ * areaHealthcheck) — the caller passes the right field subset, the
+ * pre-populated initial state (including `type` + parent keys), and
+ * the submit label.
  *
- * The `checkin` relationship is pre-populated in the form's initial state
- * server-side (see `InterventionWorkflow.tsx`) to the most recent
- * un-checked-out checkin for the current intervention. The collection's
- * `afterChange` hook queues the on-chain commit task so the chain mirror
- * is populated within a beat.
+ * Submits via Payload's stock Form pipeline to `/api/activities`. The
+ * collection's `afterChange` hook queues `commitActivityChain`, which
+ * writes the Attestations row and links it back. `onSuccess` refreshes
+ * the parent workflow view so the new activity shows up in the
+ * timeline + stage rail.
  */
-export function RecordCheckoutForm({
+export function RecordActivityForm({
+	label,
+	doneLabel,
 	clientFields,
 	formState,
-}: RecordCheckoutFormProps) {
+}: RecordActivityFormProps) {
 	const router = useRouter();
 	const [saved, setSaved] = useState(false);
 
@@ -38,7 +42,7 @@ export function RecordCheckoutForm({
 	return (
 		<Form
 			method="POST"
-			action="/api/gardenerCheckouts"
+			action="/api/activities"
 			initialState={formState}
 			isDocumentForm
 			onSuccess={onSuccess}
@@ -47,7 +51,7 @@ export function RecordCheckoutForm({
 				fields={clientFields}
 				parentPath=""
 				parentIndexPath=""
-				parentSchemaPath="gardenerCheckouts"
+				parentSchemaPath="activities"
 				permissions={true}
 				forceRender
 			/>
@@ -57,7 +61,7 @@ export function RecordCheckoutForm({
 					className="iw-form__submit"
 					disabled={saved}
 				>
-					{saved ? "Recorded ✓" : "Record check-out →"}
+					{saved ? doneLabel : `${label} →`}
 				</button>
 				{saved && (
 					<p className="iw-form__ok">Committing on-chain · refreshing…</p>
@@ -67,4 +71,4 @@ export function RecordCheckoutForm({
 	);
 }
 
-export default RecordCheckoutForm;
+export default RecordActivityForm;

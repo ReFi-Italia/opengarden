@@ -231,5 +231,11 @@ export const Areas: CollectionConfig = {
 					data?.lifecycleStatus === "failed",
 			},
 		},
+		{
+			name: "activities",
+			type: "join",
+			collection: "activities",
+			on: "area",
+		},
 	],
 };

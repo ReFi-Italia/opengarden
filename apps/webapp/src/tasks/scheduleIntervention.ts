@@ -8,7 +8,6 @@ import {
 	getOpenGardenContext,
 	type OpenGardenContext,
 } from "../lib/openGardenClient";
-import { recordChainTransaction } from "../lib/recordChainTransaction";
 import { serializeBigInts } from "../lib/serializeBigInts";
 
 type ScheduleInterventionInput = {
@@ -166,25 +165,6 @@ export const scheduleInterventionTask: TaskConfig<{
 				req,
 			});
 
-			await recordChainTransaction({
-				payload,
-				req,
-				kind: "scheduleIntervention",
-				relatedCollection: "interventions",
-				relatedId: interventionId,
-				status: "success",
-				txHash: result.timestampTxHash,
-				chainUID: result.uid,
-				chainId: context.chainId,
-				attesterWallet: context.attesterWallet,
-				payloadJson: sdkInput,
-				resultJson: {
-					uid: result.uid,
-					timestampTxHash: result.timestampTxHash,
-					onchainTimestamp: String(result.onchainTimestamp),
-				},
-			});
-
 			return {
 				output: {
 					chainUID: result.uid,
@@ -210,18 +190,10 @@ export const scheduleInterventionTask: TaskConfig<{
 				})
 				.catch(() => undefined);
 
-			await recordChainTransaction({
-				payload,
-				req,
-				kind: "scheduleIntervention",
-				relatedCollection: "interventions",
-				relatedId: interventionId,
-				status: "failed",
+			payload.logger.error({
+				msg: `scheduleIntervention task failed for intervention ${interventionId}`,
 				error: message,
-				chainId: context?.chainId,
-				attesterWallet: context?.attesterWallet,
-				payloadJson: sdkInput,
-			}).catch(() => undefined);
+			});
 
 			throw err;
 		}

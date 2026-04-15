@@ -497,5 +497,12 @@ export const Interventions: CollectionConfig = {
 				condition: (data) => data?.lifecycleStatus === "validated",
 			},
 		},
+		{
+			name: "activities",
+			type: "join",
+			collection: "activities",
+			on: "intervention",
+			admin: { condition: showInUpdateOnly },
+		},
 	],
 };

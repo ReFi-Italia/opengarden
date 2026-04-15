@@ -5,7 +5,6 @@ import {
 	getOpenGardenContext,
 	type OpenGardenContext,
 } from "../lib/openGardenClient";
-import { recordChainTransaction } from "../lib/recordChainTransaction";
 import { serializeBigInts } from "../lib/serializeBigInts";
 
 type ValidateInterventionInput = {
@@ -148,25 +147,6 @@ export const validateInterventionTask: TaskConfig<{
 				req,
 			});
 
-			await recordChainTransaction({
-				payload,
-				req,
-				kind: "validateIntervention",
-				relatedCollection: "interventions",
-				relatedId: interventionId,
-				status: "success",
-				txHash: result.timestampTxHash,
-				chainUID: result.uid,
-				chainId: context.chainId,
-				attesterWallet: context.attesterWallet,
-				payloadJson: sdkInput,
-				resultJson: {
-					uid: result.uid,
-					timestampTxHash: result.timestampTxHash,
-					onchainTimestamp: String(result.onchainTimestamp),
-				},
-			});
-
 			return {
 				output: {
 					chainUID: result.uid,
@@ -192,18 +172,10 @@ export const validateInterventionTask: TaskConfig<{
 				})
 				.catch(() => undefined);
 
-			await recordChainTransaction({
-				payload,
-				req,
-				kind: "validateIntervention",
-				relatedCollection: "interventions",
-				relatedId: interventionId,
-				status: "failed",
+			payload.logger.error({
+				msg: `validateIntervention task failed for intervention ${interventionId}`,
 				error: message,
-				chainId: context?.chainId,
-				attesterWallet: context?.attesterWallet,
-				payloadJson: sdkInput,
-			}).catch(() => undefined);
+			});
 
 			throw err;
 		}
