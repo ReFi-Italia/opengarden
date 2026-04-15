@@ -1,0 +1,977 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>INT-2026-0412-MIL-0034 — Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #0a0d0f;
+    --bg-1:      #11151a;
+    --bg-2:      #181c22;
+    --bg-3:      #1f242b;
+    --rule:      #232831;
+    --rule-2:    #2f3640;
+    --ink:       #e8e8e3;
+    --ink-1:     #c2c4c0;
+    --ink-2:     #8a8d8f;
+    --ink-3:     #5a5d62;
+    --ink-4:     #3d4148;
+    --ok:        #4cd182;
+    --ok-dim:    #1e3a25;
+    --warn:      #ffb020;
+    --warn-dim:  #3a2a08;
+    --fail:      #ff5050;
+    --fail-dim:  #3a1818;
+    --accent:    #ffb020;
+    --link:      #6ab8ff;
+
+    --sans: "Geist", system-ui, -apple-system, sans-serif;
+    --mono: "JetBrains Mono", "SF Mono", "Menlo", monospace;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { font-size: 13px; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-weight: 400;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    background-image:
+      linear-gradient(to right, rgba(255,255,255,0.012) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255,255,255,0.012) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+  ::selection { background: var(--accent); color: var(--bg); }
+
+  /* ─── top bar ─── */
+  .topbar {
+    height: 40px;
+    border-bottom: 1px solid var(--rule);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 24px;
+    background: var(--bg-1);
+    position: sticky; top: 0; z-index: 20;
+  }
+  .brand {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ok);
+    letter-spacing: 0.05em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .brand::before {
+    content: "▮";
+    color: var(--ok);
+    animation: blink 1.2s steps(2) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.2; } }
+  .breadcrumb {
+    flex: 1;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-3);
+  }
+  .breadcrumb a { color: var(--ink-2); text-decoration: none; }
+  .breadcrumb a:hover { color: var(--ink); }
+  .breadcrumb .sep { color: var(--ink-4); margin: 0 6px; }
+  .breadcrumb .here { color: var(--ink-1); }
+  .top-meta {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-3);
+    display: flex;
+    gap: 16px;
+  }
+  .top-meta .k { color: var(--ink-4); }
+  .top-meta .v { color: var(--ink-1); }
+  .user-chip {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ok);
+    padding: 4px 8px;
+    background: var(--ok-dim);
+    border: 1px solid var(--ok);
+  }
+  .user-chip::before { content: "@"; opacity: 0.5; }
+
+  /* ─── page header ─── */
+  .page-header {
+    border-bottom: 1px solid var(--rule);
+    padding: 28px 24px 26px;
+    background: var(--bg-1);
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 32px;
+    align-items: end;
+  }
+  .ph-tag {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-3);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 14px;
+  }
+  .ph-tag::before { content: "[ "; color: var(--ink-4); }
+  .ph-tag::after  { content: " ]"; color: var(--ink-4); }
+  .ph-id {
+    font-family: var(--mono);
+    font-size: 26px;
+    font-weight: 500;
+    color: var(--ink);
+    margin-bottom: 8px;
+    letter-spacing: -0.005em;
+    line-height: 1;
+  }
+  .ph-id .num { color: var(--ok); }
+  .ph-id .sep { color: var(--ink-4); font-weight: 400; }
+  .ph-name {
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--ink-2);
+    font-weight: 400;
+  }
+
+  .ph-status-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 14px;
+  }
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px;
+    background: var(--warn-dim);
+    border: 1px solid var(--warn);
+    color: var(--warn);
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+  }
+  .status-pill::before {
+    content: "";
+    width: 7px; height: 7px;
+    background: var(--warn);
+    border-radius: 50%;
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 var(--warn); }
+    50% { opacity: 0.4; box-shadow: 0 0 0 4px transparent; }
+  }
+
+  .ph-grid-meta {
+    display: grid;
+    grid-template-columns: repeat(4, auto);
+    gap: 18px;
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .ph-grid-meta .cell {
+    display: flex;
+    flex-direction: column;
+    text-align: right;
+  }
+  .ph-grid-meta .k { color: var(--ink-4); margin-bottom: 4px; }
+  .ph-grid-meta .v { color: var(--ink); font-weight: 500; font-size: 12px; }
+
+  /* ─── stage rail ─── */
+  .stage-rail {
+    border-bottom: 1px solid var(--rule);
+    background: var(--bg);
+    padding: 16px 24px;
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+  }
+  .stage {
+    flex: 1;
+    min-width: 180px;
+    border: 1px solid var(--rule);
+    background: var(--bg-1);
+    padding: 12px 14px;
+    font-family: var(--mono);
+    font-size: 11px;
+    position: relative;
+  }
+  .stage-row1 {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .stage-num {
+    color: var(--ink-3);
+    font-size: 9px;
+    letter-spacing: 0.06em;
+  }
+  .stage-num::before { content: "["; color: var(--ink-4); }
+  .stage-num::after  { content: "]"; color: var(--ink-4); }
+  .stage-flag {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 1px 6px;
+  }
+  .stage.done .stage-flag { background: var(--ok-dim); color: var(--ok); border: 1px solid var(--ok); }
+  .stage.active .stage-flag { background: var(--warn-dim); color: var(--warn); border: 1px solid var(--warn); }
+  .stage.future .stage-flag { background: transparent; color: var(--ink-3); border: 1px solid var(--ink-4); }
+
+  .stage-name {
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--ink);
+    margin-bottom: 4px;
+  }
+  .stage.future .stage-name { color: var(--ink-3); }
+  .stage-date {
+    color: var(--ink-3);
+    font-size: 10px;
+    margin-bottom: 2px;
+  }
+  .stage-actor {
+    color: var(--ink-2);
+    font-family: var(--sans);
+    font-size: 11px;
+  }
+  .stage-chain {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--rule);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ok);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .stage-chain::before { content: "●"; }
+  .stage.future .stage-chain { color: var(--ink-4); }
+  .stage.future .stage-chain::before { content: "○"; }
+  .stage.active .stage-chain { color: var(--warn); }
+  .stage.active {
+    background: var(--bg-2);
+    border-color: var(--warn);
+    box-shadow: 0 0 0 1px var(--warn) inset;
+  }
+
+  /* ─── action bar ─── */
+  .action-bar {
+    background: var(--bg-2);
+    border-bottom: 1px solid var(--rule);
+    padding: 22px 24px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 32px;
+    align-items: center;
+    position: relative;
+  }
+  .action-bar::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--warn);
+  }
+  .action-meta {
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--warn);
+    margin-bottom: 6px;
+  }
+  .action-meta::before { content: "$ "; opacity: 0.6; }
+  .action-title {
+    font-family: var(--sans);
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--ink);
+    margin-bottom: 5px;
+    letter-spacing: -0.005em;
+  }
+  .action-sub {
+    font-family: var(--sans);
+    font-size: 12px;
+    color: var(--ink-2);
+    max-width: 64ch;
+    line-height: 1.55;
+  }
+  .action-btns { display: flex; gap: 10px; }
+  .btn-primary {
+    padding: 12px 22px;
+    background: var(--warn);
+    color: var(--bg);
+    border: none;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+  }
+  .btn-primary:hover { background: #ffc040; }
+  .btn-primary::before { content: "▶ "; }
+  .btn-secondary {
+    padding: 12px 18px;
+    background: transparent;
+    color: var(--ink-2);
+    border: 1px solid var(--rule-2);
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+  }
+  .btn-secondary:hover { color: var(--fail); border-color: var(--fail); }
+
+  /* ─── main grid ─── */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 280px 1fr 320px;
+    min-height: 600px;
+  }
+  .col {
+    padding: 24px 22px;
+    min-width: 0;
+  }
+  .col-identity { border-right: 1px solid var(--rule); background: var(--bg-1); }
+  .col-main { background: var(--bg); }
+  .col-ledger { border-left: 1px solid var(--rule); background: var(--bg-1); }
+
+  .block { margin-bottom: 24px; padding-bottom: 24px; border-bottom: 1px solid var(--rule); }
+  .block:last-child { border-bottom: none; padding-bottom: 0; margin-bottom: 0; }
+  .block-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink-3);
+    margin-bottom: 10px;
+  }
+  .block-label::before { content: "// "; color: var(--ink-4); }
+
+  .kv-val {
+    font-family: var(--sans);
+    font-size: 13px;
+    color: var(--ink);
+    line-height: 1.5;
+  }
+  .kv-val .sub {
+    display: block;
+    color: var(--ink-3);
+    font-size: 11px;
+    margin-top: 2px;
+    font-family: var(--mono);
+  }
+  .kv-val.prose {
+    font-size: 12px;
+    color: var(--ink-1);
+    line-height: 1.65;
+  }
+
+  .crew-list { list-style: none; }
+  .crew-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px dashed var(--rule);
+    font-family: var(--sans);
+    font-size: 12px;
+    align-items: center;
+  }
+  .crew-row:last-child { border-bottom: none; }
+  .crew-row .idx {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-4);
+  }
+  .crew-row .name { color: var(--ink); }
+  .crew-row .role {
+    font-family: var(--mono);
+    font-size: 9px;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .crew-row .role.lead {
+    color: var(--warn);
+    font-weight: 600;
+  }
+
+  /* ─── panels ─── */
+  .panel {
+    border: 1px solid var(--rule);
+    background: var(--bg-1);
+    margin-bottom: 22px;
+  }
+  .panel-header {
+    border-bottom: 1px solid var(--rule);
+    padding: 12px 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--bg-2);
+  }
+  .panel-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .panel-title::before { content: "▸ "; color: var(--ok); }
+  .panel-meta {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-3);
+  }
+  .panel-meta .ok { color: var(--ok); }
+  .panel-meta .key { color: var(--ink-4); }
+  .panel-body { padding: 22px 20px; }
+
+  /* ─── form ─── */
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px 22px;
+  }
+  .form-field { display: flex; flex-direction: column; gap: 6px; }
+  .form-field.full { grid-column: 1 / -1; }
+  .form-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink-3);
+  }
+  .form-label::before { content: "$ "; color: var(--ink-4); }
+  .form-input, .form-select, .form-textarea {
+    border: 1px solid var(--rule-2);
+    background: var(--bg);
+    padding: 10px 12px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink);
+    outline: none;
+    width: 100%;
+  }
+  .form-input:focus, .form-select:focus, .form-textarea:focus {
+    border-color: var(--ok);
+    box-shadow: 0 0 0 1px var(--ok) inset;
+  }
+  .form-input[readonly] {
+    background: var(--bg-1);
+    color: var(--ink-3);
+    border-style: dashed;
+  }
+  .form-textarea {
+    font-family: var(--sans);
+    font-size: 13px;
+    line-height: 1.55;
+    resize: vertical;
+    min-height: 90px;
+  }
+
+  .toggle-group {
+    display: flex;
+    border: 1px solid var(--rule-2);
+    width: fit-content;
+  }
+  .toggle-opt {
+    padding: 10px 18px;
+    background: transparent;
+    border: none;
+    border-right: 1px solid var(--rule-2);
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-2);
+    cursor: pointer;
+  }
+  .toggle-opt:last-child { border-right: none; }
+  .toggle-opt.active.approve { background: var(--ok-dim); color: var(--ok); }
+  .toggle-opt.active.reject { background: var(--fail-dim); color: var(--fail); }
+
+  .score-bar { display: flex; align-items: center; gap: 14px; }
+  .score-cells { display: flex; gap: 2px; flex: 1; }
+  .score-cell {
+    flex: 1;
+    height: 22px;
+    border: 1px solid var(--rule-2);
+    background: var(--bg);
+    cursor: pointer;
+  }
+  .score-cell.filled {
+    background: var(--ok);
+    border-color: var(--ok);
+    box-shadow: 0 0 6px rgba(76, 209, 130, 0.3);
+  }
+  .score-readout {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--ok);
+    font-weight: 600;
+    min-width: 44px;
+    text-align: right;
+  }
+  .score-readout em { color: var(--ink-4); font-style: normal; font-weight: 400; }
+
+  /* ─── evidence ─── */
+  .evidence-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+  .evidence-photo {
+    aspect-ratio: 4 / 3;
+    border: 1px solid var(--rule-2);
+    background: var(--bg);
+    position: relative;
+    cursor: pointer;
+    overflow: hidden;
+    transition: border-color .15s;
+  }
+  .evidence-photo:hover { border-color: var(--ok); }
+  .photo-img { width: 100%; height: 100%; filter: saturate(0.7) contrast(1.1); }
+  .photo-img.p1 { background: linear-gradient(170deg, #1a2a1a 0%, #3a5a2a 50%, #5a7a4a 100%); }
+  .photo-img.p2 { background: linear-gradient(135deg, #2a1a08 0%, #5a4018 100%); }
+  .photo-img.p3 { background: linear-gradient(200deg, #1a2a1a 0%, #3a5a2a 100%); }
+  .photo-img.p4 { background: linear-gradient(160deg, #4a5a3a 0%, #6a7a5a 100%); }
+  .photo-meta {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    background: linear-gradient(transparent, rgba(0,0,0,0.85));
+    padding: 16px 8px 6px;
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--ink);
+    letter-spacing: 0.04em;
+  }
+
+  .checks-grid {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px dashed var(--rule);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 24px;
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+  .check-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--ink-1);
+  }
+  .check-row::before {
+    content: "✓";
+    color: var(--ok);
+    font-weight: 700;
+    width: 14px;
+  }
+  .check-row.pending {
+    color: var(--ink-3);
+  }
+  .check-row.pending::before {
+    content: "○";
+    color: var(--warn);
+  }
+
+  /* ─── ledger ─── */
+  .ledger-list { list-style: none; font-family: var(--mono); }
+  .ledger-row {
+    padding: 11px 0;
+    border-bottom: 1px solid var(--rule);
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 10px;
+    font-size: 11px;
+  }
+  .ledger-row:last-child { border-bottom: none; }
+  .ledger-marker {
+    color: var(--ok);
+    font-size: 10px;
+    margin-top: 1px;
+  }
+  .ledger-row.pending .ledger-marker { color: var(--ink-4); }
+  .ledger-time {
+    font-size: 9px;
+    color: var(--ink-3);
+    margin-bottom: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .ledger-stage {
+    color: var(--ink);
+    margin-bottom: 4px;
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .ledger-row.pending .ledger-stage { color: var(--ink-3); font-style: italic; }
+  .ledger-hash {
+    color: var(--link);
+    background: var(--bg-2);
+    padding: 2px 6px;
+    cursor: pointer;
+    font-size: 10px;
+    display: inline-block;
+  }
+  .ledger-hash:hover { background: var(--bg-3); }
+  .ledger-row.pending .ledger-hash {
+    color: var(--ink-3);
+    background: transparent;
+    border: 1px dashed var(--rule);
+    padding: 1px 5px;
+  }
+
+  .ledger-stats {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--rule);
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-3);
+  }
+  .ledger-stats .v { color: var(--ok); font-weight: 600; }
+
+  @media (max-width: 1280px) {
+    .main-grid { grid-template-columns: 240px 1fr; }
+    .col-ledger { grid-column: 1 / -1; border-left: none; border-top: 1px solid var(--rule); }
+  }
+</style>
+</head>
+<body>
+
+  <div class="topbar">
+    <div class="brand">RIDAJE.OPS</div>
+    <nav class="breadcrumb">
+      <a href="#">~/lifecycle</a><span class="sep">/</span>
+      <a href="#">interventions</a><span class="sep">/</span>
+      <span class="here">INT-2026-0412-MIL-0034</span>
+    </nav>
+    <div class="top-meta">
+      <span><span class="k">env</span> <span class="v">prod</span></span>
+      <span><span class="k">chain</span> <span class="v">base-sepolia</span></span>
+    </div>
+    <span class="user-chip">raffaele</span>
+  </div>
+
+  <header class="page-header">
+    <div>
+      <div class="ph-tag">restoration · parco sempione · milano</div>
+      <h1 class="ph-id">INT<span class="sep">-</span><span class="num">2026</span><span class="sep">-</span>0412<span class="sep">-</span>MIL<span class="sep">-</span>0034</h1>
+      <div class="ph-name">Restoration of centennial holm oak — Western lawn, plot W-14</div>
+    </div>
+    <div class="ph-status-stack">
+      <span class="status-pill">In progress · awaiting validation</span>
+      <div class="ph-grid-meta">
+        <div class="cell"><span class="k">type</span><span class="v">restoration</span></div>
+        <div class="cell"><span class="k">crew</span><span class="v">3</span></div>
+        <div class="cell"><span class="k">window</span><span class="v">12·apr · 180m</span></div>
+        <div class="cell"><span class="k">health</span><span class="v">7→9</span></div>
+      </div>
+    </div>
+  </header>
+
+  <section class="stage-rail">
+    <div class="stage done">
+      <div class="stage-row1">
+        <span class="stage-num">01</span>
+        <span class="stage-flag">done</span>
+      </div>
+      <div class="stage-name">Drafted</div>
+      <div class="stage-date">07 APR · 14:22</div>
+      <div class="stage-actor">G. Marchetti</div>
+      <div class="stage-chain">on chain</div>
+    </div>
+    <div class="stage done">
+      <div class="stage-row1">
+        <span class="stage-num">02</span>
+        <span class="stage-flag">done</span>
+      </div>
+      <div class="stage-name">Scheduled</div>
+      <div class="stage-date">09 APR · 09:04</div>
+      <div class="stage-actor">area lead</div>
+      <div class="stage-chain">on chain</div>
+    </div>
+    <div class="stage active">
+      <div class="stage-row1">
+        <span class="stage-num">03</span>
+        <span class="stage-flag">active</span>
+      </div>
+      <div class="stage-name">In progress</div>
+      <div class="stage-date">12 APR · 08:30</div>
+      <div class="stage-actor">crew on site</div>
+      <div class="stage-chain">awaiting validation</div>
+    </div>
+    <div class="stage future">
+      <div class="stage-row1">
+        <span class="stage-num">04</span>
+        <span class="stage-flag">queued</span>
+      </div>
+      <div class="stage-name">Validated</div>
+      <div class="stage-date">—</div>
+      <div class="stage-actor">M. Conti (assigned)</div>
+      <div class="stage-chain">pending</div>
+    </div>
+    <div class="stage future">
+      <div class="stage-row1">
+        <span class="stage-num">05</span>
+        <span class="stage-flag">queued</span>
+      </div>
+      <div class="stage-name">Published</div>
+      <div class="stage-date">—</div>
+      <div class="stage-actor">auto</div>
+      <div class="stage-chain">pending</div>
+    </div>
+  </section>
+
+  <section class="action-bar">
+    <div>
+      <div class="action-meta">awaiting input · stage 03 → 04</div>
+      <div class="action-title">Review the crew's report and validate the work</div>
+      <div class="action-sub">Execution complete — 4 photos, 2 health checks, 3 gardener attestations. Approving here seals the evidence bundle and queues the validation attestation.</div>
+    </div>
+    <div class="action-btns">
+      <button class="btn-secondary">Flag failed</button>
+      <button class="btn-primary">Open validation</button>
+    </div>
+  </section>
+
+  <div class="main-grid">
+
+    <aside class="col col-identity">
+      <div class="block">
+        <div class="block-label">site</div>
+        <div class="kv-val">
+          Parco Sempione
+          <span class="sub">plot=W-14 · lawn=west</span>
+        </div>
+      </div>
+      <div class="block">
+        <div class="block-label">brief</div>
+        <div class="kv-val prose">Structural pruning and root aeration for a declining Quercus ilex, planted c. 1912. Soil decompaction around trunk base, removal of competing saplings, two protective stakes.</div>
+      </div>
+      <div class="block">
+        <div class="block-label">sponsor</div>
+        <div class="kv-val">
+          Fondazione Verde Milano
+          <span class="sub">grant=q2-2026 · type=restoration</span>
+        </div>
+      </div>
+      <div class="block">
+        <div class="block-label">crew · 3</div>
+        <ul class="crew-list">
+          <li class="crew-row"><span class="idx">01</span><span class="name">Giulia Marchetti</span><span class="role lead">[lead]</span></li>
+          <li class="crew-row"><span class="idx">02</span><span class="name">Luca Bianchi</span><span class="role">gard</span></li>
+          <li class="crew-row"><span class="idx">03</span><span class="name">Anna Rossi</span><span class="role">gard</span></li>
+        </ul>
+      </div>
+    </aside>
+
+    <div class="col col-main">
+
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">validation</div>
+          <div class="panel-meta"><span class="key">stage</span> 03/05 · editable</div>
+        </div>
+        <div class="panel-body">
+          <div class="form-grid">
+            <div class="form-field">
+              <label class="form-label">validator</label>
+              <select class="form-select">
+                <option>Marco Conti — senior arborist</option>
+                <option>Elena Rinaldi — agronomist</option>
+                <option>Paolo Greco — urban forester</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label class="form-label">decision</label>
+              <div class="toggle-group">
+                <button class="toggle-opt active approve">✓ approve</button>
+                <button class="toggle-opt">✗ reject</button>
+              </div>
+            </div>
+            <div class="form-field full">
+              <label class="form-label">quality_score</label>
+              <div class="score-bar">
+                <div class="score-cells">
+                  <div class="score-cell filled"></div>
+                  <div class="score-cell filled"></div>
+                  <div class="score-cell filled"></div>
+                  <div class="score-cell filled"></div>
+                  <div class="score-cell filled"></div>
+                  <div class="score-cell filled"></div>
+                  <div class="score-cell filled"></div>
+                  <div class="score-cell filled"></div>
+                  <div class="score-cell"></div>
+                  <div class="score-cell"></div>
+                </div>
+                <div class="score-readout">8<em>/10</em></div>
+              </div>
+            </div>
+            <div class="form-field">
+              <label class="form-label">validated_at</label>
+              <input class="form-input" value="2026-04-14T10:42:00Z">
+            </div>
+            <div class="form-field">
+              <label class="form-label">execution_date · locked</label>
+              <input class="form-input" value="2026-04-12" readonly>
+            </div>
+            <div class="form-field full">
+              <label class="form-label">feedback</label>
+              <textarea class="form-textarea">The holm oak responded well to the root aeration. Crown thinning was measured and conservative, and the two protective stakes were installed without disturbing the adjacent root system. Recommend a follow-up health check in 90 days to monitor regrowth of the affected scaffold branches.</textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">evidence_bundle</div>
+          <div class="panel-meta">v0.1.0 · <span class="key">fp</span> 0x7c4e3a91···b82f · <span class="ok">valid</span></div>
+        </div>
+        <div class="panel-body">
+          <div class="evidence-grid">
+            <div class="evidence-photo">
+              <div class="photo-img p1"></div>
+              <div class="photo-meta"><span>01/04</span><span>before · crown_w</span></div>
+            </div>
+            <div class="evidence-photo">
+              <div class="photo-img p2"></div>
+              <div class="photo-meta"><span>02/04</span><span>root_collar</span></div>
+            </div>
+            <div class="evidence-photo">
+              <div class="photo-img p3"></div>
+              <div class="photo-meta"><span>03/04</span><span>after · crown_w</span></div>
+            </div>
+            <div class="evidence-photo">
+              <div class="photo-img p4"></div>
+              <div class="photo-meta"><span>04/04</span><span>stake_install</span></div>
+            </div>
+          </div>
+          <div class="checks-grid">
+            <div class="check-row">3 / 3 crew_attestations</div>
+            <div class="check-row">checkin_temporal_order_ok</div>
+            <div class="check-row">healthcheck_before_after</div>
+            <div class="check-row">execution_within_window</div>
+            <div class="check-row">timestamps_rfc3161_verified</div>
+            <div class="check-row pending">validation_attestation (pending)</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <aside class="col col-ledger">
+      <div class="block-label">chain_ledger · base-sepolia</div>
+      <ul class="ledger-list">
+        <li class="ledger-row">
+          <span class="ledger-marker">●</span>
+          <div>
+            <div class="ledger-time">07 APR · 14:22</div>
+            <div class="ledger-stage">draft_attestation</div>
+            <div class="ledger-hash">0x4a1e···9b42</div>
+          </div>
+        </li>
+        <li class="ledger-row">
+          <span class="ledger-marker">●</span>
+          <div>
+            <div class="ledger-time">09 APR · 09:04</div>
+            <div class="ledger-stage">schedule_published</div>
+            <div class="ledger-hash">0xf8c2···31a0</div>
+          </div>
+        </li>
+        <li class="ledger-row">
+          <span class="ledger-marker">●</span>
+          <div>
+            <div class="ledger-time">12 APR · 08:30</div>
+            <div class="ledger-stage">crew_checkin ×3</div>
+            <div class="ledger-hash">0x2d5b···7e91</div>
+          </div>
+        </li>
+        <li class="ledger-row">
+          <span class="ledger-marker">●</span>
+          <div>
+            <div class="ledger-time">12 APR · 08:42</div>
+            <div class="ledger-stage">healthcheck_before</div>
+            <div class="ledger-hash">0x6a87···4c20</div>
+          </div>
+        </li>
+        <li class="ledger-row">
+          <span class="ledger-marker">●</span>
+          <div>
+            <div class="ledger-time">12 APR · 17:15</div>
+            <div class="ledger-stage">gardener_report ×3</div>
+            <div class="ledger-hash">0xb194···d8f3</div>
+          </div>
+        </li>
+        <li class="ledger-row">
+          <span class="ledger-marker">●</span>
+          <div>
+            <div class="ledger-time">12 APR · 17:48</div>
+            <div class="ledger-stage">healthcheck_after</div>
+            <div class="ledger-hash">0x3fd0···a29c</div>
+          </div>
+        </li>
+        <li class="ledger-row pending">
+          <span class="ledger-marker">○</span>
+          <div>
+            <div class="ledger-time">pending</div>
+            <div class="ledger-stage">validation_attestation</div>
+            <div class="ledger-hash">awaiting_signature</div>
+          </div>
+        </li>
+        <li class="ledger-row pending">
+          <span class="ledger-marker">○</span>
+          <div>
+            <div class="ledger-time">pending</div>
+            <div class="ledger-stage">bundle_publication</div>
+            <div class="ledger-hash">awaiting_validation</div>
+          </div>
+        </li>
+      </ul>
+      <div class="ledger-stats">
+        <span>events <span class="v">8</span></span>
+        <span>confirmed <span class="v">6</span></span>
+        <span>queued <span class="v">2</span></span>
+      </div>
+    </aside>
+
+  </div>
+
+</body>
+</html>
