@@ -1,8 +1,9 @@
-import type {
-	GardenerCheckinInput,
-	GardenerCheckoutInput,
-	GardenerReportInput,
-	HealthcheckInput,
+import {
+	type GardenerCheckinInput,
+	type GardenerCheckoutInput,
+	type GardenerReportInput,
+	type HealthcheckInput,
+	ZERO_BYTES32,
 } from "@refi-italia/opengarden";
 import type { Payload, PayloadRequest, TaskConfig } from "payload";
 
@@ -343,7 +344,8 @@ async function dispatchSdkCall(
 				tasksCompleted: String(activity.tasksCompleted ?? ""),
 				taskCount: Number(activity.taskCount ?? 0),
 				photosHash: photoHash,
-			} as GardenerReportInput;
+				notes: String(activity.notes ?? ""),
+			};
 			const result = await context.client.submitReport(sdkInput);
 			return { result, schemaName: "GardenerReport" };
 		}
@@ -368,23 +370,28 @@ async function dispatchSdkCall(
 			const intervention =
 				type === "interventionHealthcheck" ? activity.intervention : undefined;
 			const interventionUID =
-				typeof intervention === "object" && intervention !== null
+				(typeof intervention === "object" && intervention !== null
 					? (intervention as { scheduling?: { chainUID?: string } }).scheduling
 							?.chainUID
-					: undefined;
+					: undefined) ?? ZERO_BYTES32;
 
-			// HealthcheckInput shape varies; cast to any for the SDK call.
-			// biome-ignore lint/suspicious/noExplicitAny: SDK HealthcheckInput fields evolve outside this repo
-			const sdkInput = {
+			const assessor = activity.assessor;
+			const assessorId =
+				typeof assessor === "object" &&
+				assessor !== null &&
+				typeof (assessor as { staffId?: unknown }).staffId === "string"
+					? ((assessor as { staffId: string }).staffId)
+					: null;
+
+			const sdkInput: HealthcheckInput = {
 				areaUID,
 				interventionUID,
-				kind:
-					type === "interventionHealthcheck"
-						? (activity.kind as "before" | "after")
-						: undefined,
 				healthScore: activity.healthScore,
 				photoHash,
-			} as unknown as HealthcheckInput;
+				assessorNotes: String(activity.assessorNotes ?? ""),
+				interventionNeeded: activity.healthScore < 5,
+				assessorId,
+			};
 			const result = await context.client.recordHealthcheck(sdkInput);
 			return { result, schemaName: "Healthcheck" };
 		}

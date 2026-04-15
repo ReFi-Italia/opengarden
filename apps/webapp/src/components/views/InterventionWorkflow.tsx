@@ -28,6 +28,25 @@ const CHECKOUT_FORM_FIELDS: readonly string[] = [
 	"actualMinutes",
 ];
 
+const REPORT_FORM_FIELDS: readonly string[] = [
+	"parentActivity",
+	"gardener",
+	"claimedTimestamp",
+	"tasksCompleted",
+	"taskCount",
+	"notes",
+	"photo",
+];
+
+const HEALTHCHECK_FORM_FIELDS: readonly string[] = [
+	"kind",
+	"claimedTimestamp",
+	"healthScore",
+	"assessor",
+	"assessorNotes",
+	"photo",
+];
+
 // Which field names inside each group are operator-editable per stage. Mirrors
 // `STAGE_INPUT_RULES` in the Interventions collection so the custom form only
 // exposes fields the server-side guard will actually accept.
@@ -215,6 +234,11 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 	let checkinInitialState: FormState = {};
 	let checkoutClientFields: ClientField[] = [];
 	let checkoutInitialState: FormState = {};
+	let reportClientFields: ClientField[] = [];
+	let reportInitialState: FormState = {};
+	let healthcheckClientFields: ClientField[] = [];
+	let healthcheckInitialState: FormState = {};
+	let healthcheckCanRender = false;
 
 	if (showCrewActivity) {
 		// All activity form fields come from a single polymorphic collection
@@ -364,6 +388,157 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 				value: defaultActualMinutes,
 				initialValue: defaultActualMinutes,
 			},
+		} as FormState;
+
+		// ─── Report defaults (parentActivity = checkout without matching report) ──
+		reportClientFields = pickFields(REPORT_FORM_FIELDS);
+
+		const reportActivitiesResult = await payload
+			.find({
+				collection: "activities",
+				where: {
+					and: [
+						{ intervention: { equals: String(id) } },
+						{ type: { equals: "report" } },
+					],
+				},
+				depth: 0,
+				limit: 50,
+				overrideAccess: true,
+			})
+			.catch(() => ({
+				docs: [] as Array<{
+					parentActivity?: string | number | { id?: string | number };
+				}>,
+			}));
+
+		const reportedCheckoutIds = new Set(
+			(reportActivitiesResult.docs ?? []).map((d) => {
+				const p = d.parentActivity;
+				if (typeof p === "object" && p !== null) {
+					return String((p as { id?: string | number }).id ?? "");
+				}
+				return String(p ?? "");
+			}),
+		);
+
+		// Need the checkout rows with their parentActivity (=checkin) populated
+		// so we can pick the right gardener via the checkin.
+		const checkoutActivitiesDeep = await payload
+			.find({
+				collection: "activities",
+				where: {
+					and: [
+						{ intervention: { equals: String(id) } },
+						{ type: { equals: "checkout" } },
+					],
+				},
+				depth: 2,
+				limit: 50,
+				sort: "-claimedTimestamp",
+				overrideAccess: true,
+			})
+			.catch(() => ({
+				docs: [] as Array<{
+					id: string | number;
+					parentActivity?: { gardener?: unknown } | null;
+				}>,
+			}));
+
+		const openCheckoutForReport = (checkoutActivitiesDeep.docs ?? []).find(
+			(co) => !reportedCheckoutIds.has(String(co.id)),
+		);
+		const openCheckoutId = openCheckoutForReport
+			? String(openCheckoutForReport.id)
+			: "";
+
+		// Derive the gardener from the checkout's parent checkin.
+		let reportGardenerId = "";
+		if (openCheckoutForReport) {
+			const parentCheckin = openCheckoutForReport.parentActivity;
+			const g =
+				parentCheckin && typeof parentCheckin === "object"
+					? (parentCheckin as { gardener?: unknown }).gardener
+					: undefined;
+			if (g) {
+				reportGardenerId =
+					typeof g === "object" && g !== null
+						? String((g as { id?: string | number }).id ?? "")
+						: String(g);
+			}
+		}
+
+		reportInitialState = {
+			type: { value: "report", initialValue: "report" },
+			intervention: {
+				value: String(id),
+				initialValue: String(id),
+			},
+			parentActivity: {
+				value: openCheckoutId || null,
+				initialValue: openCheckoutId || null,
+			},
+			gardener: {
+				value: reportGardenerId || firstGardenerId || null,
+				initialValue: reportGardenerId || firstGardenerId || null,
+			},
+			claimedTimestamp: {
+				value: nowISO,
+				initialValue: nowISO,
+			},
+			taskCount: { value: 1, initialValue: 1 },
+			tasksCompleted: { value: "", initialValue: "" },
+			notes: { value: "", initialValue: "" },
+		} as FormState;
+
+		// ─── Healthcheck defaults (pick next missing kind: before → after) ──
+		healthcheckClientFields = pickFields(HEALTHCHECK_FORM_FIELDS);
+
+		const healthcheckActivitiesResult = await payload
+			.find({
+				collection: "activities",
+				where: {
+					and: [
+						{ intervention: { equals: String(id) } },
+						{ type: { equals: "interventionHealthcheck" } },
+					],
+				},
+				depth: 0,
+				limit: 20,
+				overrideAccess: true,
+			})
+			.catch(() => ({
+				docs: [] as Array<{ kind?: "before" | "after" }>,
+			}));
+
+		const hasBefore = (healthcheckActivitiesResult.docs ?? []).some(
+			(h) => h.kind === "before",
+		);
+		const hasAfter = (healthcheckActivitiesResult.docs ?? []).some(
+			(h) => h.kind === "after",
+		);
+		// Only render if at least one kind is still missing
+		healthcheckCanRender = !(hasBefore && hasAfter);
+		const defaultKind: "before" | "after" = hasBefore ? "after" : "before";
+
+		// Default assessor = currently logged-in staff if they have capabilities
+		// matching a staff row; otherwise leave blank. Keep it simple: no lookup.
+		healthcheckInitialState = {
+			type: {
+				value: "interventionHealthcheck",
+				initialValue: "interventionHealthcheck",
+			},
+			intervention: {
+				value: String(id),
+				initialValue: String(id),
+			},
+			kind: { value: defaultKind, initialValue: defaultKind },
+			claimedTimestamp: {
+				value: nowISO,
+				initialValue: nowISO,
+			},
+			healthScore: { value: 7, initialValue: 7 },
+			assessorNotes: { value: "", initialValue: "" },
 		} as FormState;
 	}
 
@@ -534,7 +709,7 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 							<div className="iw__panel-head">
 								<div className="iw__panel-title">Crew activity</div>
 								<div className="iw__panel-meta">
-									record check-in · check-out · report
+									check-in · check-out · report · healthcheck
 								</div>
 							</div>
 							<div className="iw__panel-body">
@@ -557,6 +732,34 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 									clientFields={checkoutClientFields}
 									formState={checkoutInitialState}
 								/>
+								<div
+									className="iw-form__section-label"
+									style={{ marginTop: 24 }}
+								>
+									Report
+								</div>
+								<RecordActivityForm
+									label="Record report"
+									doneLabel="Report recorded ✓"
+									clientFields={reportClientFields}
+									formState={reportInitialState}
+								/>
+								{healthcheckCanRender ? (
+									<>
+										<div
+											className="iw-form__section-label"
+											style={{ marginTop: 24 }}
+										>
+											Healthcheck
+										</div>
+										<RecordActivityForm
+											label="Record healthcheck"
+											doneLabel="Healthcheck recorded ✓"
+											clientFields={healthcheckClientFields}
+											formState={healthcheckInitialState}
+										/>
+									</>
+								) : null}
 							</div>
 						</div>
 					) : null}
