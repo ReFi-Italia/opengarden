@@ -4,6 +4,7 @@ import type {
 	CollectionBeforeValidateHook,
 	CollectionConfig,
 	Field,
+	FieldAccess,
 } from "payload";
 import { APIError } from "payload";
 import { authenticated } from "../access/authenticated";
@@ -59,6 +60,23 @@ const STAGE_INPUT_RULES: Record<
 		editableIn: ["validated"],
 		inputFields: ["executionDate", "healthBefore", "healthAfter"],
 	},
+};
+
+/**
+ * Derives a field-level `access.update` from `STAGE_INPUT_RULES` so the admin
+ * UI disables inputs in stages where `guardInterventionInvariants` would merge
+ * them back to their stored values anyway. Keeps the UI and server gates
+ * driven by a single table.
+ */
+const stageAccess = (
+	stage: keyof typeof STAGE_INPUT_RULES,
+): FieldAccess => {
+	const editableIn = STAGE_INPUT_RULES[stage].editableIn;
+	return ({ doc }) => {
+		if (!doc) return true;
+		const status = (doc as { lifecycleStatus?: string }).lifecycleStatus;
+		return !!status && editableIn.includes(status);
+	};
 };
 
 const guardInterventionInvariants: CollectionBeforeValidateHook = async ({
@@ -137,10 +155,19 @@ const schedulingGroup: Field = {
 	name: "scheduling",
 	type: "group",
 	label: false,
-	admin: { readOnly: true },
 	fields: [
-		{ name: "scheduledDate", type: "date", label: "Scheduled date" },
-		{ name: "estimatedMinutes", type: "number", label: "Estimated minutes" },
+		{
+			name: "scheduledDate",
+			type: "date",
+			label: "Scheduled date",
+			access: { update: stageAccess("scheduling") },
+		},
+		{
+			name: "estimatedMinutes",
+			type: "number",
+			label: "Estimated minutes",
+			access: { update: stageAccess("scheduling") },
+		},
 		{
 			type: "collapsible",
 			label: "Blockchain record",
@@ -154,7 +181,6 @@ const validationGroup: Field = {
 	name: "validation",
 	type: "group",
 	label: false,
-	admin: { readOnly: true },
 	fields: [
 		{
 			name: "validator",
@@ -164,16 +190,28 @@ const validationGroup: Field = {
 			filterOptions: {
 				capabilities: { contains: "validator" },
 			},
+			access: { update: stageAccess("validation") },
 		},
-		{ name: "approved", type: "checkbox", label: "Approved" },
+		{
+			name: "approved",
+			type: "checkbox",
+			label: "Approved",
+			access: { update: stageAccess("validation") },
+		},
 		{
 			name: "qualityScore",
 			type: "number",
 			label: "Quality score",
 			min: 0,
 			max: 10,
+			access: { update: stageAccess("validation") },
 		},
-		{ name: "feedback", type: "textarea", label: "Feedback" },
+		{
+			name: "feedback",
+			type: "textarea",
+			label: "Feedback",
+			access: { update: stageAccess("validation") },
+		},
 		{
 			type: "collapsible",
 			label: "Blockchain record",
@@ -183,12 +221,14 @@ const validationGroup: Field = {
 					name: "validatorIdHashAtValidation",
 					type: "text",
 					label: "Validator fingerprint (snapshot)",
+					admin: { readOnly: true },
 				},
 				{
 					name: "currentAttestation",
 					type: "relationship",
 					relationTo: "adminValidations",
 					label: "Current attestation",
+					admin: { readOnly: true },
 				},
 				...chainMirror(),
 			],
@@ -200,15 +240,20 @@ const executionGroup: Field = {
 	name: "execution",
 	type: "group",
 	label: false,
-	admin: { readOnly: true },
 	fields: [
-		{ name: "executionDate", type: "date", label: "Execution date" },
+		{
+			name: "executionDate",
+			type: "date",
+			label: "Execution date",
+			access: { update: stageAccess("execution") },
+		},
 		{
 			name: "healthBefore",
 			type: "number",
 			label: "Health before",
 			min: 0,
 			max: 10,
+			access: { update: stageAccess("execution") },
 		},
 		{
 			name: "healthAfter",
@@ -216,12 +261,14 @@ const executionGroup: Field = {
 			label: "Health after",
 			min: 0,
 			max: 10,
+			access: { update: stageAccess("execution") },
 		},
 		{
 			name: "evidenceBundle",
 			type: "relationship",
 			relationTo: "evidenceBundles",
 			label: "Evidence bundle",
+			admin: { readOnly: true },
 		},
 		{
 			name: "offchainCount",
@@ -281,6 +328,15 @@ export const Interventions: CollectionConfig = {
 			"lifecycleStatus",
 			"scheduling.scheduledDate",
 		],
+		components: {
+			views: {
+				edit: {
+					default: {
+						Component: "@/components/views/InterventionWorkflow#default",
+					},
+				},
+			},
+		},
 	},
 	access: {
 		read: authenticated,
@@ -288,10 +344,7 @@ export const Interventions: CollectionConfig = {
 		update: isAuthoringOrAbove,
 		delete: isAuthoringOrAbove,
 	},
-	versions: {
-		drafts: true,
-		maxPerDoc: 200,
-	},
+	versions: false,
 	hooks: {
 		beforeValidate: [guardInterventionInvariants],
 		beforeChange: [validateInterventionTransition],

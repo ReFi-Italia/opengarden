@@ -444,7 +444,6 @@ export interface Intervention {
   lifecycleStatus: 'draft' | 'scheduled' | 'in_progress' | 'validated' | 'published' | 'revoked' | 'failed';
   updatedAt: string;
   createdAt: string;
-  _status?: ('draft' | 'published') | null;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -485,9 +484,6 @@ export interface AdminValidation {
  */
 export interface EvidenceBundle {
   id: string;
-  /**
-   * Set at creation — can't be changed later.
-   */
   intervention: string | Intervention;
   /**
    * Captured at build time.
@@ -1190,7 +1186,6 @@ export interface InterventionsSelect<T extends boolean = true> {
   lifecycleStatus?: T;
   updatedAt?: T;
   createdAt?: T;
-  _status?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
