@@ -469,11 +469,39 @@
 	}
 }
 
+// ─── create mode layout ──────────────────────────────────────────────────
+.iw--create {
+	max-width: 860px;
+}
+
+.iw__create-card {
+	margin-top: 8px;
+}
+
 // ─── stage form ──────────────────────────────────────────────────────────
 .iw-form {
 	display: flex;
 	flex-direction: column;
 	gap: 22px;
+}
+
+// When Payload's RenderFields renders inside our panel, loosen the stock
+// field spacing so rows breathe a bit. Targets the field wrapper Payload
+// renders (`.field-type` is the stock class on every field container).
+.iw__panel-body {
+	.field-type {
+		margin-bottom: 16px;
+
+		&:last-child {
+			margin-bottom: 0;
+		}
+	}
+
+	// Groups and arrays come with their own internal spacing; trim the
+	// outer border Payload adds so they don't compete with our panel.
+	.render-fields + .iw-form__actions {
+		margin-top: 8px;
+	}
 }
 
 .iw-form__row {

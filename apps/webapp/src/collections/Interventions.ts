@@ -63,6 +63,18 @@ const STAGE_INPUT_RULES: Record<
 };
 
 /**
+ * UI-only condition: stage groups (scheduling/validation/execution/revocation)
+ * are hidden during create so the create form only renders identity fields.
+ * Server-side guards in `guardInterventionInvariants` still enforce per-stage
+ * editability — this only affects what Payload's stock form displays.
+ */
+const showInUpdateOnly = (
+	_data: Record<string, unknown>,
+	_siblingData: Record<string, unknown>,
+	{ operation }: { operation: "create" | "read" | "update" | "delete" },
+) => operation === "update";
+
+/**
  * Derives a field-level `access.update` from `STAGE_INPUT_RULES` so the admin
  * UI disables inputs in stages where `guardInterventionInvariants` would merge
  * them back to their stored values anyway. Keeps the UI and server gates
@@ -154,7 +166,8 @@ const deriveCrewSize: CollectionAfterReadHook = async ({ doc }) => {
 const schedulingGroup: Field = {
 	name: "scheduling",
 	type: "group",
-	label: false,
+	label: "Scheduling",
+	admin: { condition: showInUpdateOnly },
 	fields: [
 		{
 			name: "scheduledDate",
@@ -180,7 +193,8 @@ const schedulingGroup: Field = {
 const validationGroup: Field = {
 	name: "validation",
 	type: "group",
-	label: false,
+	label: "Validation",
+	admin: { condition: showInUpdateOnly },
 	fields: [
 		{
 			name: "validator",
@@ -239,7 +253,8 @@ const validationGroup: Field = {
 const executionGroup: Field = {
 	name: "execution",
 	type: "group",
-	label: false,
+	label: "Execution",
+	admin: { condition: showInUpdateOnly },
 	fields: [
 		{
 			name: "executionDate",
@@ -288,9 +303,10 @@ const executionGroup: Field = {
 const revocationGroup: Field = {
 	name: "revocation",
 	type: "group",
-	label: false,
+	label: "Incidents",
 	admin: {
 		readOnly: true,
+		condition: showInUpdateOnly,
 		description:
 			"Populated when the intervention is revoked or fails mid-lifecycle.",
 	},
@@ -352,100 +368,80 @@ export const Interventions: CollectionConfig = {
 	},
 	fields: [
 		{
-			type: "tabs",
-			tabs: [
+			name: "interventionId",
+			type: "text",
+			label: "Intervention ID",
+			required: true,
+			unique: true,
+			index: true,
+		},
+		{
+			name: "area",
+			type: "relationship",
+			relationTo: "areas",
+			label: "Area",
+			required: true,
+			filterOptions: {
+				lifecycleStatus: { equals: "registered" },
+			},
+		},
+		{
+			name: "interventionType",
+			type: "select",
+			label: "Type",
+			required: true,
+			options: INTERVENTION_TYPE_OPTIONS,
+		},
+		{
+			name: "description",
+			type: "textarea",
+			label: "Description",
+			required: true,
+		},
+		{
+			name: "commissioning",
+			type: "group",
+			label: "Commissioning",
+			fields: commissioningFields(),
+		},
+		{
+			name: "crew",
+			type: "array",
+			label: "Crew",
+			minRows: 1,
+			fields: [
 				{
-					label: "Overview",
-					fields: [
-						{
-							name: "interventionId",
-							type: "text",
-							label: "Intervention ID",
-							required: true,
-							unique: true,
-							index: true,
-						},
-						{
-							name: "area",
-							type: "relationship",
-							relationTo: "areas",
-							label: "Area",
-							required: true,
-							filterOptions: {
-								lifecycleStatus: { equals: "registered" },
-							},
-						},
-						{
-							name: "interventionType",
-							type: "select",
-							label: "Type",
-							required: true,
-							options: INTERVENTION_TYPE_OPTIONS,
-						},
-						{
-							name: "description",
-							type: "textarea",
-							label: "Description",
-							required: true,
-						},
-						{
-							name: "commissioning",
-							type: "group",
-							label: "Commissioning",
-							fields: commissioningFields(),
-						},
-						{
-							name: "crew",
-							type: "array",
-							label: "Crew",
-							required: true,
-							minRows: 0,
-							fields: [
-								{
-									name: "gardener",
-									type: "relationship",
-									relationTo: "gardeners",
-									label: "Gardener",
-									required: true,
-									filterOptions: {
-										status: { equals: "active" },
-									},
-								},
-								{
-									name: "isCrewLead",
-									type: "checkbox",
-									label: "Crew lead",
-									defaultValue: false,
-								},
-							],
-						},
-						{
-							name: "crewSize",
-							type: "number",
-							label: "Crew size",
-							virtual: true,
-							admin: { readOnly: true },
-						},
-					],
+					name: "gardener",
+					type: "relationship",
+					relationTo: "gardeners",
+					label: "Gardener",
+					required: true,
+					filterOptions: {
+						status: { equals: "active" },
+					},
 				},
 				{
-					label: "Scheduling",
-					fields: [schedulingGroup],
-				},
-				{
-					label: "Validation",
-					fields: [validationGroup],
-				},
-				{
-					label: "Execution",
-					fields: [executionGroup],
-				},
-				{
-					label: "Incidents",
-					fields: [revocationGroup],
+					name: "isCrewLead",
+					type: "checkbox",
+					label: "Crew lead",
+					defaultValue: false,
 				},
 			],
 		},
+		{
+			name: "crewSize",
+			type: "number",
+			label: "Crew size",
+			virtual: true,
+			admin: {
+				readOnly: true,
+				condition: showInUpdateOnly,
+			},
+		},
+		schedulingGroup,
+		validationGroup,
+		executionGroup,
+		revocationGroup,
 		lifecycleStatusField(),
 		{
 			name: "scheduleAction",

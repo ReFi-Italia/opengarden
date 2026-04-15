@@ -1,7 +1,40 @@
-import type { DocumentViewServerProps } from "payload";
+import type {
+	ClientField,
+	DocumentViewServerProps,
+	Field,
+} from "payload";
+import { createClientFields } from "payload";
+import { importMap } from "@/app/(payload)/admin/importMap.js";
 import type { Intervention } from "@/payload-types";
-import { StageForm, type ValidatorOption } from "./StageForm";
+import { SetupForm } from "./SetupForm";
+import { StageForm } from "./StageForm";
 import "./InterventionWorkflow.scss";
+
+// Which field names inside each group are operator-editable per stage. Mirrors
+// `STAGE_INPUT_RULES` in the Interventions collection so the custom form only
+// exposes fields the server-side guard will actually accept.
+const STAGE_INPUTS: Record<string, readonly string[]> = {
+	scheduling: ["scheduledDate", "estimatedMinutes"],
+	validation: ["validator", "approved", "qualityScore", "feedback"],
+	execution: ["executionDate", "healthBefore", "healthAfter"],
+};
+
+function findGroupFields(
+	fields: readonly Field[],
+	groupName: string,
+): Field[] | undefined {
+	for (const field of fields) {
+		if (
+			"type" in field &&
+			field.type === "group" &&
+			"name" in field &&
+			field.name === groupName
+		) {
+			return field.fields;
+		}
+	}
+	return undefined;
+}
 
 const STAGE_FORM_TITLES: Record<string, string> = {
 	draft: "Scheduling",
@@ -44,6 +77,29 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 	const { doc, payload, initPageResult } = props;
 	const id = (doc as { id?: string | number })?.id;
 
+	// Collection fields are used in both create and edit paths below.
+	const collectionFields =
+		payload.collections.interventions?.config.fields ?? [];
+
+	// ─── Create mode ──────────────────────────────────────────────────
+	// The custom view handles both /create and /:id. When there's no doc
+	// id, defer to Payload's stock `DefaultEditView` (wrapped via
+	// `SetupForm`) so the create flow gets the fully-wired collection
+	// form — relationship pickers, crew array, validation, save, and the
+	// post-create redirect — for free. Stage groups (scheduling/validation
+	// /execution/revocation) are hidden via `admin.condition` in the
+	// collection config, so create mode shows only identity fields.
+	if (id === undefined) {
+		return (
+			<SetupForm
+				documentSubViewType={props.documentSubViewType}
+				formState={props.formState}
+				viewType={props.viewType}
+			/>
+		);
+	}
+
+	// ─── Edit mode ────────────────────────────────────────────────────
 	// Repopulate at depth 2 so area/sponsor/crew-gardener relationships render as
 	// objects instead of bare IDs.
 	const intervention =
@@ -76,82 +132,55 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 	const sponsor = commissioning?.sponsor;
 	const sponsorName =
 		sponsor && typeof sponsor === "object"
-			? ((sponsor as { name?: string }).name ?? "—")
+			? ((sponsor as { displayName?: string }).displayName ?? "—")
 			: "—";
 
 	const crew = Array.isArray(inv?.crew) ? inv.crew : [];
 	const currentIdx = (MAIN_PATH as readonly string[]).indexOf(status);
 	const isTerminal = status === "failed" || status === "revoked";
 
-	// Validators for the in_progress stage form. Mirrors the Interventions
-	// collection filterOptions: `{ capabilities: { contains: "validator" } }`.
-	const validatorsResult = await payload
-		.find({
-			collection: "staff",
-			where: { capabilities: { contains: "validator" } },
-			limit: 100,
-			depth: 0,
-			overrideAccess: false,
-			user: initPageResult?.req?.user ?? undefined,
-		})
-		.catch(() => ({ docs: [] as Array<{ id: string; name?: string }> }));
-
-	const validators: ValidatorOption[] = (
-		validatorsResult.docs as Array<{ id: string | number; name?: string }>
-	).map((s) => ({
-		id: String(s.id),
-		name: s.name ?? String(s.id),
-	}));
-
-	const schedulingGroup = inv?.scheduling as
-		| {
-				scheduledDate?: string | null;
-				estimatedMinutes?: number | null;
-		  }
-		| undefined;
-	const validationGroup = inv?.validation as
-		| {
-				validator?: { id?: string | number } | string | number | null;
-				approved?: boolean | null;
-				qualityScore?: number | null;
-				feedback?: string | null;
-		  }
-		| undefined;
 	const executionGroup = inv?.execution as
-		| {
-				executionDate?: string | null;
-				healthBefore?: number | null;
-				healthAfter?: number | null;
-				evidenceBundle?: unknown;
-		  }
+		| { evidenceBundle?: unknown }
 		| undefined;
 
-	const validatorDefault =
-		validationGroup?.validator && typeof validationGroup.validator === "object"
-			? String(
-					(validationGroup.validator as { id?: string | number }).id ?? "",
-				)
-			: validationGroup?.validator
-				? String(validationGroup.validator)
-				: null;
-
-	const defaults = {
-		scheduling: {
-			scheduledDate: schedulingGroup?.scheduledDate ?? null,
-			estimatedMinutes: schedulingGroup?.estimatedMinutes ?? null,
-		},
-		validation: {
-			validator: validatorDefault,
-			approved: validationGroup?.approved ?? null,
-			qualityScore: validationGroup?.qualityScore ?? null,
-			feedback: validationGroup?.feedback ?? null,
-		},
-		execution: {
-			executionDate: executionGroup?.executionDate ?? null,
-			healthBefore: executionGroup?.healthBefore ?? null,
-			healthAfter: executionGroup?.healthAfter ?? null,
-		},
+	// Extract the editable ClientField[] for each stage group. We pass the group
+	// children directly (not the wrapping group) so the group's readOnly admin
+	// flag doesn't cascade to our form, and render them under `parentPath` so
+	// their form-state keys match the doc shape (`scheduling.scheduledDate`).
+	const buildStageFields = (groupName: string): ClientField[] => {
+		const allowed = STAGE_INPUTS[groupName];
+		const groupFields = findGroupFields(collectionFields, groupName);
+		if (!allowed || !groupFields) return [];
+		const editable = groupFields.filter(
+			(f): f is Field & { name: string } =>
+				"name" in f && typeof f.name === "string" && allowed.includes(f.name),
+		);
+		return createClientFields({
+			fields: editable,
+			defaultIDType: payload.db.defaultIDType ?? "text",
+			i18n: props.i18n,
+			importMap,
+		});
 	};
+
+	const stageFieldsByGroup: Record<string, ClientField[]> = {
+		scheduling: buildStageFields("scheduling"),
+		validation: buildStageFields("validation"),
+		execution: buildStageFields("execution"),
+	};
+
+	const stageParentPath =
+		status === "draft" || status === "failed"
+			? "scheduling"
+			: status === "in_progress"
+				? "validation"
+				: status === "validated"
+					? "execution"
+					: "";
+
+	const stageClientFields = stageParentPath
+		? (stageFieldsByGroup[stageParentPath] ?? [])
+		: [];
 
 	return (
 		<div className="iw">
@@ -273,7 +302,7 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 									);
 									const name =
 										g && typeof g === "object"
-											? ((g as { name?: string }).name ?? "—")
+											? ((g as { displayName?: string }).displayName ?? "—")
 											: "—";
 									return (
 										<li
@@ -308,8 +337,9 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 							<StageForm
 								interventionId={String(id)}
 								status={status}
-								defaults={defaults}
-								validators={validators}
+								formState={props.formState}
+								stageClientFields={stageClientFields}
+								stageParentPath={stageParentPath}
 							/>
 						</div>
 					</div>

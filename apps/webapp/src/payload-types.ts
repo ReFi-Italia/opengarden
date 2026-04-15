@@ -365,11 +365,13 @@ export interface Intervention {
     sponsor: string | Sponsor;
     commissionRefHashAtSchedule?: string | null;
   };
-  crew: {
-    gardener: string | Gardener;
-    isCrewLead?: boolean | null;
-    id?: string | null;
-  }[];
+  crew?:
+    | {
+        gardener: string | Gardener;
+        isCrewLead?: boolean | null;
+        id?: string | null;
+      }[]
+    | null;
   crewSize?: number | null;
   scheduling?: {
     scheduledDate?: string | null;
