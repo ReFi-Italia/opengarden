@@ -2,13 +2,30 @@ import type {
 	ClientField,
 	DocumentViewServerProps,
 	Field,
+	FormState,
 } from "payload";
 import { createClientFields } from "payload";
 import { importMap } from "@/app/(payload)/admin/importMap.js";
 import type { Intervention } from "@/payload-types";
+import { RecordCheckinForm } from "./RecordCheckinForm";
+import { RecordCheckoutForm } from "./RecordCheckoutForm";
 import { SetupForm } from "./SetupForm";
 import { StageForm } from "./StageForm";
 import "./InterventionWorkflow.scss";
+
+const CHECKIN_FORM_FIELDS: readonly string[] = [
+	"gardener",
+	"latitude",
+	"longitude",
+	"claimedTimestamp",
+	"photo",
+];
+
+const CHECKOUT_FORM_FIELDS: readonly string[] = [
+	"checkin",
+	"claimedTimestamp",
+	"actualMinutes",
+];
 
 // Which field names inside each group are operator-editable per stage. Mirrors
 // `STAGE_INPUT_RULES` in the Interventions collection so the custom form only
@@ -40,8 +57,9 @@ const STAGE_FORM_TITLES: Record<string, string> = {
 	draft: "Scheduling",
 	failed: "Re-scheduling",
 	scheduled: "Ready to start",
-	in_progress: "Validation",
-	validated: "Execution & publish",
+	in_progress: "Execution summary",
+	pending_validation: "Validation",
+	validated: "Ready to publish",
 	published: "Lifecycle complete",
 	revoked: "Revoked",
 };
@@ -59,6 +77,7 @@ const MAIN_PATH = [
 	"draft",
 	"scheduled",
 	"in_progress",
+	"pending_validation",
 	"validated",
 	"published",
 ] as const;
@@ -67,6 +86,7 @@ const STAGE_LABELS: Record<string, string> = {
 	draft: "Drafted",
 	scheduled: "Scheduled",
 	in_progress: "In progress",
+	pending_validation: "Pending validation",
 	validated: "Validated",
 	published: "Published",
 	revoked: "Revoked",
@@ -173,14 +193,191 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 		status === "draft" || status === "failed"
 			? "scheduling"
 			: status === "in_progress"
-				? "validation"
-				: status === "validated"
-					? "execution"
+				? "execution"
+				: status === "pending_validation"
+					? "validation"
 					: "";
 
 	const stageClientFields = stageParentPath
 		? (stageFieldsByGroup[stageParentPath] ?? [])
 		: [];
+
+	// ─── Crew activity: checkin form prep ────────────────────────────
+	// Only render when the workflow is actively running (in_progress or
+	// pending_validation). Pre-populate gardener/lat/lng/timestamp from
+	// the parent intervention's area + crew so the operator only needs
+	// to confirm or tweak.
+	const showCrewActivity =
+		status === "in_progress" || status === "pending_validation";
+
+	let checkinClientFields: ClientField[] = [];
+	let checkinInitialState: FormState = {};
+	let checkoutClientFields: ClientField[] = [];
+	let checkoutInitialState: FormState = {};
+
+	if (showCrewActivity) {
+		const checkinFields =
+			payload.collections.gardenerCheckins?.config.fields ?? [];
+		const editableCheckinFields = checkinFields.filter(
+			(f): f is Field & { name: string } =>
+				"name" in f &&
+				typeof f.name === "string" &&
+				CHECKIN_FORM_FIELDS.includes(f.name),
+		);
+		checkinClientFields = createClientFields({
+			fields: editableCheckinFields,
+			defaultIDType: payload.db.defaultIDType ?? "text",
+			i18n: props.i18n,
+			importMap,
+		});
+
+		// Pre-populate from the parent intervention's area + first crew member.
+		const areaObj = inv?.area;
+		const areaLat =
+			areaObj && typeof areaObj === "object"
+				? (areaObj as { latitude?: number }).latitude
+				: undefined;
+		const areaLng =
+			areaObj && typeof areaObj === "object"
+				? (areaObj as { longitude?: number }).longitude
+				: undefined;
+
+		const firstCrew = crew[0];
+		const firstGardener = (firstCrew as { gardener?: unknown })?.gardener;
+		const firstGardenerId =
+			firstGardener && typeof firstGardener === "object"
+				? String((firstGardener as { id?: string | number }).id ?? "")
+				: firstGardener
+					? String(firstGardener)
+					: "";
+
+		const nowISO = new Date().toISOString();
+
+		// Construct a minimal FormState with `value` + `initialValue` for
+		// each pre-filled key. Payload's Form treats this as the starting
+		// state and the rendered fields pick up their defaults from here.
+		// The `intervention` key is not rendered (the operator can't change
+		// it — we're inside that intervention's workflow view) but it IS
+		// part of the state so client validation sees it populated.
+		checkinInitialState = {
+			intervention: {
+				value: String(id),
+				initialValue: String(id),
+			},
+			gardener: {
+				value: firstGardenerId || null,
+				initialValue: firstGardenerId || null,
+			},
+			latitude: {
+				value: areaLat ?? 0,
+				initialValue: areaLat ?? 0,
+			},
+			longitude: {
+				value: areaLng ?? 0,
+				initialValue: areaLng ?? 0,
+			},
+			claimedTimestamp: {
+				value: nowISO,
+				initialValue: nowISO,
+			},
+		} as FormState;
+
+		// ─── Checkout form prep ────────────────────────────────────────
+		// Pre-fill the checkin relationship with the most recent committed
+		// checkin for this intervention that does NOT yet have a matching
+		// checkout. Falls back to empty if none — operator picks manually.
+		const checkoutFields =
+			payload.collections.gardenerCheckouts?.config.fields ?? [];
+		const editableCheckoutFields = checkoutFields.filter(
+			(f): f is Field & { name: string } =>
+				"name" in f &&
+				typeof f.name === "string" &&
+				CHECKOUT_FORM_FIELDS.includes(f.name),
+		);
+		checkoutClientFields = createClientFields({
+			fields: editableCheckoutFields,
+			defaultIDType: payload.db.defaultIDType ?? "text",
+			i18n: props.i18n,
+			importMap,
+		});
+
+		const openCheckinResult = await payload
+			.find({
+				collection: "gardenerCheckins",
+				where: { intervention: { equals: String(id) } },
+				depth: 0,
+				limit: 20,
+				sort: "-createdAt",
+				overrideAccess: true,
+			})
+			.catch(() => ({ docs: [] as Array<{ id: string | number }> }));
+
+		const allCheckoutsResult = await payload
+			.find({
+				collection: "gardenerCheckouts",
+				where: {
+					checkin: {
+						in: (openCheckinResult.docs ?? []).map((d) => d.id),
+					},
+				},
+				depth: 0,
+				limit: 50,
+				overrideAccess: true,
+			})
+			.catch(() => ({ docs: [] as Array<{ checkin: string | number }> }));
+
+		const checkedOutIds = new Set(
+			(allCheckoutsResult.docs ?? []).map((d) =>
+				typeof d.checkin === "object" && d.checkin !== null
+					? String((d.checkin as { id?: string | number }).id ?? "")
+					: String(d.checkin),
+			),
+		);
+		const defaultCheckin = (openCheckinResult.docs ?? []).find(
+			(ci) => !checkedOutIds.has(String(ci.id)),
+		);
+		const defaultCheckinId = defaultCheckin ? String(defaultCheckin.id) : "";
+
+		// Compute a reasonable default actualMinutes from the checkin
+		// timestamp → now (assumes the operator is recording right after
+		// the crew wrapped up).
+		let defaultActualMinutes = 60;
+		if (defaultCheckin) {
+			const fullCheckin = await payload
+				.findByID({
+					collection: "gardenerCheckins",
+					id: String(defaultCheckin.id),
+					depth: 0,
+					overrideAccess: true,
+				})
+				.catch(() => null);
+			const startMs = fullCheckin?.claimedTimestamp
+				? new Date(fullCheckin.claimedTimestamp).getTime()
+				: 0;
+			if (startMs > 0) {
+				const diffMinutes = Math.max(
+					1,
+					Math.round((Date.now() - startMs) / 60000),
+				);
+				defaultActualMinutes = diffMinutes;
+			}
+		}
+
+		checkoutInitialState = {
+			checkin: {
+				value: defaultCheckinId || null,
+				initialValue: defaultCheckinId || null,
+			},
+			claimedTimestamp: {
+				value: nowISO,
+				initialValue: nowISO,
+			},
+			actualMinutes: {
+				value: defaultActualMinutes,
+				initialValue: defaultActualMinutes,
+			},
+		} as FormState;
+	}
 
 	return (
 		<div className="iw">
@@ -343,6 +540,23 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 							/>
 						</div>
 					</div>
+
+					{showCrewActivity ? (
+						<div className="iw__panel">
+							<div className="iw__panel-head">
+								<div className="iw__panel-title">Crew activity</div>
+								<div className="iw__panel-meta">
+									record check-in · check-out · report
+								</div>
+							</div>
+							<div className="iw__panel-body">
+								<RecordCheckinForm
+									clientFields={checkinClientFields}
+									formState={checkinInitialState}
+								/>
+							</div>
+						</div>
+					) : null}
 
 					<div className="iw__panel">
 						<div className="iw__panel-head">

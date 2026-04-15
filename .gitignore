@@ -2,3 +2,6 @@ node_modules
 dist
 .env
 *.local
+
+# Workflow-view screenshot artifacts from chrome-devtools-mcp runs
+apps/webapp/design/snapshots/

@@ -52,12 +52,19 @@ const STAGE_INPUT_RULES: Record<
 		editableIn: ["draft", "failed"],
 		inputFields: ["scheduledDate", "estimatedMinutes"],
 	},
+	// Validation inputs land while the doc is `pending_validation` — the new
+	// gate state between in_progress (crew activity) and validated (validator
+	// signed off).
 	validation: {
-		editableIn: ["in_progress"],
+		editableIn: ["pending_validation"],
 		inputFields: ["validator", "approved", "qualityScore", "feedback"],
 	},
+	// Execution summary fields are filled while the work is happening (or
+	// being reviewed), so they're editable in both `in_progress` and
+	// `pending_validation`. This puts the date/health observations next to
+	// the crew activity that produced them.
 	execution: {
-		editableIn: ["validated"],
+		editableIn: ["in_progress", "pending_validation"],
 		inputFields: ["executionDate", "healthBefore", "healthAfter"],
 	},
 };
@@ -327,6 +334,7 @@ const revocationGroup: Field = {
 					s === "draft" ||
 					s === "scheduled" ||
 					s === "in_progress" ||
+					s === "pending_validation" ||
 					s === "validated",
 			).map((value) => ({ label: value, value })),
 		},

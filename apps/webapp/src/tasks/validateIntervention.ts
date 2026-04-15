@@ -19,7 +19,7 @@ type ValidateInterventionOutput = {
 };
 
 /**
- * Task that drives an `interventions` row from `in_progress` →
+ * Task that drives an `interventions` row from `pending_validation` →
  * `validated` by calling `OpenGardenClient.validateIntervention` and
  * populating the `validation.chain.*` mirror. Assumes the validation
  * input fields (`approved`, `qualityScore`, `feedback`, `validator`)
@@ -71,9 +71,9 @@ export const validateInterventionTask: TaskConfig<{
 			};
 		}
 
-		if (intervention.lifecycleStatus !== "in_progress") {
+		if (intervention.lifecycleStatus !== "pending_validation") {
 			throw new Error(
-				`Intervention ${interventionId} is in lifecycleStatus="${intervention.lifecycleStatus}"; expected "in_progress".`,
+				`Intervention ${interventionId} is in lifecycleStatus="${intervention.lifecycleStatus}"; expected "pending_validation".`,
 			);
 		}
 
@@ -183,7 +183,7 @@ export const validateInterventionTask: TaskConfig<{
 					data: {
 						lifecycleStatus: "failed",
 						revocation: {
-							failedFrom: "in_progress",
+							failedFrom: "pending_validation",
 						},
 					},
 					overrideAccess: true,

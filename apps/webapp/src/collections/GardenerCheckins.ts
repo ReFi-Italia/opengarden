@@ -1,4 +1,8 @@
-import type { CollectionBeforeValidateHook, CollectionConfig } from "payload";
+import type {
+	CollectionAfterChangeHook,
+	CollectionBeforeValidateHook,
+	CollectionConfig,
+} from "payload";
 import { APIError } from "payload";
 import { authenticated } from "../access/authenticated";
 import { isAuthoringOrAbove } from "../access/isAuthoringOrAbove";
@@ -58,6 +62,48 @@ const guardCheckinAgainstIntervention: CollectionBeforeValidateHook = async ({
 	return data;
 };
 
+/**
+ * On insert, queue the `gardenerCheckin` task to commit the off-chain
+ * attestation and write the `chain.*` mirror back. We use Payload's
+ * `after()` drain so the row's HTTP response returns immediately and
+ * the operator's UI just sees a refreshed row a beat later.
+ */
+const queueChainCommit: CollectionAfterChangeHook = async ({
+	doc,
+	operation,
+	req,
+}) => {
+	if (operation !== "create") return doc;
+	if ((doc as { chain?: { chainUID?: string } }).chain?.chainUID) return doc;
+
+	try {
+		await req.payload.jobs.queue({
+			task: "gardenerCheckin",
+			input: { checkinId: String((doc as { id: string | number }).id) },
+			queue: "default",
+		});
+		// Best-effort drain via Next's `after()` so the queued job runs
+		// without waiting for the cron tick.
+		const { after } = await import("next/server");
+		after(async () => {
+			try {
+				await req.payload.jobs.run({ queue: "default", limit: 1 });
+			} catch (err) {
+				req.payload.logger.error({
+					msg: "queueChainCommit (gardenerCheckin): drain failed — relying on cron safety net",
+					err: err instanceof Error ? err.message : String(err),
+				});
+			}
+		});
+	} catch (err) {
+		req.payload.logger.error({
+			msg: "Failed to queue gardenerCheckin task on row create",
+			err: err instanceof Error ? err.message : String(err),
+		});
+	}
+	return doc;
+};
+
 export const GardenerCheckins: CollectionConfig = {
 	slug: "gardenerCheckins",
 	admin: {
@@ -74,6 +120,7 @@ export const GardenerCheckins: CollectionConfig = {
 	},
 	hooks: {
 		beforeValidate: [guardCheckinAgainstIntervention],
+		afterChange: [queueChainCommit],
 	},
 	fields: [
 		{

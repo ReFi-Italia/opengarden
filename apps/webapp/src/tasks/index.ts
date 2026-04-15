@@ -1,6 +1,8 @@
 import type { TaskConfig } from "payload";
 
 import { buildBundleTask } from "./buildBundle";
+import { gardenerCheckinTask } from "./gardenerCheckin";
+import { gardenerCheckoutTask } from "./gardenerCheckout";
 import { publishInterventionTask } from "./publishIntervention";
 import { registerAreaTask } from "./registerArea";
 import { scheduleInterventionTask } from "./scheduleIntervention";
@@ -16,6 +18,8 @@ import { verifyBundleTask } from "./verifyBundle";
 export const tasks: TaskConfig<any>[] = [
 	registerAreaTask,
 	scheduleInterventionTask,
+	gardenerCheckinTask,
+	gardenerCheckoutTask,
 	validateInterventionTask,
 	publishInterventionTask,
 	buildBundleTask,

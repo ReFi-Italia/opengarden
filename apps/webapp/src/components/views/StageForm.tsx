@@ -45,6 +45,12 @@ function stageTask(status: string): StageTask | null {
 				action: startWorkAction,
 			};
 		case "in_progress":
+			// TEMPORARY: the in_progress stage has no transition trigger
+			// yet. Until the activity tracker (step 5) + submitForValidation
+			// button (step 6) are built, this stage just lets the operator
+			// save execution-summary inputs via Payload's REST.
+			return null;
+		case "pending_validation":
 			return {
 				label: "Validate",
 				pendingLabel: "Validating…",
@@ -101,15 +107,30 @@ export function StageForm(props: StageFormProps) {
 	}
 
 	const task = stageTask(status);
-	if (!task) {
-		return <div className="iw-form__done">Unknown status: {status}</div>;
-	}
 
 	// `scheduled` has no editable fields — just a direct start-work button.
-	if (status === "scheduled") {
+	if (status === "scheduled" && task) {
 		return (
 			<TriggerOnlyAction interventionId={interventionId} task={task} />
 		);
+	}
+
+	// `in_progress` has editable execution inputs but no transition trigger
+	// yet (waiting for the activity tracker + submitForValidation button).
+	if (status === "in_progress") {
+		return (
+			<StageEditForm
+				interventionId={interventionId}
+				stageClientFields={stageClientFields}
+				stageParentPath={stageParentPath}
+				formState={props.formState}
+				task={null}
+			/>
+		);
+	}
+
+	if (!task) {
+		return <div className="iw-form__done">Unknown status: {status}</div>;
 	}
 
 	return (
@@ -135,7 +156,8 @@ function StageEditForm({
 	stageClientFields: ClientField[];
 	stageParentPath: string;
 	formState: FormState;
-	task: StageTask;
+	/** Optional — pass null for a save-only form with no transition trigger. */
+	task: StageTask | null;
 }) {
 	const router = useRouter();
 	const [trigger, startTrigger] = useTransition();
@@ -145,11 +167,17 @@ function StageEditForm({
 	const scopedInitialState = scopeFormState(formState, stageParentPath);
 
 	const onSuccess = () => {
+		setError(null);
+		// Save-only mode: no task trigger, just refresh the doc view.
+		if (!task) {
+			setSaved(true);
+			setTimeout(() => router.refresh(), 800);
+			return;
+		}
+		setSaved(false);
 		// Save landed on Payload's REST. Now queue the lifecycle task so the
 		// state machine actually advances. The existing task action reads the
 		// (now-updated) doc and triggers the chain job.
-		setSaved(false);
-		setError(null);
 		startTrigger(async () => {
 			try {
 				const result = await task.action(interventionId);
@@ -190,11 +218,15 @@ function StageEditForm({
 					className="iw-form__submit"
 					disabled={trigger || saved}
 				>
-					{trigger
-						? task.pendingLabel
+					{task
+						? trigger
+							? task.pendingLabel
+							: saved
+								? task.doneLabel
+								: `${task.label} →`
 						: saved
-							? task.doneLabel
-							: `${task.label} →`}
+							? "Saved ✓"
+							: "Save"}
 				</button>
 				{error && <p className="iw-form__error">{error}</p>}
 				{saved && <p className="iw-form__ok">Refreshing view…</p>}

@@ -130,6 +130,8 @@ export interface Config {
     tasks: {
       registerArea: TaskRegisterArea;
       scheduleIntervention: TaskScheduleIntervention;
+      gardenerCheckin: TaskGardenerCheckin;
+      gardenerCheckout: TaskGardenerCheckout;
       validateIntervention: TaskValidateIntervention;
       publishIntervention: TaskPublishIntervention;
       buildBundle: TaskBuildBundle;
@@ -441,9 +443,17 @@ export interface Intervention {
     reason?: string | null;
     revokedAt?: string | null;
     revokedScheduleUID?: string | null;
-    failedFrom?: ('draft' | 'scheduled' | 'in_progress' | 'validated') | null;
+    failedFrom?: ('draft' | 'scheduled' | 'in_progress' | 'pending_validation' | 'validated') | null;
   };
-  lifecycleStatus: 'draft' | 'scheduled' | 'in_progress' | 'validated' | 'published' | 'revoked' | 'failed';
+  lifecycleStatus:
+    | 'draft'
+    | 'scheduled'
+    | 'in_progress'
+    | 'pending_validation'
+    | 'validated'
+    | 'published'
+    | 'revoked'
+    | 'failed';
   updatedAt: string;
   createdAt: string;
 }
@@ -712,6 +722,10 @@ export interface ChainTransaction {
     | 'registerSchema'
     | 'registerArea'
     | 'scheduleIntervention'
+    | 'gardenerCheckin'
+    | 'gardenerCheckout'
+    | 'gardenerReport'
+    | 'healthcheck'
     | 'validateIntervention'
     | 'publishIntervention'
     | 'buildBundle'
@@ -822,6 +836,8 @@ export interface PayloadJob {
           | 'inline'
           | 'registerArea'
           | 'scheduleIntervention'
+          | 'gardenerCheckin'
+          | 'gardenerCheckout'
           | 'validateIntervention'
           | 'publishIntervention'
           | 'buildBundle'
@@ -863,6 +879,8 @@ export interface PayloadJob {
         | 'inline'
         | 'registerArea'
         | 'scheduleIntervention'
+        | 'gardenerCheckin'
+        | 'gardenerCheckout'
         | 'validateIntervention'
         | 'publishIntervention'
         | 'buildBundle'
@@ -1543,6 +1561,32 @@ export interface TaskRegisterArea {
 export interface TaskScheduleIntervention {
   input: {
     interventionId: string;
+  };
+  output: {
+    chainUID: string;
+    timestampTxHash: string;
+  };
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskGardenerCheckin".
+ */
+export interface TaskGardenerCheckin {
+  input: {
+    checkinId: string;
+  };
+  output: {
+    chainUID: string;
+    timestampTxHash: string;
+  };
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskGardenerCheckout".
+ */
+export interface TaskGardenerCheckout {
+  input: {
+    checkoutId: string;
   };
   output: {
     chainUID: string;
