@@ -65,6 +65,12 @@ export const EvidenceBundles: CollectionConfig = {
 							index: true,
 						},
 						{
+							name: "offchainCount",
+							type: "number",
+							label: "Off-chain attestation count",
+							admin: { readOnly: true },
+						},
+						{
 							name: "crewMembers",
 							type: "array",
 							label: "Crew attestations",

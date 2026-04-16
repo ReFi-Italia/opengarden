@@ -44,7 +44,7 @@ const INTERVENTION_TYPE_OPTIONS = [
  * (future) revocation server action writes it.
  */
 const STAGE_INPUT_RULES: Record<
-	"scheduling" | "validation" | "execution",
+	"scheduling" | "validation",
 	{ editableIn: ReadonlyArray<string>; inputFields: ReadonlyArray<string> }
 > = {
 	scheduling: {
@@ -54,10 +54,6 @@ const STAGE_INPUT_RULES: Record<
 	validation: {
 		editableIn: ["in_progress"],
 		inputFields: ["validator", "approved", "qualityScore", "feedback"],
-	},
-	execution: {
-		editableIn: ["in_progress"],
-		inputFields: ["executionDate", "healthBefore", "healthAfter"],
 	},
 };
 
@@ -236,49 +232,6 @@ const validationGroup: Field = {
 	],
 };
 
-const executionGroup: Field = {
-	name: "execution",
-	type: "group",
-	label: "Execution",
-	admin: { condition: showInUpdateOnly },
-	fields: [
-		{
-			name: "executionDate",
-			type: "date",
-			label: "Execution date",
-			access: { update: stageAccess("execution") },
-		},
-		{
-			name: "healthBefore",
-			type: "number",
-			label: "Health before",
-			min: 0,
-			max: 10,
-			access: { update: stageAccess("execution") },
-		},
-		{
-			name: "healthAfter",
-			type: "number",
-			label: "Health after",
-			min: 0,
-			max: 10,
-			access: { update: stageAccess("execution") },
-		},
-		{
-			name: "evidenceBundle",
-			type: "relationship",
-			relationTo: "evidenceBundles",
-			label: "Evidence bundle",
-			admin: { readOnly: true },
-		},
-		{
-			name: "offchainCount",
-			type: "number",
-			label: "Off-chain records",
-			admin: { readOnly: true },
-		},
-	],
-};
 
 const revocationGroup: Field = {
 	name: "revocation",
@@ -420,7 +373,7 @@ export const Interventions: CollectionConfig = {
 		},
 		schedulingGroup,
 		validationGroup,
-		executionGroup,
+
 		revocationGroup,
 		lifecycleStatusField(),
 		{

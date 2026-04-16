@@ -51,7 +51,6 @@ const HEALTHCHECK_FORM_FIELDS: readonly string[] = [
 const STAGE_INPUTS: Record<string, readonly string[]> = {
 	scheduling: ["scheduledDate", "estimatedMinutes"],
 	validation: ["validator", "approved", "qualityScore", "feedback"],
-	execution: ["executionDate", "healthBefore", "healthAfter"],
 };
 
 function findGroupFields(
@@ -174,10 +173,6 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 	const currentIdx = (MAIN_PATH as readonly string[]).indexOf(status);
 	const isTerminal = status === "failed" || status === "revoked";
 
-	const executionGroup = inv?.execution as
-		| { evidenceBundle?: unknown }
-		| undefined;
-
 	// Extract the editable ClientField[] for each stage group. We pass the group
 	// children directly (not the wrapping group) so the group's readOnly admin
 	// flag doesn't cascade to our form, and render them under `parentPath` so
@@ -201,21 +196,74 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 	const stageFieldsByGroup: Record<string, ClientField[]> = {
 		scheduling: buildStageFields("scheduling"),
 		validation: buildStageFields("validation"),
-		execution: buildStageFields("execution"),
 	};
 
 	const stageParentPath =
-		status === "draft" || status === "failed"
-			? "scheduling"
-			: status === "in_progress"
-				? "execution"
-				: "";
+		status === "draft" || status === "failed" ? "scheduling" : "";
 
 	const stageClientFields = stageParentPath
 		? (stageFieldsByGroup[stageParentPath] ?? [])
 		: [];
 
 	const showCrewActivity = status === "in_progress";
+
+	// Derived execution summary — populated when in_progress
+	let derivedExecutionDate: string | null = null;
+	let derivedHealthBefore: number | null = null;
+	let derivedHealthAfter: number | null = null;
+
+	if (showCrewActivity) {
+		const [latestCheckout, latestHealthcheck] = await Promise.all([
+			payload
+				.find({
+					collection: "activities",
+					where: {
+						and: [
+							{ intervention: { equals: String(id) } },
+							{ type: { equals: "checkout" } },
+						],
+					},
+					depth: 0,
+					limit: 1,
+					sort: "-claimedTimestamp",
+					overrideAccess: true,
+				})
+				.catch(() => ({ docs: [] as Array<{ claimedTimestamp?: string }> })),
+			payload
+				.find({
+					collection: "activities",
+					where: {
+						and: [
+							{ intervention: { equals: String(id) } },
+							{ type: { equals: "healthcheck" } },
+						],
+					},
+					depth: 0,
+					limit: 1,
+					overrideAccess: true,
+				})
+				.catch(() => ({
+					docs: [] as Array<{
+						healthScore?: number;
+						metadata?: Record<string, unknown> | null;
+					}>,
+				})),
+		]);
+
+		derivedExecutionDate =
+			(latestCheckout.docs[0] as { claimedTimestamp?: string })
+				?.claimedTimestamp ?? null;
+		const hc = latestHealthcheck.docs[0] as {
+			healthScore?: number;
+			metadata?: Record<string, unknown> | null;
+		} | undefined;
+		if (hc) {
+			derivedHealthAfter = hc.healthScore ?? null;
+			const baseline = (hc.metadata as { baseline?: { score?: number } } | null)
+				?.baseline;
+			derivedHealthBefore = baseline?.score ?? null;
+		}
+	}
 
 	let checkinClientFields: ClientField[] = [];
 	let checkinInitialState: FormState = {};
@@ -588,35 +636,66 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 				</aside>
 
 				<div className="iw__col iw__col--main">
-					<div className="iw__panel">
-						<div className="iw__panel-head">
-							<div className="iw__panel-title">
-								{STAGE_FORM_TITLES[status] ?? "Stage form"}
-							</div>
-							<div className="iw__panel-meta">
-								stage {String(currentIdx + 1).padStart(2, "0")} ·{" "}
-								{STAGE_LABELS[status] ?? status}
-							</div>
-						</div>
-						<div className="iw__panel-body">
-							<StageForm
-								interventionId={String(id)}
-								status={status}
-								formState={props.formState}
-								stageClientFields={stageClientFields}
-								stageParentPath={stageParentPath}
-								taskOverride={status === "in_progress" ? null : undefined}
-							/>
-						</div>
-					</div>
-
 					{status === "in_progress" ? (
+						<>
+							<div className="iw__panel">
+								<div className="iw__panel-head">
+									<div className="iw__panel-title">Execution summary</div>
+									<div className="iw__panel-meta">
+										stage {String(currentIdx + 1).padStart(2, "0")} · derived from activities
+									</div>
+								</div>
+								<div className="iw__panel-body">
+									<div className="iw__derived-row">
+										<span className="iw__derived-label">Execution date</span>
+										<span className="iw__derived-value">
+											{derivedExecutionDate
+												? new Date(derivedExecutionDate).toLocaleDateString()
+												: "—"}
+										</span>
+									</div>
+									<div className="iw__derived-row">
+										<span className="iw__derived-label">Health before</span>
+										<span className="iw__derived-value">
+											{derivedHealthBefore !== null ? derivedHealthBefore : "—"}
+										</span>
+									</div>
+									<div className="iw__derived-row">
+										<span className="iw__derived-label">Health after</span>
+										<span className="iw__derived-value">
+											{derivedHealthAfter !== null ? derivedHealthAfter : "—"}
+										</span>
+									</div>
+								</div>
+							</div>
+							<div className="iw__panel">
+								<div className="iw__panel-head">
+									<div className="iw__panel-title">Validation</div>
+									<div className="iw__panel-meta">
+										stage {String(currentIdx + 1).padStart(2, "0")} · review
+										&amp; approve
+									</div>
+								</div>
+								<div className="iw__panel-body">
+									<StageForm
+										interventionId={String(id)}
+										status={status}
+										formState={props.formState}
+										stageClientFields={stageFieldsByGroup.validation ?? []}
+										stageParentPath="validation"
+									/>
+								</div>
+							</div>
+						</>
+					) : (
 						<div className="iw__panel">
 							<div className="iw__panel-head">
-								<div className="iw__panel-title">Validation</div>
+								<div className="iw__panel-title">
+									{STAGE_FORM_TITLES[status] ?? "Stage form"}
+								</div>
 								<div className="iw__panel-meta">
-									stage {String(currentIdx + 1).padStart(2, "0")} · review
-									&amp; approve
+									stage {String(currentIdx + 1).padStart(2, "0")} ·{" "}
+									{STAGE_LABELS[status] ?? status}
 								</div>
 							</div>
 							<div className="iw__panel-body">
@@ -624,12 +703,12 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 									interventionId={String(id)}
 									status={status}
 									formState={props.formState}
-									stageClientFields={stageFieldsByGroup.validation ?? []}
-									stageParentPath="validation"
+									stageClientFields={stageClientFields}
+									stageParentPath={stageParentPath}
 								/>
 							</div>
 						</div>
-					) : null}
+					)}
 
 					{showCrewActivity ? (
 						<div className="iw__panel">
@@ -694,12 +773,7 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 					<div className="iw__panel">
 						<div className="iw__panel-head">
 							<div className="iw__panel-title">Evidence bundle</div>
-							<div className="iw__panel-meta">
-								{(inv?.execution as { evidenceBundle?: unknown })
-									?.evidenceBundle
-									? "linked"
-									: "not yet built"}
-							</div>
+							<div className="iw__panel-meta">NOT YET BUILT</div>
 						</div>
 						<div className="iw__panel-body">
 							<p className="iw__placeholder">

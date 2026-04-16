@@ -104,50 +104,57 @@ export const publishInterventionTask: TaskConfig<{
 			throw new Error(`Intervention ${interventionId} → area has no on-chain UID.`);
 		}
 
-		const execution = intervention.execution;
-		if (!execution) {
-			throw new Error(
-				`Intervention ${interventionId} has no execution group populated.`,
-			);
-		}
-		if (!execution.executionDate) {
-			throw new Error(
-				`Intervention ${interventionId} is missing execution.executionDate.`,
-			);
-		}
-		if (typeof execution.healthBefore !== "number") {
-			throw new Error(
-				`Intervention ${interventionId} is missing execution.healthBefore.`,
-			);
-		}
-		if (typeof execution.healthAfter !== "number") {
-			throw new Error(
-				`Intervention ${interventionId} is missing execution.healthAfter.`,
-			);
-		}
-		if (typeof execution.offchainCount !== "number") {
-			throw new Error(
-				`Intervention ${interventionId} is missing execution.offchainCount; run buildBundle first.`,
-			);
-		}
+		// ─── Derive execution values from activities ──────────────────────
+		const activitiesResult = await payload.find({
+			collection: "activities",
+			where: { intervention: { equals: interventionId } },
+			depth: 1,
+			limit: 200,
+			overrideAccess: true,
+			req,
+		});
+		const activities = activitiesResult.docs;
 
-		const bundleRef = execution.evidenceBundle;
-		const bundle =
-			typeof bundleRef === "object" && bundleRef !== null ? bundleRef : null;
+		// executionDate: latest checkout claimedTimestamp
+		// biome-ignore lint/suspicious/noExplicitAny: activity rows
+		const checkoutActivities = activities.filter((a: any) => a.type === "checkout");
+		// biome-ignore lint/suspicious/noExplicitAny: activity rows
+		const latestCheckout = checkoutActivities.sort((a: any, b: any) =>
+			new Date(b.claimedTimestamp).getTime() - new Date(a.claimedTimestamp).getTime()
+		)[0];
+		if (!latestCheckout) {
+			throw new Error(`Intervention ${interventionId} has no checkout activity; record crew activity first.`);
+		}
+		const executionDate = new Date(latestCheckout.claimedTimestamp as string);
+
+		// health scores: from healthcheck activity
+		// biome-ignore lint/suspicious/noExplicitAny: activity rows
+		const healthcheckActivity = activities.find((a: any) => a.type === "healthcheck");
+		// biome-ignore lint/suspicious/noExplicitAny: metadata field
+		const healthBefore = (healthcheckActivity as any)?.metadata?.baseline?.score ?? 0;
+		const healthAfter = (healthcheckActivity as any)?.healthScore ?? 0;
+
+		// ─── Find the evidence bundle ──────────────────────────────────────
+		const bundlesResult = await payload.find({
+			collection: "evidenceBundles",
+			where: { intervention: { equals: interventionId } },
+			depth: 0,
+			limit: 1,
+			overrideAccess: true,
+			req,
+		});
+		const bundle = bundlesResult.docs[0] ?? null;
 		if (!bundle) {
-			throw new Error(
-				`Intervention ${interventionId} has no execution.evidenceBundle; build one before publishing.`,
-			);
+			throw new Error(`Intervention ${interventionId} has no evidence bundle; run buildBundle first.`);
 		}
 		if (bundle.bundleState !== "uploaded") {
-			throw new Error(
-				`Evidence bundle ${bundle.id} is in bundleState="${bundle.bundleState}"; expected "uploaded".`,
-			);
+			throw new Error(`Evidence bundle ${bundle.id} is in bundleState="${bundle.bundleState}"; expected "uploaded".`);
 		}
 		if (!bundle.evidenceBundleHash) {
-			throw new Error(
-				`Evidence bundle ${bundle.id} has no evidenceBundleHash; re-run buildBundle.`,
-			);
+			throw new Error(`Evidence bundle ${bundle.id} has no evidenceBundleHash; re-run buildBundle.`);
+		}
+		if (typeof bundle.offchainCount !== "number") {
+			throw new Error(`Evidence bundle ${bundle.id} is missing offchainCount; re-run buildBundle.`);
 		}
 
 		const sponsor = intervention.commissioning?.sponsor;
@@ -168,12 +175,12 @@ export const publishInterventionTask: TaskConfig<{
 			interventionType: Number(
 				intervention.interventionType,
 			) as InterventionType,
-			executionDate: new Date(execution.executionDate),
-			healthBefore: execution.healthBefore,
-			healthAfter: execution.healthAfter,
+			executionDate,
+			healthBefore,
+			healthAfter,
 			commissionId,
 			evidenceBundleHash: bundle.evidenceBundleHash,
-			offchainCount: execution.offchainCount,
+			offchainCount: bundle.offchainCount,
 			crewSize: crew.length,
 		};
 

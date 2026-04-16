@@ -305,6 +305,7 @@ export const buildBundleTask: TaskConfig<{
 					bundleJson: builtBundle as unknown as Record<string, unknown>,
 					bundleVersion: builtBundle.bundleVersion,
 					evidenceBundleHash,
+					offchainCount,
 					interventionIdSnapshot: intervention.interventionId,
 					areaUIDSnapshot: areaUID,
 					scheduledRef: scheduled.uid,
@@ -328,18 +329,6 @@ export const buildBundleTask: TaskConfig<{
 				collection: "evidenceBundles",
 				id: bundleId,
 				data: { bundleState: "uploaded" },
-				overrideAccess: true,
-				context: { skipLifecycleHooks: true },
-				req,
-			});
-
-			// Snapshot offchainCount onto the intervention for the publish step.
-			await payload.update({
-				collection: "interventions",
-				id: intervention.id,
-				data: {
-					execution: { offchainCount },
-				},
 				overrideAccess: true,
 				context: { skipLifecycleHooks: true },
 				req,
