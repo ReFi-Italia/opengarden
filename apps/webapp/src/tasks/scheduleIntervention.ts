@@ -8,6 +8,7 @@ import {
 	getOpenGardenContext,
 	type OpenGardenContext,
 } from "../lib/openGardenClient";
+import { serializeBigInts } from "../lib/serializeBigInts";
 
 
 type ScheduleInterventionInput = {
@@ -169,7 +170,7 @@ export const scheduleInterventionTask: TaskConfig<{
 				data: {
 					uid: result.uid,
 					schemaName: "ScheduledIntervention",
-					signedAttestation: result.signedAttestation as unknown as Record<string, unknown>,
+					signedAttestation: serializeBigInts(result.signedAttestation) as unknown as Record<string, unknown>,
 					timestampTxHash: result.timestampTxHash,
 					onchainTimestamp: Number(result.onchainTimestamp),
 					chainIdSnapshot: context.chainId,
