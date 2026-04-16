@@ -23,13 +23,12 @@ const CHECKIN_FORM_FIELDS: readonly string[] = [
 ];
 
 const CHECKOUT_FORM_FIELDS: readonly string[] = [
-	"parentActivity",
+	"gardener",
 	"claimedTimestamp",
 	"actualMinutes",
 ];
 
 const REPORT_FORM_FIELDS: readonly string[] = [
-	"parentActivity",
 	"gardener",
 	"claimedTimestamp",
 	"tasksCompleted",
@@ -249,7 +248,6 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 			});
 
 		checkinClientFields = pickFields(CHECKIN_FORM_FIELDS);
-		checkoutClientFields = pickFields(CHECKOUT_FORM_FIELDS);
 
 		// ─── Checkin defaults (gardener + lat/lng from area) ──────────
 		const areaObj = inv?.area;
@@ -297,57 +295,31 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 			},
 		} as FormState;
 
-		// ─── Checkout defaults (parentActivity = most recent checkin without a matching checkout) ──
-		const checkinActivitiesResult = await payload
+		// ─── Checkout defaults ──────────────────────────────────────────
+		// parentActivity auto-linked by autoLinkParentActivity hook server-side.
+		// Derive actualMinutes from the open checkin's timestamp if available.
+		const openCheckinResult = await payload
 			.find({
 				collection: "activities",
 				where: {
 					and: [
 						{ intervention: { equals: String(id) } },
 						{ type: { equals: "checkin" } },
+						...(firstGardenerId
+							? [{ gardener: { equals: firstGardenerId } }]
+							: []),
 					],
 				},
 				depth: 0,
-				limit: 50,
+				limit: 1,
 				sort: "-claimedTimestamp",
 				overrideAccess: true,
 			})
 			.catch(() => ({
-				docs: [] as Array<{ id: string | number; claimedTimestamp?: string }>,
+				docs: [] as Array<{ claimedTimestamp?: string }>,
 			}));
 
-		const checkoutActivitiesResult = await payload
-			.find({
-				collection: "activities",
-				where: {
-					and: [
-						{ intervention: { equals: String(id) } },
-						{ type: { equals: "checkout" } },
-					],
-				},
-				depth: 0,
-				limit: 50,
-				overrideAccess: true,
-			})
-			.catch(() => ({
-				docs: [] as Array<{ parentActivity?: string | number | { id?: string | number } }>,
-			}));
-
-		const closedCheckinIds = new Set(
-			(checkoutActivitiesResult.docs ?? []).map((d) => {
-				const p = d.parentActivity;
-				if (typeof p === "object" && p !== null) {
-					return String((p as { id?: string | number }).id ?? "");
-				}
-				return String(p ?? "");
-			}),
-		);
-		const openCheckin = (checkinActivitiesResult.docs ?? []).find(
-			(ci) => !closedCheckinIds.has(String(ci.id)),
-		);
-		const openCheckinId = openCheckin ? String(openCheckin.id) : "";
-
-		// Default actualMinutes: now − open checkin's claimedTimestamp.
+		const openCheckin = openCheckinResult.docs[0];
 		let defaultActualMinutes = 60;
 		if (openCheckin?.claimedTimestamp) {
 			const startMs = new Date(openCheckin.claimedTimestamp).getTime();
@@ -359,15 +331,16 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 			}
 		}
 
+		checkoutClientFields = pickFields(CHECKOUT_FORM_FIELDS);
 		checkoutInitialState = {
 			type: { value: "checkout", initialValue: "checkout" },
 			intervention: {
 				value: String(id),
 				initialValue: String(id),
 			},
-			parentActivity: {
-				value: openCheckinId || null,
-				initialValue: openCheckinId || null,
+			gardener: {
+				value: firstGardenerId || null,
+				initialValue: firstGardenerId || null,
 			},
 			claimedTimestamp: {
 				value: nowISO,
@@ -379,97 +352,18 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 			},
 		} as FormState;
 
-		// ─── Report defaults (parentActivity = checkout without matching report) ──
+		// ─── Report defaults ─────────────────────────────────────────────
+		// parentActivity auto-linked by autoLinkParentActivity hook server-side.
 		reportClientFields = pickFields(REPORT_FORM_FIELDS);
-
-		const reportActivitiesResult = await payload
-			.find({
-				collection: "activities",
-				where: {
-					and: [
-						{ intervention: { equals: String(id) } },
-						{ type: { equals: "report" } },
-					],
-				},
-				depth: 0,
-				limit: 50,
-				overrideAccess: true,
-			})
-			.catch(() => ({
-				docs: [] as Array<{
-					parentActivity?: string | number | { id?: string | number };
-				}>,
-			}));
-
-		const reportedCheckoutIds = new Set(
-			(reportActivitiesResult.docs ?? []).map((d) => {
-				const p = d.parentActivity;
-				if (typeof p === "object" && p !== null) {
-					return String((p as { id?: string | number }).id ?? "");
-				}
-				return String(p ?? "");
-			}),
-		);
-
-		// Need the checkout rows with their parentActivity (=checkin) populated
-		// so we can pick the right gardener via the checkin.
-		const checkoutActivitiesDeep = await payload
-			.find({
-				collection: "activities",
-				where: {
-					and: [
-						{ intervention: { equals: String(id) } },
-						{ type: { equals: "checkout" } },
-					],
-				},
-				depth: 2,
-				limit: 50,
-				sort: "-claimedTimestamp",
-				overrideAccess: true,
-			})
-			.catch(() => ({
-				docs: [] as Array<{
-					id: string | number;
-					parentActivity?: { gardener?: unknown } | null;
-				}>,
-			}));
-
-		const openCheckoutForReport = (checkoutActivitiesDeep.docs ?? []).find(
-			(co) => !reportedCheckoutIds.has(String(co.id)),
-		);
-		const openCheckoutId = openCheckoutForReport
-			? String(openCheckoutForReport.id)
-			: "";
-
-		// Derive the gardener from the checkout's parent checkin.
-		let reportGardenerId = "";
-		if (openCheckoutForReport) {
-			const parentCheckin = openCheckoutForReport.parentActivity;
-			const g =
-				parentCheckin && typeof parentCheckin === "object"
-					? (parentCheckin as { gardener?: unknown }).gardener
-					: undefined;
-			if (g) {
-				reportGardenerId =
-					typeof g === "object" && g !== null
-						? String((g as { id?: string | number }).id ?? "")
-						: String(g);
-			}
-		}
-
 		reportInitialState = {
 			type: { value: "report", initialValue: "report" },
 			intervention: {
 				value: String(id),
 				initialValue: String(id),
 			},
-			parentActivity: {
-				value: openCheckoutId || null,
-				initialValue: openCheckoutId || null,
-			},
 			gardener: {
-				value: reportGardenerId || firstGardenerId || null,
-				initialValue: reportGardenerId || firstGardenerId || null,
+				value: firstGardenerId || null,
+				initialValue: firstGardenerId || null,
 			},
 			claimedTimestamp: {
 				value: nowISO,
@@ -605,9 +499,8 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 					Stage is <em>{STAGE_LABELS[status] ?? status}</em>
 				</h2>
 				<p className="iw__action-sub">
-					The stage-specific action (Schedule · Start work · Validate · Publish)
-					will wire in next, calling the same server actions that back the
-					existing sidebar buttons.
+					Use the panels below to record activities and advance the intervention
+					through its lifecycle.
 				</p>
 			</section>
 

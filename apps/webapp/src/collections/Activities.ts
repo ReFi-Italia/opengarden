@@ -40,6 +40,150 @@ const TYPES_REQUIRING_HEALTHSCORE: readonly ActivityType[] = [
 ];
 
 /**
+ * For `checkout` and `report`, automatically resolves the nearest open parent
+ * activity when `parentActivity` is not supplied by the caller:
+ *
+ *  - checkout → latest checkin for the same intervention+gardener that has no
+ *               matching checkout yet
+ *  - report   → latest checkout for the same intervention that has no matching
+ *               report yet
+ *
+ * Runs before `guardActivityInvariants` so that the "parentActivity required"
+ * guard sees the resolved value.
+ */
+const autoLinkParentActivity: CollectionBeforeValidateHook = async ({
+	data,
+	req,
+}) => {
+	if (!data) return data;
+	const type = data.type as ActivityType | undefined;
+	if (type !== "checkout" && type !== "report") return data;
+	if (data.parentActivity) return data; // already supplied
+
+	const interventionId = data.intervention as string | number | undefined;
+	if (!interventionId) return data;
+
+	const idStr = String(interventionId);
+
+	if (type === "checkout") {
+		const gardenerId = data.gardener as string | number | undefined;
+
+		const [checkins, checkouts] = await Promise.all([
+			req.payload
+				.find({
+					collection: "activities",
+					where: {
+						and: [
+							{ intervention: { equals: idStr } },
+							{ type: { equals: "checkin" } },
+							...(gardenerId
+								? [{ gardener: { equals: String(gardenerId) } }]
+								: []),
+						],
+					},
+					sort: "-claimedTimestamp",
+					limit: 50,
+					depth: 0,
+					overrideAccess: true,
+				})
+				.catch(() => ({ docs: [] as Array<{ id: string | number }> })),
+			req.payload
+				.find({
+					collection: "activities",
+					where: {
+						and: [
+							{ intervention: { equals: idStr } },
+							{ type: { equals: "checkout" } },
+						],
+					},
+					limit: 50,
+					depth: 0,
+					overrideAccess: true,
+				})
+				.catch(() => ({
+					docs: [] as Array<{
+						parentActivity?: string | number | { id?: string | number };
+					}>,
+				})),
+		]);
+
+		const usedCheckinIds = new Set(
+			checkouts.docs.map((co) => {
+				const p = (co as { parentActivity?: string | number | { id?: string | number } }).parentActivity;
+				if (typeof p === "object" && p !== null) {
+					return String((p as { id?: string | number }).id ?? "");
+				}
+				return String(p ?? "");
+			}),
+		);
+
+		const openCheckin = checkins.docs.find(
+			(ci) => !usedCheckinIds.has(String(ci.id)),
+		);
+		if (openCheckin) {
+			data.parentActivity = openCheckin.id;
+		}
+	}
+
+	if (type === "report") {
+		const [checkouts, reports] = await Promise.all([
+			req.payload
+				.find({
+					collection: "activities",
+					where: {
+						and: [
+							{ intervention: { equals: idStr } },
+							{ type: { equals: "checkout" } },
+						],
+					},
+					sort: "-claimedTimestamp",
+					limit: 50,
+					depth: 0,
+					overrideAccess: true,
+				})
+				.catch(() => ({ docs: [] as Array<{ id: string | number }> })),
+			req.payload
+				.find({
+					collection: "activities",
+					where: {
+						and: [
+							{ intervention: { equals: idStr } },
+							{ type: { equals: "report" } },
+						],
+					},
+					limit: 50,
+					depth: 0,
+					overrideAccess: true,
+				})
+				.catch(() => ({
+					docs: [] as Array<{
+						parentActivity?: string | number | { id?: string | number };
+					}>,
+				})),
+		]);
+
+		const usedCheckoutIds = new Set(
+			reports.docs.map((r) => {
+				const p = (r as { parentActivity?: string | number | { id?: string | number } }).parentActivity;
+				if (typeof p === "object" && p !== null) {
+					return String((p as { id?: string | number }).id ?? "");
+				}
+				return String(p ?? "");
+			}),
+		);
+
+		const openCheckout = checkouts.docs.find(
+			(co) => !usedCheckoutIds.has(String(co.id)),
+		);
+		if (openCheckout) {
+			data.parentActivity = openCheckout.id;
+		}
+	}
+
+	return data;
+};
+
+/**
  * Enforces polymorphic parent (intervention XOR area per type) plus the
  * per-type required fields. Replaces the four separate beforeValidate
  * guards we used to have on GardenerCheckins/Checkouts/Reports/Healthchecks.
@@ -251,7 +395,7 @@ export const Activities: CollectionConfig = {
 		delete: isAuthoringOrAbove,
 	},
 	hooks: {
-		beforeValidate: [guardActivityInvariants],
+		beforeValidate: [autoLinkParentActivity, guardActivityInvariants],
 		afterChange: [queueChainCommit],
 	},
 	fields: [

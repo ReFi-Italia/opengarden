@@ -111,10 +111,6 @@ export function StageForm(props: StageFormProps) {
 		);
 	}
 
-	if (!task) {
-		return <div className="iw-form__done">Unknown status: {status}</div>;
-	}
-
 	return (
 		<StageEditForm
 			interventionId={interventionId}
