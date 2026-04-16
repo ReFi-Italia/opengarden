@@ -15,6 +15,7 @@ export type StageFormProps = {
 	formState: FormState;
 	stageClientFields: ClientField[];
 	stageParentPath: string;
+	taskOverride?: StageTask | null | undefined;
 };
 
 type TaskResult = { ok: true; jobId?: string } | { ok: false; error: string };
@@ -45,12 +46,6 @@ function stageTask(status: string): StageTask | null {
 				action: startWorkAction,
 			};
 		case "in_progress":
-			// TEMPORARY: the in_progress stage has no transition trigger
-			// yet. Until the activity tracker (step 5) + submitForValidation
-			// button (step 6) are built, this stage just lets the operator
-			// save execution-summary inputs via Payload's REST.
-			return null;
-		case "pending_validation":
 			return {
 				label: "Validate",
 				pendingLabel: "Validating…",
@@ -106,26 +101,13 @@ export function StageForm(props: StageFormProps) {
 		);
 	}
 
-	const task = stageTask(status);
+	const task =
+		props.taskOverride !== undefined ? props.taskOverride : stageTask(status);
 
 	// `scheduled` has no editable fields — just a direct start-work button.
 	if (status === "scheduled" && task) {
 		return (
 			<TriggerOnlyAction interventionId={interventionId} task={task} />
-		);
-	}
-
-	// `in_progress` has editable execution inputs but no transition trigger
-	// yet (waiting for the activity tracker + submitForValidation button).
-	if (status === "in_progress") {
-		return (
-			<StageEditForm
-				interventionId={interventionId}
-				stageClientFields={stageClientFields}
-				stageParentPath={stageParentPath}
-				formState={props.formState}
-				task={null}
-			/>
 		);
 	}
 

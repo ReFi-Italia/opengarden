@@ -77,8 +77,7 @@ const STAGE_FORM_TITLES: Record<string, string> = {
 	draft: "Scheduling",
 	failed: "Re-scheduling",
 	scheduled: "Ready to start",
-	in_progress: "Execution summary",
-	pending_validation: "Validation",
+	in_progress: "Execution & validation",
 	validated: "Ready to publish",
 	published: "Lifecycle complete",
 	revoked: "Revoked",
@@ -97,7 +96,6 @@ const MAIN_PATH = [
 	"draft",
 	"scheduled",
 	"in_progress",
-	"pending_validation",
 	"validated",
 	"published",
 ] as const;
@@ -106,7 +104,6 @@ const STAGE_LABELS: Record<string, string> = {
 	draft: "Drafted",
 	scheduled: "Scheduled",
 	in_progress: "In progress",
-	pending_validation: "Pending validation",
 	validated: "Validated",
 	published: "Published",
 	revoked: "Revoked",
@@ -214,21 +211,13 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 			? "scheduling"
 			: status === "in_progress"
 				? "execution"
-				: status === "pending_validation"
-					? "validation"
-					: "";
+				: "";
 
 	const stageClientFields = stageParentPath
 		? (stageFieldsByGroup[stageParentPath] ?? [])
 		: [];
 
-	// ─── Crew activity: checkin form prep ────────────────────────────
-	// Only render when the workflow is actively running (in_progress or
-	// pending_validation). Pre-populate gardener/lat/lng/timestamp from
-	// the parent intervention's area + crew so the operator only needs
-	// to confirm or tweak.
-	const showCrewActivity =
-		status === "in_progress" || status === "pending_validation";
+	const showCrewActivity = status === "in_progress";
 
 	let checkinClientFields: ClientField[] = [];
 	let checkinInitialState: FormState = {};
@@ -700,9 +689,31 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 								formState={props.formState}
 								stageClientFields={stageClientFields}
 								stageParentPath={stageParentPath}
+								taskOverride={status === "in_progress" ? null : undefined}
 							/>
 						</div>
 					</div>
+
+					{status === "in_progress" ? (
+						<div className="iw__panel">
+							<div className="iw__panel-head">
+								<div className="iw__panel-title">Validation</div>
+								<div className="iw__panel-meta">
+									stage {String(currentIdx + 1).padStart(2, "0")} · review
+									&amp; approve
+								</div>
+							</div>
+							<div className="iw__panel-body">
+								<StageForm
+									interventionId={String(id)}
+									status={status}
+									formState={props.formState}
+									stageClientFields={stageFieldsByGroup.validation ?? []}
+									stageParentPath="validation"
+								/>
+							</div>
+						</div>
+					) : null}
 
 					{showCrewActivity ? (
 						<div className="iw__panel">

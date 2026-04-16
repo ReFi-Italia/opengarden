@@ -23,18 +23,11 @@ const ALLOWED_TRANSITIONS: Record<
 > = {
 	draft: ["scheduled", "failed"],
 	scheduled: ["in_progress", "draft", "revoked", "failed"],
-	in_progress: ["pending_validation", "failed"],
-	pending_validation: ["in_progress", "validated", "failed"],
-	validated: ["pending_validation", "published", "failed"],
+	in_progress: ["validated", "failed"],
+	validated: ["published", "failed"],
 	published: [],
 	revoked: [],
-	failed: [
-		"draft",
-		"scheduled",
-		"in_progress",
-		"pending_validation",
-		"validated",
-	],
+	failed: ["draft", "scheduled", "in_progress", "validated"],
 };
 
 export const validateInterventionTransition: CollectionBeforeChangeHook =

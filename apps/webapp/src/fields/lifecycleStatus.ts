@@ -4,7 +4,6 @@ export const INTERVENTION_LIFECYCLE_STATUSES = [
 	"draft",
 	"scheduled",
 	"in_progress",
-	"pending_validation",
 	"validated",
 	"published",
 	"revoked",
