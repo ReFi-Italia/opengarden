@@ -8,6 +8,7 @@ import {
 import type { Payload, PayloadRequest, TaskConfig } from "payload";
 
 import type { ActivityType } from "../collections/Activities";
+import { ATTESTATION_SCHEMAS } from "../collections/Attestations";
 import {
 	getOpenGardenContext,
 	type OpenGardenContext,
@@ -214,7 +215,8 @@ async function resolvePhotoHash(
 	return (media as { storageHash?: string } | null)?.storageHash ?? "";
 }
 
-function schemaNameFor(type: ActivityType): string {
+type AttestationSchemaName = (typeof ATTESTATION_SCHEMAS)[number];
+function schemaNameFor(type: ActivityType): AttestationSchemaName {
 	switch (type) {
 		case "checkin":
 			return "GardenerCheckin";
@@ -231,11 +233,12 @@ function schemaNameFor(type: ActivityType): string {
 type SdkResult = {
 	result: {
 		uid: string;
+		attester?: string;
 		timestampTxHash: string;
 		onchainTimestamp: number | bigint;
 		signedAttestation: unknown;
 	};
-	schemaName: string;
+	schemaName: AttestationSchemaName;
 };
 
 async function dispatchSdkCall(
@@ -359,20 +362,31 @@ async function dispatchSdkCall(
 			if (typeof area !== "object" || area === null) {
 				throw new Error(`${type} activity has no resolved area.`);
 			}
-			const areaUID = (area as { chain?: { chainUID?: string } }).chain
-				?.chainUID;
+			const areaAtt = (area as { attestation?: unknown }).attestation;
+			const areaUID =
+				typeof areaAtt === "object" &&
+				areaAtt !== null &&
+				typeof (areaAtt as { uid?: unknown }).uid === "string"
+					? (areaAtt as { uid: string }).uid
+					: null;
 			if (!areaUID) {
-				throw new Error("Area has no chain.chainUID; register it first.");
+				throw new Error("Area has no attestation.uid; register it first.");
 			}
 			if (typeof activity.healthScore !== "number") {
 				throw new Error("Healthcheck is missing healthScore.");
 			}
 			const intervention =
 				type === "interventionHealthcheck" ? activity.intervention : undefined;
+			const schedAtt =
+				typeof intervention === "object" && intervention !== null
+					? (intervention as { scheduling?: { attestation?: unknown } }).scheduling
+							?.attestation
+					: undefined;
 			const interventionUID =
-				(typeof intervention === "object" && intervention !== null
-					? (intervention as { scheduling?: { chainUID?: string } }).scheduling
-							?.chainUID
+				(typeof schedAtt === "object" &&
+				schedAtt !== null &&
+				typeof (schedAtt as { uid?: unknown }).uid === "string"
+					? (schedAtt as { uid: string }).uid
 					: undefined) ?? ZERO_BYTES32;
 
 			const assessor = activity.assessor;

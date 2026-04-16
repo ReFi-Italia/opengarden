@@ -8,7 +8,7 @@ import {
 	getOpenGardenContext,
 	type OpenGardenContext,
 } from "../lib/openGardenClient";
-import { serializeBigInts } from "../lib/serializeBigInts";
+
 
 type ScheduleInterventionInput = {
 	/** Payload document id of the `interventions` row to schedule. */
@@ -59,14 +59,20 @@ export const scheduleInterventionTask: TaskConfig<{
 			overrideAccess: true,
 		});
 
+		const existingAtt = (
+			intervention.scheduling as { attestation?: unknown } | undefined
+		)?.attestation;
 		if (
 			intervention.lifecycleStatus === "scheduled" &&
-			intervention.scheduling?.chainUID
+			typeof existingAtt === "object" &&
+			existingAtt !== null &&
+			(existingAtt as { uid?: string }).uid
 		) {
+			const att = existingAtt as { uid: string; timestampTxHash?: string };
 			return {
 				output: {
-					chainUID: intervention.scheduling.chainUID,
-					timestampTxHash: intervention.scheduling.txHash ?? "",
+					chainUID: att.uid,
+					timestampTxHash: att.timestampTxHash ?? "",
 				},
 			};
 		}
@@ -81,7 +87,19 @@ export const scheduleInterventionTask: TaskConfig<{
 		}
 
 		const area = intervention.area;
-		if (typeof area !== "object" || area === null || !area.chain?.chainUID) {
+		if (typeof area !== "object" || area === null) {
+			throw new Error(
+				`Intervention ${interventionId} → area could not be resolved.`,
+			);
+		}
+		const areaAttestation = (area as { attestation?: unknown }).attestation;
+		const areaUID =
+			typeof areaAttestation === "object" &&
+			areaAttestation !== null &&
+			typeof (areaAttestation as { uid?: unknown }).uid === "string"
+				? (areaAttestation as { uid: string }).uid
+				: null;
+		if (!areaUID) {
 			throw new Error(
 				`Intervention ${interventionId} → area has no on-chain UID. Register the area first.`,
 			);
@@ -128,7 +146,7 @@ export const scheduleInterventionTask: TaskConfig<{
 				: null;
 
 		const sdkInput: ScheduledInterventionInput = {
-			areaUID: area.chain.chainUID,
+			areaUID,
 			interventionId: intervention.interventionId,
 			interventionType: Number(
 				intervention.interventionType,
@@ -146,20 +164,32 @@ export const scheduleInterventionTask: TaskConfig<{
 			context = await getOpenGardenContext(payload);
 			const result = await context.client.scheduleIntervention(sdkInput);
 
+			const attestationRow = await payload.create({
+				collection: "attestations",
+				data: {
+					uid: result.uid,
+					schemaName: "ScheduledIntervention",
+					signedAttestation: result.signedAttestation as unknown as Record<string, unknown>,
+					timestampTxHash: result.timestampTxHash,
+					onchainTimestamp: Number(result.onchainTimestamp),
+					chainIdSnapshot: context.chainId,
+					attesterWallet: context.attesterWallet,
+					status: "committed",
+					relatedCollection: "interventions",
+					relatedId: interventionId,
+				},
+				overrideAccess: true,
+				req,
+			});
+
 			await payload.update({
 				collection: "interventions",
 				id: interventionId,
+				// biome-ignore lint/suspicious/noExplicitAny: payload-types.ts not yet regenerated
 				data: {
 					lifecycleStatus: "scheduled",
-					scheduling: {
-						chainUID: result.uid,
-						txHash: result.timestampTxHash,
-						onchainTimestamp: Number(result.onchainTimestamp),
-						attesterWallet: context.attesterWallet,
-						chainIdSnapshot: context.chainId,
-						signedAttestation: serializeBigInts(result.signedAttestation),
-					},
-				},
+					scheduling: { attestation: attestationRow.id },
+				} as any,
 				overrideAccess: true,
 				context: { skipLifecycleHooks: true },
 				req,

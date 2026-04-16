@@ -64,11 +64,19 @@ export const registerAreaTask: TaskConfig<{
 			overrideAccess: true,
 		});
 
-		if (area.lifecycleStatus === "registered" && area.chain?.chainUID) {
+		// biome-ignore lint/suspicious/noExplicitAny: payload-types.ts not yet regenerated
+		const existingAttestation = (area as any).attestation;
+		if (
+			area.lifecycleStatus === "registered" &&
+			typeof existingAttestation === "object" &&
+			existingAttestation !== null &&
+			(existingAttestation as { uid?: string }).uid
+		) {
+			const att = existingAttestation as { uid: string; timestampTxHash?: string };
 			return {
 				output: {
-					chainUID: area.chain.chainUID,
-					txHash: area.chain.txHash ?? "",
+					chainUID: att.uid,
+					txHash: att.timestampTxHash ?? "",
 				},
 			};
 		}
@@ -106,18 +114,31 @@ export const registerAreaTask: TaskConfig<{
 			context = await getOpenGardenContext(payload);
 			const result = await context.client.registerArea(sdkInput);
 
+			const attestationRow = await payload.create({
+				collection: "attestations",
+				data: {
+					uid: result.uid,
+					schemaName: "AreaRegistration",
+					signedAttestation: {} as unknown as Record<string, unknown>,
+					timestampTxHash: result.txHash,
+					chainIdSnapshot: context.chainId,
+					attesterWallet: context.attesterWallet,
+					status: "committed",
+					relatedCollection: "areas",
+					relatedId: areaId,
+				},
+				overrideAccess: true,
+				req,
+			});
+
 			await payload.update({
 				collection: "areas",
 				id: areaId,
+				// biome-ignore lint/suspicious/noExplicitAny: payload-types.ts not yet regenerated
 				data: {
 					lifecycleStatus: "registered",
-					chain: {
-						chainUID: result.uid,
-						txHash: result.txHash,
-						attesterWallet: context.attesterWallet,
-						chainIdSnapshot: context.chainId,
-					},
-				},
+					attestation: attestationRow.id,
+				} as any,
 				overrideAccess: true,
 				context: { skipLifecycleHooks: true },
 				req,

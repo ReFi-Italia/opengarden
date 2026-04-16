@@ -72,7 +72,9 @@ console.log("Seeding demo data…");
 const sponsor = await findOrCreate(
 	"sponsor (Demo Municipality)",
 	() =>
-		findOne("sponsors", { "canonicalKey.contractNumber": { equals: SPONSOR_KEY } }),
+		findOne("sponsors", {
+			"canonicalKey.contractNumber": { equals: SPONSOR_KEY },
+		}),
 	() =>
 		payload.create({
 			collection: "sponsors",
@@ -136,8 +138,25 @@ await findOrCreate(
 const registeredArea = await findOrCreate(
 	"area (Demo Garden — registered)",
 	() => findOne("areas", { areaId: { equals: AREA_REGISTERED_ID } }),
-	() =>
-		payload.create({
+	async () => {
+		// Create a placeholder Attestations row so the area has a valid
+		// attestation.uid for filterOptions checks on intervention creation.
+		const att = await payload.create({
+			collection: "attestations",
+			data: {
+				uid: MOCK_AREA_CHAIN_UID,
+				schemaName: "AreaRegistration",
+				signedAttestation: {} as unknown as Record<string, unknown>,
+				timestampTxHash: "0xdemo",
+				chainIdSnapshot: 11_155_420,
+				status: "committed",
+				relatedCollection: "areas",
+				relatedId: AREA_REGISTERED_ID,
+			},
+			overrideAccess: true,
+		});
+		// biome-ignore lint/suspicious/noExplicitAny: payload-types.ts not yet regenerated
+		return payload.create({
 			collection: "areas",
 			data: {
 				areaId: AREA_REGISTERED_ID,
@@ -147,18 +166,17 @@ const registeredArea = await findOrCreate(
 				latitude: 41.9101,
 				longitude: 12.502,
 				lifecycleStatus: "registered",
-				chain: {
-					chainUID: MOCK_AREA_CHAIN_UID,
-					txHash: "0xdemo",
-					chainIdSnapshot: 11_155_420,
-				},
-			},
-		}),
+				attestation: att.id,
+			} as any,
+			overrideAccess: true,
+		});
+	},
 );
 
 await findOrCreate(
 	"intervention (Demo Intervention — draft)",
-	() => findOne("interventions", { interventionId: { equals: INTERVENTION_ID } }),
+	() =>
+		findOne("interventions", { interventionId: { equals: INTERVENTION_ID } }),
 	() =>
 		payload.create({
 			collection: "interventions",

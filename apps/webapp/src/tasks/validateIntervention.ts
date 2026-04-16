@@ -5,7 +5,7 @@ import {
 	getOpenGardenContext,
 	type OpenGardenContext,
 } from "../lib/openGardenClient";
-import { serializeBigInts } from "../lib/serializeBigInts";
+
 
 type ValidateInterventionInput = {
 	/** Payload document id of the `interventions` row to validate. */
@@ -58,14 +58,20 @@ export const validateInterventionTask: TaskConfig<{
 			overrideAccess: true,
 		});
 
+		const existingValAtt = (
+			intervention.validation as { attestation?: unknown } | undefined
+		)?.attestation;
 		if (
 			intervention.lifecycleStatus === "validated" &&
-			intervention.validation?.chainUID
+			typeof existingValAtt === "object" &&
+			existingValAtt !== null &&
+			(existingValAtt as { uid?: string }).uid
 		) {
+			const att = existingValAtt as { uid: string; timestampTxHash?: string };
 			return {
 				output: {
-					chainUID: intervention.validation.chainUID,
-					timestampTxHash: intervention.validation.txHash ?? "",
+					chainUID: att.uid,
+					timestampTxHash: att.timestampTxHash ?? "",
 				},
 			};
 		}
@@ -76,10 +82,18 @@ export const validateInterventionTask: TaskConfig<{
 			);
 		}
 
-		const scheduleUID = intervention.scheduling?.chainUID;
+		const schedAtt = (
+			intervention.scheduling as { attestation?: unknown } | undefined
+		)?.attestation;
+		const scheduleUID =
+			typeof schedAtt === "object" &&
+			schedAtt !== null &&
+			typeof (schedAtt as { uid?: unknown }).uid === "string"
+				? (schedAtt as { uid: string }).uid
+				: null;
 		if (!scheduleUID) {
 			throw new Error(
-				`Intervention ${interventionId} has no scheduling.chainUID; schedule it before validating.`,
+				`Intervention ${interventionId} has no scheduling.attestation.uid; schedule it before validating.`,
 			);
 		}
 
@@ -107,13 +121,6 @@ export const validateInterventionTask: TaskConfig<{
 			typeof validator.staffId === "string"
 				? validator.staffId
 				: null;
-		const validatorIdHash =
-			typeof validator === "object" &&
-			validator !== null &&
-			typeof validator.staffIdHash === "string"
-				? validator.staffIdHash
-				: null;
-
 		const sdkInput: AdminValidationInput = {
 			scheduleUID,
 			approved: validation.approved,
@@ -127,21 +134,32 @@ export const validateInterventionTask: TaskConfig<{
 			context = await getOpenGardenContext(payload);
 			const result = await context.client.validateIntervention(sdkInput);
 
+			const attestationRow = await payload.create({
+				collection: "attestations",
+				data: {
+					uid: result.uid,
+					schemaName: "AdminValidation",
+					signedAttestation: result.signedAttestation as unknown as Record<string, unknown>,
+					timestampTxHash: result.timestampTxHash,
+					onchainTimestamp: Number(result.onchainTimestamp),
+					chainIdSnapshot: context.chainId,
+					attesterWallet: context.attesterWallet,
+					status: "committed",
+					relatedCollection: "interventions",
+					relatedId: interventionId,
+				},
+				overrideAccess: true,
+				req,
+			});
+
 			await payload.update({
 				collection: "interventions",
 				id: interventionId,
+				// biome-ignore lint/suspicious/noExplicitAny: payload-types.ts not yet regenerated
 				data: {
 					lifecycleStatus: "validated",
-					validation: {
-						validatorIdHashAtValidation: validatorIdHash ?? undefined,
-						chainUID: result.uid,
-						txHash: result.timestampTxHash,
-						onchainTimestamp: Number(result.onchainTimestamp),
-						attesterWallet: context.attesterWallet,
-						chainIdSnapshot: context.chainId,
-						signedAttestation: serializeBigInts(result.signedAttestation),
-					},
-				},
+					validation: { attestation: attestationRow.id },
+				} as any,
 				overrideAccess: true,
 				context: { skipLifecycleHooks: true },
 				req,

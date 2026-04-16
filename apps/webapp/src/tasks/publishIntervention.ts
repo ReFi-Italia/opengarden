@@ -65,14 +65,20 @@ export const publishInterventionTask: TaskConfig<{
 			overrideAccess: true,
 		});
 
+		const existingPubAtt = (
+			intervention as { publishAttestation?: unknown }
+		).publishAttestation;
 		if (
 			intervention.lifecycleStatus === "published" &&
-			intervention.execution?.chainUID
+			typeof existingPubAtt === "object" &&
+			existingPubAtt !== null &&
+			(existingPubAtt as { uid?: string }).uid
 		) {
+			const att = existingPubAtt as { uid: string; txHash?: string };
 			return {
 				output: {
-					chainUID: intervention.execution.chainUID,
-					txHash: intervention.execution.txHash ?? "",
+					chainUID: att.uid,
+					txHash: att.txHash ?? "",
 				},
 			};
 		}
@@ -84,10 +90,18 @@ export const publishInterventionTask: TaskConfig<{
 		}
 
 		const area = intervention.area;
-		if (typeof area !== "object" || area === null || !area.chain?.chainUID) {
-			throw new Error(
-				`Intervention ${interventionId} → area has no on-chain UID.`,
-			);
+		if (typeof area !== "object" || area === null) {
+			throw new Error(`Intervention ${interventionId} → area could not be resolved.`);
+		}
+		const areaAttestation = (area as { attestation?: unknown }).attestation;
+		const areaUID =
+			typeof areaAttestation === "object" &&
+			areaAttestation !== null &&
+			typeof (areaAttestation as { uid?: unknown }).uid === "string"
+				? (areaAttestation as { uid: string }).uid
+				: null;
+		if (!areaUID) {
+			throw new Error(`Intervention ${interventionId} → area has no on-chain UID.`);
 		}
 
 		const execution = intervention.execution;
@@ -149,7 +163,7 @@ export const publishInterventionTask: TaskConfig<{
 		const crew = Array.isArray(intervention.crew) ? intervention.crew : [];
 
 		const sdkInput: PublishedInterventionInput = {
-			areaUID: area.chain.chainUID,
+			areaUID,
 			interventionId: intervention.interventionId,
 			interventionType: Number(
 				intervention.interventionType,
@@ -168,18 +182,31 @@ export const publishInterventionTask: TaskConfig<{
 			context = await getOpenGardenContext(payload);
 			const result = await context.client.publishIntervention(sdkInput);
 
+			const attestationRow = await payload.create({
+				collection: "attestations",
+				data: {
+					uid: result.uid,
+					schemaName: "PublishedIntervention",
+					signedAttestation: {} as unknown as Record<string, unknown>,
+					timestampTxHash: result.txHash,
+					chainIdSnapshot: context.chainId,
+					attesterWallet: context.attesterWallet,
+					status: "committed",
+					relatedCollection: "interventions",
+					relatedId: interventionId,
+				},
+				overrideAccess: true,
+				req,
+			});
+
 			await payload.update({
 				collection: "interventions",
 				id: interventionId,
+				// biome-ignore lint/suspicious/noExplicitAny: payload-types.ts not yet regenerated
 				data: {
 					lifecycleStatus: "published",
-					execution: {
-						chainUID: result.uid,
-						txHash: result.txHash,
-						attesterWallet: context.attesterWallet,
-						chainIdSnapshot: context.chainId,
-					},
-				},
+					publishAttestation: attestationRow.id,
+				} as any,
 				overrideAccess: true,
 				context: { skipLifecycleHooks: true },
 				req,

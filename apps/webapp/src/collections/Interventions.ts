@@ -9,7 +9,6 @@ import type {
 import { APIError } from "payload";
 import { authenticated } from "../access/authenticated";
 import { isAuthoringOrAbove } from "../access/isAuthoringOrAbove";
-import { chainMirror } from "../fields/chainMirror";
 import {
 	INTERVENTION_LIFECYCLE_STATUSES,
 	lifecycleStatusField,
@@ -182,10 +181,11 @@ const schedulingGroup: Field = {
 			access: { update: stageAccess("scheduling") },
 		},
 		{
-			type: "collapsible",
-			label: "Blockchain record",
-			admin: { initCollapsed: true },
-			fields: chainMirror(),
+			name: "attestation",
+			type: "relationship",
+			relationTo: "attestations",
+			label: "Attestation",
+			admin: { readOnly: true },
 		},
 	],
 };
@@ -227,25 +227,11 @@ const validationGroup: Field = {
 			access: { update: stageAccess("validation") },
 		},
 		{
-			type: "collapsible",
-			label: "Blockchain record",
-			admin: { initCollapsed: true },
-			fields: [
-				{
-					name: "validatorIdHashAtValidation",
-					type: "text",
-					label: "Validator fingerprint (snapshot)",
-					admin: { readOnly: true },
-				},
-				{
-					name: "currentAttestation",
-					type: "relationship",
-					relationTo: "adminValidations",
-					label: "Current attestation",
-					admin: { readOnly: true },
-				},
-				...chainMirror(),
-			],
+			name: "attestation",
+			type: "relationship",
+			relationTo: "attestations",
+			label: "Attestation",
+			admin: { readOnly: true },
 		},
 	],
 };
@@ -290,12 +276,6 @@ const executionGroup: Field = {
 			type: "number",
 			label: "Off-chain records",
 			admin: { readOnly: true },
-		},
-		{
-			type: "collapsible",
-			label: "Blockchain record",
-			admin: { initCollapsed: true },
-			fields: chainMirror(),
 		},
 	],
 };
@@ -488,6 +468,13 @@ export const Interventions: CollectionConfig = {
 				},
 				condition: (data) => data?.lifecycleStatus === "validated",
 			},
+		},
+		{
+			name: "publishAttestation",
+			type: "relationship",
+			relationTo: "attestations",
+			label: "Publication attestation",
+			admin: { readOnly: true, condition: showInUpdateOnly },
 		},
 		{
 			name: "activities",

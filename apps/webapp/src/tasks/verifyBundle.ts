@@ -74,15 +74,19 @@ export const verifyBundleTask: TaskConfig<{
 		}
 
 		const intervention = bundle.intervention;
+		const pubAtt =
+			typeof intervention === "object" && intervention !== null
+				? (intervention as { publishAttestation?: unknown }).publishAttestation
+				: null;
 		const interventionUID =
-			typeof intervention === "object" &&
-			intervention !== null &&
-			intervention.execution?.chainUID
-				? intervention.execution.chainUID
+			typeof pubAtt === "object" &&
+			pubAtt !== null &&
+			typeof (pubAtt as { uid?: unknown }).uid === "string"
+				? (pubAtt as { uid: string }).uid
 				: null;
 		if (!interventionUID) {
 			throw new Error(
-				`Bundle ${bundleId} → intervention has no execution.chainUID.`,
+				`Bundle ${bundleId} → intervention has no publishAttestation.uid.`,
 			);
 		}
 

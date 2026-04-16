@@ -3,7 +3,7 @@ import type { CollectionBeforeValidateHook, CollectionConfig } from "payload";
 import { APIError } from "payload";
 import { authenticated } from "../access/authenticated";
 import { isAuthoringOrAbove } from "../access/isAuthoringOrAbove";
-import { chainMirror } from "../fields/chainMirror";
+
 
 export const AREA_LIFECYCLE_STATUSES = [
 	"draft",
@@ -177,30 +177,24 @@ export const Areas: CollectionConfig = {
 			],
 		},
 		{
-			type: "collapsible",
-			label: "Blockchain record",
+			name: "metadataHash",
+			type: "text",
+			label: "Verification fingerprint",
+			index: true,
 			admin: {
-				initCollapsed: true,
+				readOnly: true,
+				description: "Empty when no extended details are set.",
+			},
+		},
+		{
+			name: "attestation",
+			type: "relationship",
+			relationTo: "attestations",
+			label: "Registration attestation",
+			admin: {
+				readOnly: true,
 				description: "Populated on registration — inspect only.",
 			},
-			fields: [
-				{
-					name: "metadataHash",
-					type: "text",
-					label: "Verification fingerprint",
-					index: true,
-					admin: {
-						readOnly: true,
-						description: "Empty when no extended details are set.",
-					},
-				},
-				{
-					name: "chain",
-					type: "group",
-					label: false,
-					fields: chainMirror(),
-				},
-			],
 		},
 		{
 			name: "lifecycleStatus",

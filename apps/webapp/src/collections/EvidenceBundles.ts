@@ -117,16 +117,10 @@ export const EvidenceBundles: CollectionConfig = {
 							label: "Validation attestation",
 						},
 						{
-							name: "healthcheckBefore",
+							name: "healthcheckActivity",
 							type: "relationship",
 							relationTo: "activities",
-							label: "Healthcheck before",
-						},
-						{
-							name: "healthcheckAfter",
-							type: "relationship",
-							relationTo: "activities",
-							label: "Healthcheck after",
+							label: "Healthcheck",
 						},
 					],
 				},

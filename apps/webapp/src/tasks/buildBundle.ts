@@ -28,13 +28,11 @@ type BuildBundleOutput = {
  * bundle hash + metadata onto the row.
  *
  * Preconditions (upstream tasks must have populated):
- * - `intervention.scheduling.chain.*` (scheduleIntervention)
- * - `intervention.validation.chain.*` (validateIntervention)
- * - One `gardenerCheckins`, `gardenerCheckouts`, `gardenerReports`
- *   row per crew member, each with `chain.*` populated by their
- *   respective (not-yet-implemented) task handlers
- * - Optionally 0/1/2 `healthchecks` rows with `intervention: X,
- *   kind: 'before' | 'after'`, each with `chain.*` populated
+ * - `intervention.scheduling.attestation` (scheduleIntervention)
+ * - `intervention.validation.attestation` (validateIntervention)
+ * - One checkin, checkout, report activity row per crew member,
+ *   each with `attestation` populated (commitActivityChain)
+ * - Optionally one `healthcheck` activity row with `attestation` populated
  */
 export const buildBundleTask: TaskConfig<{
 	input: BuildBundleInput;
@@ -97,9 +95,15 @@ export const buildBundleTask: TaskConfig<{
 		}
 
 		const area = intervention.area;
+		const areaAttestation =
+			typeof area === "object" && area !== null
+				? (area as { attestation?: unknown }).attestation
+				: null;
 		const areaUID =
-			typeof area === "object" && area !== null && area.chain?.chainUID
-				? area.chain.chainUID
+			typeof areaAttestation === "object" &&
+			areaAttestation !== null &&
+			typeof (areaAttestation as { uid?: unknown }).uid === "string"
+				? (areaAttestation as { uid: string }).uid
 				: null;
 		if (!areaUID) {
 			throw new Error(
@@ -107,13 +111,19 @@ export const buildBundleTask: TaskConfig<{
 			);
 		}
 
-		const scheduled = chainGroupToTimestampedResult(
-			intervention.scheduling,
-			`intervention ${intervention.id} scheduling`,
+		const schedAtt = (
+			intervention.scheduling as { attestation?: unknown } | undefined
+		)?.attestation;
+		const scheduled = attestationRowToTimestampedResult(
+			schedAtt,
+			`intervention ${intervention.id} scheduling.attestation`,
 		);
-		const validationBase = chainGroupToTimestampedResult(
-			intervention.validation,
-			`intervention ${intervention.id} validation`,
+		const valAtt = (
+			intervention.validation as { attestation?: unknown } | undefined
+		)?.attestation;
+		const validationBase = attestationRowToTimestampedResult(
+			valAtt,
+			`intervention ${intervention.id} validation.attestation`,
 		);
 		if (typeof intervention.validation?.approved !== "boolean") {
 			throw new Error(
@@ -159,7 +169,8 @@ export const buildBundleTask: TaskConfig<{
 		// biome-ignore lint/suspicious/noExplicitAny: same
 		const interventionHcs = activities.filter(
 			// biome-ignore lint/suspicious/noExplicitAny: same
-			(a: any) => a.type === "interventionHealthcheck",
+			(a: any) =>
+				a.type === "interventionHealthcheck" || a.type === "healthcheck",
 		);
 
 		const crewRows: Array<{
@@ -243,33 +254,18 @@ export const buildBundleTask: TaskConfig<{
 			});
 		}
 
+		// Single healthcheck per intervention (latest committed one).
 		// biome-ignore lint/suspicious/noExplicitAny: same
-		const healthcheckBeforeRow = interventionHcs.find(
-			// biome-ignore lint/suspicious/noExplicitAny: same
-			(a: any) => a.kind === "before",
-		);
-		// biome-ignore lint/suspicious/noExplicitAny: same
-		const healthcheckAfterRow = interventionHcs.find(
-			// biome-ignore lint/suspicious/noExplicitAny: same
-			(a: any) => a.kind === "after",
-		);
-
-		const healthcheckBefore = healthcheckBeforeRow
+		const healthcheckRow = interventionHcs.find((a: any) => a.attestation?.status === "committed");
+		const healthcheck = healthcheckRow
 			? {
 					...attestationToTimestampedResult(
-						healthcheckBeforeRow,
-						`healthcheck-before activity ${healthcheckBeforeRow.id}`,
+						healthcheckRow,
+						`healthcheck activity ${healthcheckRow.id}`,
 					),
-					score: healthcheckBeforeRow.healthScore as number,
-				}
-			: undefined;
-		const healthcheckAfter = healthcheckAfterRow
-			? {
-					...attestationToTimestampedResult(
-						healthcheckAfterRow,
-						`healthcheck-after activity ${healthcheckAfterRow.id}`,
-					),
-					score: healthcheckAfterRow.healthScore as number,
+					score: healthcheckRow.healthScore as number,
+					// biome-ignore lint/suspicious/noExplicitAny: metadata is a freeform JSON field — Phase E adds the field
+					baselineScore: ((healthcheckRow as any).metadata)?.baseline?.score as number | undefined,
 				}
 			: undefined;
 
@@ -283,15 +279,11 @@ export const buildBundleTask: TaskConfig<{
 				report: r.report,
 			})),
 			validation,
-			healthcheckBefore,
-			healthcheckAfter,
+			healthcheck,
 		};
 
 		const offchainCount =
-			2 +
-			3 * crewRows.length +
-			(healthcheckBefore ? 1 : 0) +
-			(healthcheckAfter ? 1 : 0);
+			2 + 3 * crewRows.length + (healthcheck ? 1 : 0);
 
 		let context: OpenGardenContext | null = null;
 		try {
@@ -303,6 +295,7 @@ export const buildBundleTask: TaskConfig<{
 			await payload.update({
 				collection: "evidenceBundles",
 				id: bundleId,
+				// biome-ignore lint/suspicious/noExplicitAny: payload-types.ts not yet regenerated
 				data: {
 					bundleState: "built",
 					bundleJson: builtBundle as unknown as Record<string, unknown>,
@@ -319,14 +312,13 @@ export const buildBundleTask: TaskConfig<{
 						report: r.reportId,
 					})),
 					validationRef:
-						typeof intervention.validation?.currentAttestation === "object" &&
-						intervention.validation.currentAttestation !== null
-							? intervention.validation.currentAttestation.id
-							: intervention.validation?.currentAttestation,
-					healthcheckBefore: healthcheckBeforeRow?.id,
-					healthcheckAfter: healthcheckAfterRow?.id,
+						typeof (intervention.validation as { attestation?: unknown })?.attestation === "object" &&
+						(intervention.validation as { attestation?: unknown })?.attestation !== null
+							? ((intervention.validation as { attestation: { id: unknown } }).attestation.id)
+							: undefined,
+					healthcheckActivity: healthcheckRow?.id,
 					buildIssuesJson: [],
-				},
+				} as any,
 				overrideAccess: true,
 				context: { skipLifecycleHooks: true },
 				req,
@@ -387,34 +379,29 @@ export const buildBundleTask: TaskConfig<{
 };
 
 /**
- * Rehydrates a `TimestampedOffChainResult` from a Payload `chain` group
- * populated by an upstream task. Still used by intervention scheduling /
- * validation / execution groups pending the chain-mirror → Attestations
- * migration (see project memory).
+ * Rehydrates a `TimestampedOffChainResult` from a populated Attestations row
+ * (the `attestation` relationship on scheduling / validation groups).
  */
-function chainGroupToTimestampedResult(
-	// biome-ignore lint/suspicious/noExplicitAny: chain group is Payload-typed at each call site
-	chain: any,
+function attestationRowToTimestampedResult(
+	// biome-ignore lint/suspicious/noExplicitAny: attestation row shape
+	att: any,
 	context: string,
 ): TimestampedOffChainResult {
-	if (!chain?.chainUID) {
-		throw new Error(`${context} is missing chain.chainUID.`);
+	if (!att?.uid) {
+		throw new Error(`${context} is missing attestation.uid.`);
 	}
-	if (!chain.txHash) {
-		throw new Error(`${context} is missing chain.txHash.`);
-	}
-	if (typeof chain.onchainTimestamp !== "number") {
-		throw new Error(`${context} is missing chain.onchainTimestamp.`);
-	}
-	if (!chain.signedAttestation) {
-		throw new Error(`${context} is missing chain.signedAttestation.`);
+	if (att.status !== "committed") {
+		throw new Error(
+			`${context} attestation is in status "${att.status}" — expected "committed".`,
+		);
 	}
 	return {
-		uid: chain.chainUID,
-		signedAttestation: chain.signedAttestation as Record<string, unknown>,
-		timestampTxHash: chain.txHash,
-		onchainTimestamp: BigInt(chain.onchainTimestamp),
-		// biome-ignore lint/suspicious/noExplicitAny: receipt isn't persisted on the row
+		uid: att.uid,
+		attester: att.attesterWallet ?? "",
+		signedAttestation: (att.signedAttestation ?? {}) as Record<string, unknown>,
+		timestampTxHash: att.timestampTxHash ?? "",
+		onchainTimestamp: BigInt(att.onchainTimestamp ?? 0),
+		// biome-ignore lint/suspicious/noExplicitAny: receipt isn't persisted
 		timestampReceipt: undefined as any,
 	};
 }
@@ -449,6 +436,7 @@ function attestationToTimestampedResult(
 	}
 	return {
 		uid: att.uid,
+		attester: att.attesterWallet ?? "",
 		signedAttestation: att.signedAttestation as Record<string, unknown>,
 		timestampTxHash: att.timestampTxHash,
 		onchainTimestamp: BigInt(att.onchainTimestamp),
