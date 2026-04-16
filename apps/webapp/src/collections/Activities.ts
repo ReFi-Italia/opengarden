@@ -1,9 +1,11 @@
 import type {
 	CollectionAfterChangeHook,
+	CollectionBeforeChangeHook,
 	CollectionBeforeValidateHook,
 	CollectionConfig,
 } from "payload";
 import { APIError } from "payload";
+import { keccak256, toUtf8Bytes } from "ethers";
 import { authenticated } from "../access/authenticated";
 import { isAuthoringOrAbove } from "../access/isAuthoringOrAbove";
 
@@ -11,8 +13,7 @@ export const ACTIVITY_TYPES = [
 	"checkin",
 	"checkout",
 	"report",
-	"interventionHealthcheck",
-	"areaHealthcheck",
+	"healthcheck",
 ] as const;
 
 export type ActivityType = (typeof ACTIVITY_TYPES)[number];
@@ -21,9 +22,9 @@ const INTERVENTION_SCOPED_TYPES: readonly ActivityType[] = [
 	"checkin",
 	"checkout",
 	"report",
-	"interventionHealthcheck",
 ];
-const AREA_SCOPED_TYPES: readonly ActivityType[] = ["areaHealthcheck"];
+// healthcheck can be area-scoped or intervention-scoped — handled separately
+const AREA_SCOPED_TYPES: readonly ActivityType[] = [];
 
 const TYPES_REQUIRING_GARDENER: readonly ActivityType[] = [
 	"checkin",
@@ -34,10 +35,7 @@ const TYPES_REQUIRING_PARENT: readonly ActivityType[] = ["checkout", "report"];
 const TYPES_REQUIRING_GEOLOCATION: readonly ActivityType[] = ["checkin"];
 const TYPES_REQUIRING_DURATION: readonly ActivityType[] = ["checkout"];
 const TYPES_REQUIRING_REPORT_BODY: readonly ActivityType[] = ["report"];
-const TYPES_REQUIRING_HEALTHSCORE: readonly ActivityType[] = [
-	"interventionHealthcheck",
-	"areaHealthcheck",
-];
+const TYPES_REQUIRING_HEALTHSCORE: readonly ActivityType[] = ["healthcheck"];
 
 /**
  * For `checkout` and `report`, automatically resolves the nearest open parent
@@ -263,10 +261,11 @@ const guardActivityInvariants: CollectionBeforeValidateHook = async ({
 		}
 	}
 
-	if (AREA_SCOPED_TYPES.includes(type)) {
-		if (!hasArea) {
+	// healthcheck requires either intervention or area (not necessarily both)
+	if (type === "healthcheck") {
+		if (!hasIntervention && !hasArea) {
 			throw new APIError(
-				`Activity type "${type}" requires an area.`,
+				'Activity type "healthcheck" requires an intervention or an area.',
 				400,
 			);
 		}
@@ -322,15 +321,31 @@ const guardActivityInvariants: CollectionBeforeValidateHook = async ({
 				400,
 			);
 		}
-		if (type === "interventionHealthcheck" && !data.kind) {
-			throw new APIError(
-				'Activity type "interventionHealthcheck" requires kind ("before" or "after").',
-				400,
-			);
-		}
 	}
 
 	return data;
+};
+
+/**
+ * Computes a keccak256 fingerprint of the healthcheck off-chain metadata JSON
+ * so the SDK can include it in the on-chain attestation. Only runs for
+ * `healthcheck` activities with non-empty metadata. Null otherwise.
+ */
+const computeHealthcheckMetadataHash: CollectionBeforeChangeHook = async ({
+	data,
+}) => {
+	if (!data) return data;
+	if (data.type !== "healthcheck") return data;
+
+	const metadata = data.metadata as Record<string, unknown> | null | undefined;
+	if (!metadata || Object.keys(metadata).length === 0) {
+		return { ...data, metadataHash: null };
+	}
+
+	// Canonical: sorted keys, no extra whitespace
+	const canonical = JSON.stringify(metadata, Object.keys(metadata).sort());
+	const hash = keccak256(toUtf8Bytes(canonical));
+	return { ...data, metadataHash: hash };
 };
 
 /**
@@ -396,6 +411,7 @@ export const Activities: CollectionConfig = {
 	},
 	hooks: {
 		beforeValidate: [autoLinkParentActivity, guardActivityInvariants],
+		beforeChange: [computeHealthcheckMetadataHash],
 		afterChange: [queueChainCommit],
 	},
 	fields: [
@@ -418,7 +434,7 @@ export const Activities: CollectionConfig = {
 			type: "relationship",
 			relationTo: "areas",
 			index: true,
-			admin: { condition: showWhenType(AREA_SCOPED_TYPES) },
+			admin: { condition: showWhenType(["healthcheck"]) },
 		},
 		{
 			name: "parentActivity",
@@ -474,15 +490,6 @@ export const Activities: CollectionConfig = {
 			admin: { condition: showWhenType(TYPES_REQUIRING_REPORT_BODY) },
 		},
 		{
-			name: "kind",
-			type: "select",
-			options: [
-				{ label: "before", value: "before" },
-				{ label: "after", value: "after" },
-			],
-			admin: { condition: showWhenType(["interventionHealthcheck"]) },
-		},
-		{
 			name: "healthScore",
 			type: "number",
 			min: 0,
@@ -496,9 +503,20 @@ export const Activities: CollectionConfig = {
 			admin: { condition: showWhenType(TYPES_REQUIRING_HEALTHSCORE) },
 		},
 		{
-			name: "assessorNotes",
-			type: "textarea",
-			admin: { condition: showWhenType(TYPES_REQUIRING_HEALTHSCORE) },
+			name: "metadata",
+			type: "json",
+			admin: { condition: showWhenType(["healthcheck"]) },
+		},
+		{
+			name: "metadataHash",
+			type: "text",
+			admin: { readOnly: true },
+		},
+		{
+			name: "priorHealthcheck",
+			type: "relationship",
+			relationTo: "attestations",
+			admin: { condition: showWhenType(["healthcheck"]) },
 		},
 		{
 			name: "photo",

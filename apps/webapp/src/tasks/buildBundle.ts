@@ -169,8 +169,7 @@ export const buildBundleTask: TaskConfig<{
 		// biome-ignore lint/suspicious/noExplicitAny: same
 		const interventionHcs = activities.filter(
 			// biome-ignore lint/suspicious/noExplicitAny: same
-			(a: any) =>
-				a.type === "interventionHealthcheck" || a.type === "healthcheck",
+			(a: any) => a.type === "healthcheck",
 		);
 
 		const crewRows: Array<{

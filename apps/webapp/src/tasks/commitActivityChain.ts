@@ -224,8 +224,7 @@ function schemaNameFor(type: ActivityType): AttestationSchemaName {
 			return "GardenerCheckout";
 		case "report":
 			return "GardenerReport";
-		case "interventionHealthcheck":
-		case "areaHealthcheck":
+		case "healthcheck":
 			return "Healthcheck";
 	}
 }
@@ -353,14 +352,14 @@ async function dispatchSdkCall(
 			return { result, schemaName: "GardenerReport" };
 		}
 
-		case "interventionHealthcheck":
-		case "areaHealthcheck": {
+		case "healthcheck": {
+			// Area can be explicit (standalone monitoring) or derived from intervention
 			const area =
-				type === "areaHealthcheck"
+				(activity.area && typeof activity.area === "object")
 					? activity.area
 					: (activity.intervention as { area?: unknown } | undefined)?.area;
 			if (typeof area !== "object" || area === null) {
-				throw new Error(`${type} activity has no resolved area.`);
+				throw new Error("Healthcheck activity has no resolved area.");
 			}
 			const areaAtt = (area as { attestation?: unknown }).attestation;
 			const areaUID =
@@ -375,8 +374,8 @@ async function dispatchSdkCall(
 			if (typeof activity.healthScore !== "number") {
 				throw new Error("Healthcheck is missing healthScore.");
 			}
-			const intervention =
-				type === "interventionHealthcheck" ? activity.intervention : undefined;
+
+			const intervention = activity.intervention;
 			const schedAtt =
 				typeof intervention === "object" && intervention !== null
 					? (intervention as { scheduling?: { attestation?: unknown } }).scheduling

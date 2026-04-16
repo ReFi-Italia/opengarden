@@ -38,11 +38,10 @@ const REPORT_FORM_FIELDS: readonly string[] = [
 ];
 
 const HEALTHCHECK_FORM_FIELDS: readonly string[] = [
-	"kind",
 	"claimedTimestamp",
 	"healthScore",
 	"assessor",
-	"assessorNotes",
+	"metadata",
 	"photo",
 ];
 
@@ -374,54 +373,78 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 			notes: { value: "", initialValue: "" },
 		} as FormState;
 
-		// ─── Healthcheck defaults (pick next missing kind: before → after) ──
+		// ─── Healthcheck defaults (single assessment, hide once recorded) ──
 		healthcheckClientFields = pickFields(HEALTHCHECK_FORM_FIELDS);
 
-		const healthcheckActivitiesResult = await payload
+		const existingHcResult = await payload
 			.find({
 				collection: "activities",
 				where: {
 					and: [
 						{ intervention: { equals: String(id) } },
-						{ type: { equals: "interventionHealthcheck" } },
+						{ type: { equals: "healthcheck" } },
 					],
 				},
-				depth: 0,
-				limit: 20,
+				depth: 1,
+				limit: 1,
+				sort: "-claimedTimestamp",
 				overrideAccess: true,
 			})
-			.catch(() => ({
-				docs: [] as Array<{ kind?: "before" | "after" }>,
-			}));
+			.catch(() => ({ docs: [] as Array<Record<string, unknown>> }));
 
-		const hasBefore = (healthcheckActivitiesResult.docs ?? []).some(
-			(h) => h.kind === "before",
-		);
-		const hasAfter = (healthcheckActivitiesResult.docs ?? []).some(
-			(h) => h.kind === "after",
-		);
-		// Only render if at least one kind is still missing
-		healthcheckCanRender = !(hasBefore && hasAfter);
-		const defaultKind: "before" | "after" = hasBefore ? "after" : "before";
+		// Render only if no healthcheck recorded for this intervention yet
+		healthcheckCanRender = existingHcResult.docs.length === 0;
 
-		// Default assessor = currently logged-in staff if they have capabilities
-		// matching a staff row; otherwise leave blank. Keep it simple: no lookup.
+		// Pre-fill baseline from the latest committed healthcheck for this area
+		let baselineMetadata: Record<string, unknown> | null = null;
+		if (healthcheckCanRender) {
+			const areaId = typeof inv?.area === "object" && inv.area !== null
+				? (inv.area as { id?: string | number }).id
+				: inv?.area;
+			if (areaId) {
+				const priorHcResult = await payload
+					.find({
+						collection: "activities",
+						where: {
+							and: [
+								{ area: { equals: String(areaId) } },
+								{ type: { equals: "healthcheck" } },
+							],
+						},
+						depth: 1,
+						limit: 1,
+						sort: "-claimedTimestamp",
+						overrideAccess: true,
+					})
+					.catch(() => ({ docs: [] as Array<Record<string, unknown>> }));
+				const priorHc = priorHcResult.docs[0];
+				if (priorHc) {
+					const priorAtt = priorHc.attestation as { uid?: string } | null;
+					baselineMetadata = {
+						version: 1,
+						baseline: {
+							score: priorHc.healthScore,
+							...(priorAtt?.uid ? { sourceUID: priorAtt.uid } : {}),
+						},
+					};
+				}
+			}
+		}
+
 		healthcheckInitialState = {
-			type: {
-				value: "interventionHealthcheck",
-				initialValue: "interventionHealthcheck",
-			},
+			type: { value: "healthcheck", initialValue: "healthcheck" },
 			intervention: {
 				value: String(id),
 				initialValue: String(id),
 			},
-			kind: { value: defaultKind, initialValue: defaultKind },
 			claimedTimestamp: {
 				value: nowISO,
 				initialValue: nowISO,
 			},
 			healthScore: { value: 7, initialValue: 7 },
-			assessorNotes: { value: "", initialValue: "" },
+			...(baselineMetadata
+				? { metadata: { value: baselineMetadata, initialValue: baselineMetadata } }
+				: {}),
 		} as FormState;
 	}
 
