@@ -185,11 +185,10 @@ export const scheduleInterventionTask: TaskConfig<{
 			await payload.update({
 				collection: "interventions",
 				id: interventionId,
-				// biome-ignore lint/suspicious/noExplicitAny: payload-types.ts not yet regenerated
 				data: {
 					lifecycleStatus: "scheduled",
 					scheduling: { attestation: attestationRow.id },
-				} as any,
+				},
 				overrideAccess: true,
 				context: { skipLifecycleHooks: true },
 				req,

@@ -155,11 +155,10 @@ export const validateInterventionTask: TaskConfig<{
 			await payload.update({
 				collection: "interventions",
 				id: interventionId,
-				// biome-ignore lint/suspicious/noExplicitAny: payload-types.ts not yet regenerated
 				data: {
 					lifecycleStatus: "validated",
 					validation: { attestation: attestationRow.id },
-				} as any,
+				},
 				overrideAccess: true,
 				context: { skipLifecycleHooks: true },
 				req,

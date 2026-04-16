@@ -139,9 +139,17 @@ const registeredArea = await findOrCreate(
 	"area (Demo Garden — registered)",
 	() => findOne("areas", { areaId: { equals: AREA_REGISTERED_ID } }),
 	async () => {
-		// Create a placeholder Attestations row so the area has a valid
-		// attestation.uid for filterOptions checks on intervention creation.
-		const att = await payload.create({
+		// Find or create a placeholder Attestations row so the seed is
+		// idempotent even if interrupted between the two creates.
+		const existingAtt = await payload
+			.find({
+				collection: "attestations",
+				where: { uid: { equals: MOCK_AREA_CHAIN_UID } },
+				limit: 1,
+				overrideAccess: true,
+			})
+			.then((r) => r.docs[0] ?? null);
+		const att = existingAtt ?? await payload.create({
 			collection: "attestations",
 			data: {
 				uid: MOCK_AREA_CHAIN_UID,
@@ -155,7 +163,6 @@ const registeredArea = await findOrCreate(
 			},
 			overrideAccess: true,
 		});
-		// biome-ignore lint/suspicious/noExplicitAny: payload-types.ts not yet regenerated
 		return payload.create({
 			collection: "areas",
 			data: {
@@ -167,7 +174,7 @@ const registeredArea = await findOrCreate(
 				longitude: 12.502,
 				lifecycleStatus: "registered",
 				attestation: att.id,
-			} as any,
+			},
 			overrideAccess: true,
 		});
 	},

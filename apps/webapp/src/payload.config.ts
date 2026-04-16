@@ -5,7 +5,7 @@ import { lexicalEditor } from "@payloadcms/richtext-lexical";
 import { buildConfig } from "payload";
 import sharp from "sharp";
 import { Activities } from "./collections/Activities";
-import { AdminValidations } from "./collections/AdminValidations";
+
 import { Areas } from "./collections/Areas";
 import { Attestations } from "./collections/Attestations";
 import { EvidenceBundles } from "./collections/EvidenceBundles";
@@ -38,7 +38,6 @@ export default buildConfig({
 		Areas,
 		Interventions,
 		Activities,
-		AdminValidations,
 		EvidenceBundles,
 		Attestations,
 	],

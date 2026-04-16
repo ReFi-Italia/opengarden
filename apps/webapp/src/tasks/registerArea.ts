@@ -64,8 +64,7 @@ export const registerAreaTask: TaskConfig<{
 			overrideAccess: true,
 		});
 
-		// biome-ignore lint/suspicious/noExplicitAny: payload-types.ts not yet regenerated
-		const existingAttestation = (area as any).attestation;
+		const existingAttestation = area.attestation;
 		if (
 			area.lifecycleStatus === "registered" &&
 			typeof existingAttestation === "object" &&
@@ -134,11 +133,10 @@ export const registerAreaTask: TaskConfig<{
 			await payload.update({
 				collection: "areas",
 				id: areaId,
-				// biome-ignore lint/suspicious/noExplicitAny: payload-types.ts not yet regenerated
 				data: {
 					lifecycleStatus: "registered",
 					attestation: attestationRow.id,
-				} as any,
+				},
 				overrideAccess: true,
 				context: { skipLifecycleHooks: true },
 				req,

@@ -292,10 +292,15 @@ export const buildBundleTask: TaskConfig<{
 			const evidenceBundleHash =
 				await context.client.uploadEvidenceBundle(builtBundle);
 
+			const valAtt = (intervention.validation as { attestation?: unknown } | undefined)?.attestation;
+			const validationRef =
+				typeof valAtt === "object" && valAtt !== null
+					? String((valAtt as { id: string | number }).id)
+					: undefined;
+
 			await payload.update({
 				collection: "evidenceBundles",
 				id: bundleId,
-				// biome-ignore lint/suspicious/noExplicitAny: payload-types.ts not yet regenerated
 				data: {
 					bundleState: "built",
 					bundleJson: builtBundle as unknown as Record<string, unknown>,
@@ -311,14 +316,10 @@ export const buildBundleTask: TaskConfig<{
 						checkout: r.checkoutId,
 						report: r.reportId,
 					})),
-					validationRef:
-						typeof (intervention.validation as { attestation?: unknown })?.attestation === "object" &&
-						(intervention.validation as { attestation?: unknown })?.attestation !== null
-							? ((intervention.validation as { attestation: { id: unknown } }).attestation.id)
-							: undefined,
+					validationRef,
 					healthcheckActivity: healthcheckRow?.id,
 					buildIssuesJson: [],
-				} as any,
+				},
 				overrideAccess: true,
 				context: { skipLifecycleHooks: true },
 				req,

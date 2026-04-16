@@ -113,7 +113,7 @@ export const EvidenceBundles: CollectionConfig = {
 						{
 							name: "validationRef",
 							type: "relationship",
-							relationTo: "adminValidations",
+							relationTo: "attestations",
 							label: "Validation attestation",
 						},
 						{
