@@ -350,6 +350,7 @@ export class OpenGardenClient {
 
 		return {
 			uid: signedAttestation.uid,
+			attester: await this.signer.getAddress(),
 			signedAttestation: signedAttestation as unknown as Record<
 				string,
 				unknown

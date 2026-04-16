@@ -18,4 +18,6 @@ Reshape Healthcheck attestation schema for single-assessment model.
 
 **Rationale:** The original two-attestation before/after model required two separate site visits. The new single-assessment model lets the admin record both the current score and an optional baseline (from pre-work crew photos) in one retroactive attestation at validation time. `areaUID` as a schema field was redundant since EAS already indexes by `refUID`.
 
+Also adds `attester: string` to `TimestampedOffChainResult` — the signing wallet address is now populated by `signAndTimestamp` so `buildEvidenceBundle` can attribute per-gardener attestations without inspecting `signedAttestation` internals (which vary across EAS SDK versions).
+
 Spec, encoders, decoder, types, tests, and README updated.

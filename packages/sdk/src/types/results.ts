@@ -8,6 +8,8 @@ export interface OnChainAttestationResult {
 
 export interface TimestampedOffChainResult {
 	uid: string;
+	/** Ethereum address of the wallet that signed this attestation. */
+	attester: string;
 	signedAttestation: Record<string, unknown>;
 	timestampTxHash: string;
 	onchainTimestamp: bigint;

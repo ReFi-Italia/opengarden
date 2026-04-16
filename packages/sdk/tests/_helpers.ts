@@ -78,6 +78,7 @@ export function makeFakeTimestampedResult(
 	if (opts.refUID !== undefined) message.refUID = opts.refUID;
 	return {
 		uid,
+		attester: opts.attester ?? MOCK_SIGNER_ADDRESS,
 		signedAttestation: {
 			uid,
 			signer: opts.attester ?? MOCK_SIGNER_ADDRESS,

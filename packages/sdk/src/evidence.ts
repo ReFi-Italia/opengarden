@@ -27,6 +27,7 @@ function extractAttestation(result: {
 function extractGardenerAttestation(
 	result: {
 		uid: string;
+		attester?: string;
 		signedAttestation: Record<string, unknown>;
 		onchainTimestamp: bigint;
 	},
@@ -34,17 +35,16 @@ function extractGardenerAttestation(
 	crewIndex: number,
 ): EvidenceBundleGardenerAttestation {
 	const base = extractAttestation(result);
+	// Prefer the top-level attester field (populated by signAndTimestamp).
+	// Fall back to legacy locations in signedAttestation for pre-0.2 results.
 	const message = result.signedAttestation.message as
 		| Record<string, unknown>
 		| undefined;
-	const sig = result.signedAttestation.sig as
-		| Record<string, unknown>
-		| undefined;
 	const attester =
+		result.attester ??
 		(result.signedAttestation.signer as string | undefined) ??
 		(result.signedAttestation.attester as string | undefined) ??
-		(message?.attester as string | undefined) ??
-		(sig?.signer as string | undefined);
+		(message?.attester as string | undefined);
 	if (!attester) {
 		throw new OpenGardenError(
 			OpenGardenErrorCode.INVALID_INPUT,

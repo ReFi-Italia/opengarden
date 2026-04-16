@@ -167,7 +167,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 		await delay(STEP_DELAY_MS);
 	}, 60_000);
 
-	// --- Step 3: Schedule intervention (must precede healthcheckBefore so we can link it) ---
+	// --- Step 3: Schedule intervention ---
 
 	it("schedules an intervention", async () => {
 		scheduleResult = await client.scheduleIntervention({
@@ -314,7 +314,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 			healthAfter: 8,
 			commissionId: null,
 			evidenceBundleHash,
-			offchainCount: 7,
+			offchainCount: 6, // scheduled + validation + checkin + checkout + report + healthcheck
 			crewSize: 1,
 		});
 
@@ -379,7 +379,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 		expect(intervention.healthBefore).toBe(3);
 		expect(intervention.healthAfter).toBe(8);
 		expect(intervention.crewSize).toBe(1);
-		expect(intervention.offchainCount).toBe(7);
+		expect(intervention.offchainCount).toBe(6);
 		expect(intervention.recipient).toBe(ZERO_ADDRESS);
 		console.log(
 			`  Intervention read back: ${intervention.interventionId}, health ${intervention.healthBefore} → ${intervention.healthAfter}`,
@@ -388,8 +388,8 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 
 	it("verifies evidence bundle against on-chain timestamps", async () => {
 		const verification = await client.verifyEvidenceBundle(interventionUID);
-		expect(verification.attestationCount).toBe(7);
-		expect(verification.expectedCount).toBe(7);
+		expect(verification.attestationCount).toBe(6); // scheduled + validation + checkin + checkout + report + healthcheck
+		expect(verification.expectedCount).toBe(6);
 		expect(verification.temporalOrderValid).toBe(true);
 		expect(verification.timestampsVerified).toBe(true);
 		expect(verification.valid).toBe(true);
