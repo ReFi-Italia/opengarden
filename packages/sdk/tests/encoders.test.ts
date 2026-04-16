@@ -231,15 +231,13 @@ describe("CitizenFeedback encoder", () => {
 describe("Healthcheck encoder", () => {
 	const ASSESSOR_STAFF_ID = "staff-cafe";
 
-	it("encodes a standalone healthcheck (no linked intervention)", () => {
+	it("encodes a standalone healthcheck (ZERO_BYTES32 interventionUID, null metadataHash)", () => {
 		const encoded = encodeHealthcheck({
-			areaUID: ZERO_BYTES32,
 			interventionUID: ZERO_BYTES32,
 			healthScore: 7,
 			photoHash: ZERO_BYTES32,
-			assessorNotes: "Good condition overall, minor weeding needed",
-			interventionNeeded: false,
 			assessorId: ASSESSOR_STAFF_ID,
+			metadataHash: null,
 		});
 		expect(encoded).toBeTruthy();
 		const encoder = new SchemaEncoder(SCHEMA_STRINGS.Healthcheck);
@@ -250,13 +248,11 @@ describe("Healthcheck encoder", () => {
 		const linkedInterventionUID =
 			"0x000000000000000000000000000000000000000000000000000000000000beef";
 		const encoded = encodeHealthcheck({
-			areaUID: ZERO_BYTES32,
 			interventionUID: linkedInterventionUID,
-			healthScore: 3,
+			healthScore: 8,
 			photoHash: ZERO_BYTES32,
-			assessorNotes: "Pre-intervention assessment",
-			interventionNeeded: true,
 			assessorId: ASSESSOR_STAFF_ID,
+			metadataHash: ZERO_BYTES32, // hashed metadata JSON with baseline + assessorNotes
 		});
 		expect(encoded).toBeTruthy();
 		const encoder = new SchemaEncoder(SCHEMA_STRINGS.Healthcheck);
@@ -264,23 +260,32 @@ describe("Healthcheck encoder", () => {
 
 		const decoded = decodeHealthcheck(encoded);
 		expect(decoded.interventionUID).toBe(linkedInterventionUID);
-		expect(decoded.healthScore).toBe(3);
-		expect(decoded.assessorNotes).toBe("Pre-intervention assessment");
-		expect(decoded.interventionNeeded).toBe(true);
+		expect(decoded.healthScore).toBe(8);
 		expect(decoded.assessorId).toBe(hashIdentifier(ASSESSOR_STAFF_ID));
+		expect(decoded.metadataHash).toBe(ZERO_BYTES32);
 	});
 
 	it("encodes ZERO_BYTES32 when assessorId is null", () => {
 		const encoded = encodeHealthcheck({
-			areaUID: ZERO_BYTES32,
 			interventionUID: ZERO_BYTES32,
 			healthScore: 7,
 			photoHash: ZERO_BYTES32,
-			assessorNotes: "Organizational assessment",
-			interventionNeeded: false,
 			assessorId: null,
+			metadataHash: null,
 		});
 		const decoded = decodeHealthcheck(encoded);
 		expect(decoded.assessorId).toBe(ZERO_BYTES32);
+	});
+
+	it("encodes ZERO_BYTES32 when metadataHash is null", () => {
+		const encoded = encodeHealthcheck({
+			interventionUID: ZERO_BYTES32,
+			healthScore: 5,
+			photoHash: ZERO_BYTES32,
+			assessorId: null,
+			metadataHash: null,
+		});
+		const decoded = decodeHealthcheck(encoded);
+		expect(decoded.metadataHash).toBe(ZERO_BYTES32);
 	});
 });

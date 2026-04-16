@@ -122,7 +122,7 @@ describe("OpenGardenClient construction", () => {
 			"0x948b5dcc84298941bcbbe7c4f94c781b94eb90fb25c8a9ee4176b09603e06070",
 		);
 		expect(uids.Healthcheck).toBe(
-			"0xa810dc4c9ff78d9cdc6de45439ed8a3a6f1e8be62befa04e3e04cc44300f0828",
+			"0xb5f901113d6db303c6c7857e3b79f7ff9f472694334e282473cbb0c08c8ee2ae",
 		);
 	});
 
@@ -140,8 +140,8 @@ describe("OpenGardenClient construction", () => {
 		const uids = client.getSchemaUIDs();
 		expect(uids.AreaRegistration).toBe("0xoverridearea");
 		// Unoverridden entries still come from the chain default.
-		expect(uids.Healthcheck).toBe(
-			"0xa810dc4c9ff78d9cdc6de45439ed8a3a6f1e8be62befa04e3e04cc44300f0828",
+		expect(uids.GardenerCheckin).toBe(
+			"0xdddcacda1ced4340541523acb6e448a583673890dbbe17b140138aa163c3c7dc",
 		);
 	});
 });
@@ -758,13 +758,10 @@ describe("OpenGardenClient finalizeIntervention", () => {
 				approved: true,
 				qualityScore: 9,
 			},
-			healthcheckBefore: {
-				...makeFakeResult("0xhcbefore", { onchainTimestamp: 150n }),
-				score: 3,
-			},
-			healthcheckAfter: {
-				...makeFakeResult("0xhcafter", { onchainTimestamp: 450n }),
+			healthcheck: {
+				...makeFakeResult("0xhc", { onchainTimestamp: 450n }),
 				score: 8,
+				baselineScore: 3,
 			},
 			interventionType: 1,
 			executionDate: 1000000n,
@@ -776,7 +773,7 @@ describe("OpenGardenClient finalizeIntervention", () => {
 
 		const attestData = attestCalls[0].data.data;
 		const decoded = decodePublishedIntervention(attestData);
-		expect(decoded.offchainCount).toBe(10);
+		expect(decoded.offchainCount).toBe(9); // 2 + 3*2 crew + 1 healthcheck
 		expect(decoded.crewSize).toBe(2);
 
 		vi.unstubAllGlobals();
@@ -1459,28 +1456,23 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 		expect(result.temporalOrderValid).toBe(false);
 	});
 
-	it("healthcheck temporal ordering violation fails", async () => {
+	it("healthcheck at any timestamp is valid (retroactive, no bracket enforced)", async () => {
 		const bundle = makeValidBundle({
 			attestations: {
 				...makeValidBundle().attestations,
-				healthcheckBefore: {
-					uid: "0xhcbefore",
-					score: 3,
-					onchainTimestamp: 250,
-				},
-				healthcheckAfter: {
-					uid: "0xhcafter",
+				healthcheck: {
+					uid: "0xhc",
 					score: 8,
-					onchainTimestamp: 250,
+					baselineScore: 3,
+					onchainTimestamp: 250, // mid-lifecycle — allowed
 				},
 			},
 		});
-		const { client } = createVerifyClient(bundle, { offchainCount: 7 });
+		const { client } = createVerifyClient(bundle, { offchainCount: 6 });
 
 		const result = await client.verifyEvidenceBundle(FAKE_INTERVENTION_UID);
 
-		expect(result.valid).toBe(false);
-		expect(result.healthcheckOrderValid).toBe(false);
+		expect(result.healthcheckOrderValid).toBe(true);
 	});
 
 	it("execution date before schedule fails bracketing", async () => {
@@ -1756,13 +1748,11 @@ describe("OpenGardenClient getAreaHealthchecks", () => {
 
 	function makeEncodedHealthcheck() {
 		return encodeHealthcheck({
-			areaUID: AREA_UID,
 			interventionUID: ZERO_BYTES32,
 			healthScore: 6,
 			photoHash: ZERO_BYTES32,
-			assessorNotes: "Standalone assessment",
-			interventionNeeded: false,
 			assessorId: "staff-001",
+			metadataHash: null,
 		});
 	}
 
@@ -1790,8 +1780,6 @@ describe("OpenGardenClient getAreaHealthchecks", () => {
 		expect(healthchecks).toHaveLength(1);
 		expect(healthchecks[0].uid).toBe("0xhealthcheck1");
 		expect(healthchecks[0].healthScore).toBe(6);
-		expect(healthchecks[0].assessorNotes).toBe("Standalone assessment");
-		expect(healthchecks[0].interventionNeeded).toBe(false);
 		expect(healthchecks[0].attester).toBe(MOCK_SIGNER_ADDRESS);
 		expect(healthchecks[0].time).toBe(1700000000n);
 	});

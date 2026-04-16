@@ -90,12 +90,15 @@ export interface CitizenFeedbackInput {
 }
 
 export interface HealthcheckInput {
-	areaUID: string;
 	interventionUID: string;
 	healthScore: number;
 	photoHash: string;
-	assessorNotes: string;
-	interventionNeeded: boolean;
 	/** Plain staff identifier of the assessing staff member; `null` for organizational assessment without individual attribution. Hashed internally per spec §9.1. */
 	assessorId: string | null;
+	/**
+	 * Keccak256 of the off-chain metadata JSON. `null` encodes as ZERO_BYTES32.
+	 * Metadata carries app-level fields: `baseline.score`, `baseline.sourceUID`,
+	 * `assessorNotes`, `interventionNeeded`, etc.
+	 */
+	metadataHash: string | null;
 }

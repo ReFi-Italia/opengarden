@@ -37,8 +37,7 @@ export type BundleIndexingRole =
 	| "checkout"
 	| "report"
 	| "validation"
-	| "healthcheckBefore"
-	| "healthcheckAfter";
+	| "healthcheck";
 
 export interface BundleIndexingResult extends IndexerSubmissionResult {
 	uid: string;

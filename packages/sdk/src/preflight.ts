@@ -107,12 +107,9 @@ export enum FinalizeInputIssueCode {
 	CHECKOUT_REFUID_MISMATCH = "CHECKOUT_REFUID_MISMATCH",
 	REPORT_REFUID_MISMATCH = "REPORT_REFUID_MISMATCH",
 	VALIDATION_REFUID_MISMATCH = "VALIDATION_REFUID_MISMATCH",
-	HEALTHCHECK_BEFORE_REFUID_MISMATCH = "HEALTHCHECK_BEFORE_REFUID_MISMATCH",
-	HEALTHCHECK_AFTER_REFUID_MISMATCH = "HEALTHCHECK_AFTER_REFUID_MISMATCH",
 	CREW_ATTESTER_MISMATCH = "CREW_ATTESTER_MISMATCH",
 	TEMPORAL_ORDER_VIOLATION = "TEMPORAL_ORDER_VIOLATION",
-	HEALTHCHECK_BEFORE_OUT_OF_BRACKET = "HEALTHCHECK_BEFORE_OUT_OF_BRACKET",
-	HEALTHCHECK_AFTER_OUT_OF_BRACKET = "HEALTHCHECK_AFTER_OUT_OF_BRACKET",
+	HEALTHCHECK_REFUID_MISMATCH = "HEALTHCHECK_REFUID_MISMATCH",
 	VALIDATION_NOT_APPROVED = "VALIDATION_NOT_APPROVED",
 }
 
@@ -273,38 +270,15 @@ export function validateFinalizeInput(
 		});
 	}
 
-	if (input.healthcheckBefore) {
-		const hb = extractAttestationMetadata(input.healthcheckBefore);
-		if (hb.refUID && !sameBytes32(hb.refUID, input.areaUID)) {
+	// Healthcheck is retroactive (recorded at validation time) — no temporal
+	// bracket is enforced. Only validate refUID points to the correct area.
+	if (input.healthcheck) {
+		const hc = extractAttestationMetadata(input.healthcheck);
+		if (hc.refUID && !sameBytes32(hc.refUID, input.areaUID)) {
 			issues.push({
-				code: FinalizeInputIssueCode.HEALTHCHECK_BEFORE_REFUID_MISMATCH,
-				message: `Healthcheck-before refUID (${hb.refUID}) does not match areaUID (${input.areaUID.toLowerCase()})`,
-				uid: input.healthcheckBefore.uid,
-			});
-		}
-		if (hb.onchainTimestamp >= minCheckin) {
-			issues.push({
-				code: FinalizeInputIssueCode.HEALTHCHECK_BEFORE_OUT_OF_BRACKET,
-				message: `Healthcheck-before timestamp (${hb.onchainTimestamp}) must precede the earliest checkin (${minCheckin})`,
-				uid: input.healthcheckBefore.uid,
-			});
-		}
-	}
-
-	if (input.healthcheckAfter) {
-		const ha = extractAttestationMetadata(input.healthcheckAfter);
-		if (ha.refUID && !sameBytes32(ha.refUID, input.areaUID)) {
-			issues.push({
-				code: FinalizeInputIssueCode.HEALTHCHECK_AFTER_REFUID_MISMATCH,
-				message: `Healthcheck-after refUID (${ha.refUID}) does not match areaUID (${input.areaUID.toLowerCase()})`,
-				uid: input.healthcheckAfter.uid,
-			});
-		}
-		if (ha.onchainTimestamp <= maxCheckout) {
-			issues.push({
-				code: FinalizeInputIssueCode.HEALTHCHECK_AFTER_OUT_OF_BRACKET,
-				message: `Healthcheck-after timestamp (${ha.onchainTimestamp}) must be after the latest checkout (${maxCheckout})`,
-				uid: input.healthcheckAfter.uid,
+				code: FinalizeInputIssueCode.HEALTHCHECK_REFUID_MISMATCH,
+				message: `Healthcheck refUID (${hc.refUID}) does not match areaUID (${input.areaUID.toLowerCase()})`,
+				uid: input.healthcheck.uid,
 			});
 		}
 	}

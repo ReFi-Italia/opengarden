@@ -293,27 +293,41 @@ Optional community-level signal. Citizens can confirm visible improvement in the
 
 ### 3.7 Healthcheck
 
-A condition assessment of an area. May be standalone — performed for trend monitoring and baseline measurement, independent of any specific intervention — or explicitly linked to an intervention via `interventionUID`. When linked, the healthBefore and healthAfter scores in PublishedIntervention are drawn from these Healthcheck attestations.
+A condition assessment of an area. May be standalone — performed for trend monitoring and baseline measurement, independent of any specific intervention — or explicitly linked to an intervention via `interventionUID`.
+
+When linked to an intervention, a single Healthcheck attestation captures both the post-intervention score (`healthScore`) and an optional pre-intervention baseline stored in off-chain metadata (referenced via `metadataHash`). This replaces the earlier two-attestation before/after pattern with a single retroactive assessment that the admin records at validation time, using crew report photos as evidence of pre-intervention state.
 
 > **OFF-CHAIN** · Revocable: No · **Timestamped on-chain: Required**
 
-
 | Field | Type | Description |
 |---|---|---|
-| **areaUID** | `bytes32` | EAS UID of the AreaRegistration being assessed |
-| **interventionUID** | `bytes32` | EAS UID of the linked ScheduledIntervention (ZERO_BYTES32 for standalone monitoring) |
-| **healthScore** | `uint8` | Condition score (1–10 scale) |
+| **interventionUID** | `bytes32` | EAS UID of the linked ScheduledIntervention (`ZERO_BYTES32` for standalone monitoring) |
+| **healthScore** | `uint8` | Current / post-intervention condition score (1–10 scale) |
 | **photoHash** | `bytes32` | IPFS CID of condition documentation photos |
-| **assessorNotes** | `string` | Professional assessment notes |
-| **interventionNeeded** | `bool` | Whether the assessor recommends scheduling an intervention |
 | **assessorId** | `bytes32` | Hashed identifier of the staff member who performed the assessment. `ZERO_BYTES32` for organizational assessment without individual attribution |
+| **metadataHash** | `bytes32` | Keccak256 of off-chain metadata JSON (`ZERO_BYTES32` if none). See below. |
+
+> **Off-chain metadata shape** (`metadataHash`)
+>
+> The metadata JSON carries app-level fields that are useful for display and reporting but do not need to be anchored individually on-chain:
+> ```json
+> {
+>   "version": 1,
+>   "baseline": {
+>     "score": 3,
+>     "sourceUID": "0x...prior_healthcheck_or_report_uid"
+>   },
+>   "interventionNeeded": false
+> }
+> ```
+> `baseline.sourceUID` is optional — it references an earlier standalone Healthcheck or the crew's GardenerReport attestation the assessor used as evidence for the baseline score. `interventionNeeded` replaces the former on-chain field of the same name. The JSON is canonicalized (keys sorted, no extra whitespace) before hashing with keccak256.
 
 > **Attestation Metadata**
 >
 > Recipient: ZERO_ADDRESS.
 > Attester: Organization wallet (shared across the organization's staff).
 > Revocable: No. A health assessment is a factual measurement record.
-> RefUID: AreaRegistration UID (areaUID field).
+> RefUID: **AreaRegistration UID** — `areaUID` is passed as the EAS `refUID` parameter (not encoded in the attestation data). This provides free on-chain indexing of all healthchecks per area via the EAS GraphQL layer (`attestations(where: { refUID: areaUID })`).
 
 > **Why assessorId**
 >
@@ -354,14 +368,7 @@ The claimed `executionDate` in PublishedIntervention MUST fall within the bracke
 T_schedule ≤ executionDate ≤ T_publication
 ```
 
-For Healthcheck attestations linked to an intervention via `interventionUID`:
-
-```
-T_healthcheckBefore < min(T_checkin[*])
-T_healthcheckAfter  > max(T_checkout[*])
-```
-
-The explicit `interventionUID` field makes the linkage auditable; the temporal brackets prevent post-hoc fabrication.
+Intervention-linked Healthcheck attestations are recorded at validation time — a single retroactive assessment after the crew has completed work. No temporal bracket is enforced between the Healthcheck timestamp and crew activity timestamps. The `interventionUID` field makes the linkage auditable. The `metadataHash` field carries the baseline score (pre-intervention state assessed from crew photos), preserving the before/after comparison without requiring a second site visit.
 
 A PublishedIntervention whose `executionDate` predates `T_schedule` is provably backfilled.
 
@@ -369,7 +376,7 @@ A PublishedIntervention whose `executionDate` predates `T_schedule` is provably 
 
 Each off-chain attestation is timestamped individually via `EAS.timestamp(uid)`. Steps that are logically simultaneous (e.g., a single gardener's checkout and report) MAY be batched via `multiTimestamp()`. Steps that must demonstrate elapsed time (e.g., checkin and checkout for the same gardener) MUST NOT be batched. All N crew members' checkins across a single crew job MAY be batched together if they genuinely arrive at the same moment, since the relative ordering between crew members is unconstrained.
 
-Total cost per intervention lifecycle: `2 + 3N` timestamps (scheduled + validation + per-crew-member checkin/checkout/report), plus optional healthchecks. A solo job is `2 + 3 = 5` timestamps at **~$0.0005**. A 4-person crew is `2 + 12 = 14` timestamps at **~$0.0014**. At 1,000 interventions/month with an average crew of 2, this is under $1/month.
+Total cost per intervention lifecycle: `2 + 3N + 1` timestamps (scheduled + validation + per-crew-member checkin/checkout/report + optional healthcheck). A solo job without healthcheck is `2 + 3 = 5` timestamps at **~$0.0005**; with healthcheck `6` timestamps at **~$0.0006**. A 4-person crew is `2 + 12 + 1 = 15` timestamps at **~$0.0015**. At 1,000 interventions/month with an average crew of 2, this is well under $1/month.
 
 ### 4.4 MVP Minimum
 
@@ -452,15 +459,11 @@ The `scheduled` and `validation` entries are always single (one per job). The `c
       "claimedTimestamp": 1709424000,
       "onchainTimestamp": 1709424025
     },
-    "healthcheckBefore": {
+    "healthcheck": {
       "uid": "0x567...890",
-      "score": 3,
-      "onchainTimestamp": 1709200000
-    },
-    "healthcheckAfter": {
-      "uid": "0x890...123",
       "score": 8,
-      "onchainTimestamp": 1709500000
+      "baselineScore": 3,
+      "onchainTimestamp": 1709424100
     }
   },
   "photos": {
@@ -490,7 +493,7 @@ The `scheduled` and `validation` entries are always single (one per job). The `c
 > (1) Read the evidenceBundleHash from the on-chain attestation.
 > (2) Fetch the JSON from IPFS.
 > (3) Verify each off-chain attestation signature independently — `attester` on each array entry MUST match the EIP-712 signer.
-> (4) Confirm the bundle is complete by checking `offchainCount` matches the number of attestations in the bundle: `1 (scheduled) + checkins.length + checkouts.length + reports.length + 1 (validation)` plus any optional healthchecks. For a well-formed bundle, `checkins.length == checkouts.length == reports.length == PublishedIntervention.crewSize`.
+> (4) Confirm the bundle is complete by checking `offchainCount` matches the number of attestations in the bundle: `1 (scheduled) + checkins.length + checkouts.length + reports.length + 1 (validation) + (healthcheck ? 1 : 0)`. For a well-formed bundle, `checkins.length == checkouts.length == reports.length == PublishedIntervention.crewSize`.
 > (5) **Verify temporal integrity:** For each attestation in the bundle, query `EAS.getTimestamp(uid)` on-chain and confirm the on-chain timestamps match the bundle's `onchainTimestamp` values and satisfy the ordering rules in Section 4.2 (including the per-crew-member `T_checkin[i] < T_checkout[i] < T_report[i]` check).
 > (6) **To prove an individual gardener's participation**, find the report in `reports` whose `attester` matches the gardener's wallet; verify its EAS signature.
 >
@@ -513,8 +516,8 @@ EAS attestations can reference each other via the refUID field, creating a direc
 | GardenerReport | → | GardenerCheckout | checkoutUID field |
 | AdminValidation | → | ScheduledIntervention | scheduleUID field |
 | CitizenFeedback | → | AreaRegistration | areaUID field |
-| Healthcheck | → | AreaRegistration | areaUID field |
-| Healthcheck | → | ScheduledIntervention | interventionUID field (when linked) |
+| Healthcheck | → | AreaRegistration | EAS refUID parameter (area indexed without encoding areaUID in data) |
+| Healthcheck | → | ScheduledIntervention | interventionUID field (when linked; ZERO_BYTES32 for standalone) |
 | GardenerMilestone | → | (standalone) | evidenceRoot field |
 
 > **Graph Traversal**
@@ -601,8 +604,9 @@ bytes32 areaUID, uint8 rating, string comment, bytes32 photoHash
 
 **Healthcheck** (revocable: false)
 ```
-bytes32 areaUID, bytes32 interventionUID, uint8 healthScore, bytes32 photoHash, string assessorNotes, bool interventionNeeded, bytes32 assessorId
+bytes32 interventionUID, uint8 healthScore, bytes32 photoHash, string assessorNotes, bytes32 assessorId, bytes32 metadataHash
 ```
+> `areaUID` is not encoded in the attestation data — it is passed as the EAS `refUID` parameter so healthchecks are indexed by area in the EAS graph without burning a schema field.
 
 ---
 

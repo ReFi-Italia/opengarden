@@ -37,9 +37,14 @@ function extractGardenerAttestation(
 	const message = result.signedAttestation.message as
 		| Record<string, unknown>
 		| undefined;
+	const sig = result.signedAttestation.sig as
+		| Record<string, unknown>
+		| undefined;
 	const attester =
 		(result.signedAttestation.signer as string | undefined) ??
-		(message?.attester as string | undefined);
+		(result.signedAttestation.attester as string | undefined) ??
+		(message?.attester as string | undefined) ??
+		(sig?.signer as string | undefined);
 	if (!attester) {
 		throw new OpenGardenError(
 			OpenGardenErrorCode.INVALID_INPUT,
@@ -80,19 +85,14 @@ export function buildEvidenceBundle(
 		bundleVersion: EVIDENCE_BUNDLE_VERSION,
 	};
 
-	if (input.healthcheckBefore) {
-		bundle.attestations.healthcheckBefore = {
-			uid: input.healthcheckBefore.uid,
-			score: input.healthcheckBefore.score,
-			onchainTimestamp: Number(input.healthcheckBefore.onchainTimestamp),
-		};
-	}
-
-	if (input.healthcheckAfter) {
-		bundle.attestations.healthcheckAfter = {
-			uid: input.healthcheckAfter.uid,
-			score: input.healthcheckAfter.score,
-			onchainTimestamp: Number(input.healthcheckAfter.onchainTimestamp),
+	if (input.healthcheck) {
+		bundle.attestations.healthcheck = {
+			uid: input.healthcheck.uid,
+			score: input.healthcheck.score,
+			...(input.healthcheck.baselineScore !== undefined
+				? { baselineScore: input.healthcheck.baselineScore }
+				: {}),
+			onchainTimestamp: Number(input.healthcheck.onchainTimestamp),
 		};
 	}
 

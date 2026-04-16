@@ -42,16 +42,14 @@ export function verifyBundleCompleteness(
 		checkins,
 		checkouts,
 		reports,
-		healthcheckBefore,
-		healthcheckAfter,
+		healthcheck,
 	} = bundle.attestations;
 	const attestationCount =
 		2 +
 		checkins.length +
 		checkouts.length +
 		reports.length +
-		(healthcheckBefore ? 1 : 0) +
-		(healthcheckAfter ? 1 : 0);
+		(healthcheck ? 1 : 0);
 	const ok = attestationCount === expectedCount;
 	return {
 		code: VerificationCheckCode.COMPLETENESS,
@@ -118,43 +116,14 @@ export function verifyBundleTemporalOrder(
 	return { code: VerificationCheckCode.TEMPORAL_ORDER, valid: true };
 }
 
+/**
+ * Healthcheck is retroactive — recorded at validation time by the admin.
+ * No temporal bracket is enforced against crew activity timestamps.
+ * Always returns valid. Kept for API compatibility.
+ */
 export function verifyBundleHealthcheckBracket(
-	bundle: EvidenceBundle,
+	_bundle: EvidenceBundle,
 ): VerificationCheck {
-	const { checkins, checkouts, healthcheckBefore, healthcheckAfter } =
-		bundle.attestations;
-
-	if (!healthcheckBefore && !healthcheckAfter) {
-		return { code: VerificationCheckCode.HEALTHCHECK_BRACKET, valid: true };
-	}
-
-	if (checkins.length === 0) {
-		return {
-			code: VerificationCheckCode.HEALTHCHECK_BRACKET,
-			valid: false,
-			message:
-				"Bundle has healthcheck entries but no crew checkins to bracket against",
-		};
-	}
-
-	const minCheckin = Math.min(...checkins.map((c) => c.onchainTimestamp));
-	const maxCheckout = Math.max(...checkouts.map((c) => c.onchainTimestamp));
-
-	if (healthcheckBefore && healthcheckBefore.onchainTimestamp >= minCheckin) {
-		return {
-			code: VerificationCheckCode.HEALTHCHECK_BRACKET,
-			valid: false,
-			message: `Healthcheck-before timestamp (${healthcheckBefore.onchainTimestamp}) must precede the earliest checkin (${minCheckin})`,
-		};
-	}
-	if (healthcheckAfter && healthcheckAfter.onchainTimestamp <= maxCheckout) {
-		return {
-			code: VerificationCheckCode.HEALTHCHECK_BRACKET,
-			valid: false,
-			message: `Healthcheck-after timestamp (${healthcheckAfter.onchainTimestamp}) must be after the latest checkout (${maxCheckout})`,
-		};
-	}
-
 	return { code: VerificationCheckCode.HEALTHCHECK_BRACKET, valid: true };
 }
 
@@ -205,8 +174,7 @@ export async function verifyBundleOnChainTimestamps(
 		reports,
 		scheduled,
 		validation,
-		healthcheckBefore,
-		healthcheckAfter,
+		healthcheck,
 	} = bundle.attestations;
 
 	const entries: Array<{ uid: string; onchainTimestamp: number }> = [
@@ -216,8 +184,7 @@ export async function verifyBundleOnChainTimestamps(
 		...reports,
 		validation,
 	];
-	if (healthcheckBefore) entries.push(healthcheckBefore);
-	if (healthcheckAfter) entries.push(healthcheckAfter);
+	if (healthcheck) entries.push(healthcheck);
 
 	const results = await Promise.all(
 		entries.map((e) => fetchTimestamp(e.uid).catch(() => null)),

@@ -71,16 +71,7 @@ const schedule = await client.scheduleIntervention({
   ...
 });
 
-// 3. Healthcheck before (off-chain + timestamped, linked to the scheduled intervention)
-const hcBefore = await client.recordHealthcheck({
-  areaUID: area.uid,
-  interventionUID: schedule.uid,
-  healthScore: 3,
-  assessorId: staffUuid, // plain identifier — hashed internally per spec §9.1 (pass `null` for organizational assessments)
-  ...
-});
-
-// 4. Each crew member runs their own checkin → checkout → report chain.
+// 3. Each crew member runs their own checkin → checkout → report chain.
 //    All three attestations per member reference the same schedule.uid (via interventionUID / checkinUID).
 const aliceCheckin  = await client.checkin({ interventionUID: schedule.uid, ... }); // signed by Alice
 const aliceCheckout = await client.checkout({ checkinUID: aliceCheckin.uid, ... });
@@ -90,7 +81,7 @@ const bobCheckin  = await client.checkin({ interventionUID: schedule.uid, ... })
 const bobCheckout = await client.checkout({ checkinUID: bobCheckin.uid, ... });
 const bobReport   = await client.submitReport({ interventionUID: schedule.uid, checkoutUID: bobCheckout.uid, ... });
 
-// 5. Admin validation (off-chain + timestamped) — one per intervention, anchored on schedule.uid
+// 4. Admin validation (off-chain + timestamped) — one per intervention, anchored on schedule.uid
 const validation = await client.validateIntervention({
   scheduleUID: schedule.uid,
   approved: true,
@@ -99,16 +90,27 @@ const validation = await client.validateIntervention({
   ...
 });
 
-// 6. Healthcheck after
-const hcAfter = await client.recordHealthcheck({
-  areaUID: area.uid,
+// 5. Healthcheck (off-chain + timestamped) — one per intervention, recorded at validation time.
+//    areaUID is the first arg (used as EAS refUID for area indexing, not encoded in the attestation data).
+//    Baseline score (pre-intervention state) is stored in off-chain metadataHash JSON; current score is on-chain.
+const hc = await client.recordHealthcheck(area.uid, {
   interventionUID: schedule.uid,
-  healthScore: 8,
-  assessorId: staffUuid,
+  healthScore: 8,                  // current / post-intervention score
+  metadataHash: hashedMetadataJson, // keccak256({ version:1, baseline:{ score:3, sourceUID:'0x...' } })
+  assessorId: staffUuid,            // plain identifier — hashed internally per spec §9.1 (pass `null` for org attribution)
   ...
 });
 
-// 7. Build evidence bundle — crew is an array of { checkin, checkout, report } tuples
+// Standalone site-check (no linked intervention): pass ZERO_BYTES32 as interventionUID, null metadataHash
+const siteCheck = await client.recordHealthcheck(area.uid, {
+  interventionUID: ZERO_BYTES32,
+  healthScore: 6,
+  metadataHash: null,
+  assessorId: null,
+  ...
+});
+
+// 6. Build evidence bundle — crew is an array of { checkin, checkout, report } tuples
 const bundle = client.buildEvidenceBundle({
   interventionId: 'INT-2026-0001',
   areaUID: area.uid,
@@ -118,20 +120,19 @@ const bundle = client.buildEvidenceBundle({
     { checkin: bobCheckin,   checkout: bobCheckout,   report: bobReport },
   ],
   validation: { ...validation, approved: true, qualityScore: 8 },
-  healthcheckBefore: { ...hcBefore, score: 3 },
-  healthcheckAfter: { ...hcAfter, score: 8 },
+  healthcheck: { ...hc, score: 8, baselineScore: 3 }, // baselineScore from metadata
 });
 
-// 8. Upload bundle (requires storage adapter)
+// 7. Upload bundle (requires storage adapter)
 const bundleHash = await client.uploadEvidenceBundle(bundle);
 
-// 9. Publish intervention (on-chain) — one record per job, recipient = ZERO_ADDRESS
+// 8. Publish intervention (on-chain) — one record per job, recipient = ZERO_ADDRESS
 const intervention = await client.publishIntervention({
   areaUID: area.uid,
   interventionId: 'INT-2026-0001',
   evidenceBundleHash: bundleHash,
-  // 1 scheduled + 3 per crew member (2) + 1 validation + 2 healthchecks = 10
-  offchainCount: 10,
+  // 1 scheduled + 3 per crew member (2) + 1 validation + 1 healthcheck = 9
+  offchainCount: 9,
   crewSize: 2,
   ...
 });
@@ -264,7 +265,7 @@ Each method signs an off-chain attestation and timestamps its UID on-chain.
 | `checkout(data)` | `TimestampedOffChainResult` |
 | `submitReport(data)` | `TimestampedOffChainResult` |
 | `validateIntervention(data)` | `TimestampedOffChainResult` |
-| `recordHealthcheck(data)` | `TimestampedOffChainResult` |
+| `recordHealthcheck(areaUID, data)` | `TimestampedOffChainResult` |
 
 ### Off-chain write (no timestamp)
 

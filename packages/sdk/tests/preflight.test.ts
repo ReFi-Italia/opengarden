@@ -285,40 +285,18 @@ describe("validateFinalizeInput", () => {
 		).toBe(true);
 	});
 
-	it("flags a healthcheckBefore that is not before the first checkin", () => {
+	it("accepts a healthcheck at any timestamp (retroactive, no bracket enforced)", () => {
 		const input = buildValidInput();
-		input.healthcheckBefore = {
-			...makeFakeTimestampedResult("0xhcbefore", {
-				onchainTimestamp: 250n, // after the checkin
-				refUID: AREA_UID,
-			}),
-			score: 3,
-		};
-		const issues = validateFinalizeInput(input);
-		expect(
-			issues.some(
-				(i) =>
-					i.code === FinalizeInputIssueCode.HEALTHCHECK_BEFORE_OUT_OF_BRACKET,
-			),
-		).toBe(true);
-	});
-
-	it("flags a healthcheckAfter that is not after the last checkout", () => {
-		const input = buildValidInput();
-		input.healthcheckAfter = {
-			...makeFakeTimestampedResult("0xhcafter", {
-				onchainTimestamp: 250n, // before the last checkout
+		input.healthcheck = {
+			...makeFakeTimestampedResult("0xhc", {
+				onchainTimestamp: 250n, // mid-lifecycle — allowed
 				refUID: AREA_UID,
 			}),
 			score: 8,
+			baselineScore: 3,
 		};
 		const issues = validateFinalizeInput(input);
-		expect(
-			issues.some(
-				(i) =>
-					i.code === FinalizeInputIssueCode.HEALTHCHECK_AFTER_OUT_OF_BRACKET,
-			),
-		).toBe(true);
+		expect(issues).toHaveLength(0);
 	});
 
 	it("collects multiple issues in a single pass", () => {

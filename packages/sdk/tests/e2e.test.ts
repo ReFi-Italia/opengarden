@@ -84,8 +84,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 		approved: boolean;
 		qualityScore: number;
 	};
-	let healthcheckBeforeResult: TimestampedOffChainResult;
-	let healthcheckAfterResult: TimestampedOffChainResult;
+	let healthcheckResult: TimestampedOffChainResult;
 	let evidenceBundleHash: string;
 	let interventionUID: string;
 
@@ -189,26 +188,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 		await delay(STEP_DELAY_MS);
 	}, 60_000);
 
-	// --- Step 4: Healthcheck before (linked to the scheduled intervention) ---
-
-	it("records a healthcheck (before)", async () => {
-		healthcheckBeforeResult = await client.recordHealthcheck({
-			areaUID,
-			interventionUID: scheduleResult.uid,
-			healthScore: 3,
-			photoHash: ZERO_BYTES32,
-			assessorNotes: "E2E test — poor condition before intervention",
-			interventionNeeded: true,
-			assessorId: "e2e-assessor-001",
-		});
-
-		expect(healthcheckBeforeResult.uid).toBeTruthy();
-		expect(healthcheckBeforeResult.onchainTimestamp).toBeGreaterThan(0n);
-		console.log(`  Healthcheck before UID: ${healthcheckBeforeResult.uid}`);
-		await delay(STEP_DELAY_MS);
-	}, 60_000);
-
-	// --- Step 5: Gardener checks in ---
+	// --- Step 4: Gardener checks in ---
 
 	it("records gardener checkin", async () => {
 		checkinResult = await client.checkin({
@@ -276,22 +256,20 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 		await delay(STEP_DELAY_MS);
 	}, 60_000);
 
-	// --- Step 9: Healthcheck after ---
+	// --- Step 9: Healthcheck (retroactive, at validation time) ---
 
-	it("records a healthcheck (after)", async () => {
-		healthcheckAfterResult = await client.recordHealthcheck({
-			areaUID,
+	it("records a healthcheck (intervention-linked, with baseline metadata)", async () => {
+		healthcheckResult = await client.recordHealthcheck(areaUID, {
 			interventionUID: scheduleResult.uid,
 			healthScore: 8,
 			photoHash: ZERO_BYTES32,
-			assessorNotes: "E2E test — good condition after intervention",
-			interventionNeeded: false,
 			assessorId: "e2e-assessor-001",
+			metadataHash: null, // omit metadata for E2E simplicity
 		});
 
-		expect(healthcheckAfterResult.uid).toBeTruthy();
-		expect(healthcheckAfterResult.onchainTimestamp).toBeGreaterThan(0n);
-		console.log(`  Healthcheck after UID: ${healthcheckAfterResult.uid}`);
+		expect(healthcheckResult.uid).toBeTruthy();
+		expect(healthcheckResult.onchainTimestamp).toBeGreaterThan(0n);
+		console.log(`  Healthcheck UID: ${healthcheckResult.uid}`);
 		await delay(STEP_DELAY_MS);
 	}, 60_000);
 
@@ -310,8 +288,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 				},
 			],
 			validation: validationResult,
-			healthcheckBefore: { ...healthcheckBeforeResult, score: 3 },
-			healthcheckAfter: { ...healthcheckAfterResult, score: 8 },
+			healthcheck: { ...healthcheckResult, score: 8, baselineScore: 3 },
 		});
 
 		expect(bundle.bundleVersion).toBe(EVIDENCE_BUNDLE_VERSION);

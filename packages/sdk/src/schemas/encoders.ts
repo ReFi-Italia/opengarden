@@ -254,19 +254,17 @@ export function encodeHealthcheck(input: HealthcheckInput): string {
 	validateHealthcheck(input);
 	const encoder = newSchemaEncoder(SCHEMA_STRINGS.Healthcheck);
 	return encoder.encodeData([
-		{ name: "areaUID", value: input.areaUID, type: "bytes32" },
 		{ name: "interventionUID", value: input.interventionUID, type: "bytes32" },
 		{ name: "healthScore", value: input.healthScore, type: "uint8" },
 		{ name: "photoHash", value: input.photoHash, type: "bytes32" },
-		{ name: "assessorNotes", value: input.assessorNotes, type: "string" },
-		{
-			name: "interventionNeeded",
-			value: input.interventionNeeded,
-			type: "bool",
-		},
 		{
 			name: "assessorId",
 			value: hashOrZero(input.assessorId),
+			type: "bytes32",
+		},
+		{
+			name: "metadataHash",
+			value: input.metadataHash ?? ZERO_BYTES32,
 			type: "bytes32",
 		},
 	]);
@@ -361,13 +359,11 @@ export function decodeHealthcheck(data: string) {
 	const encoder = newSchemaEncoder(SCHEMA_STRINGS.Healthcheck);
 	const decoded = encoder.decodeData(data) as unknown as DecodedField[];
 	return {
-		areaUID: String(getFieldValue(decoded, "areaUID")),
 		interventionUID: String(getFieldValue(decoded, "interventionUID")),
 		healthScore: Number(getFieldValue(decoded, "healthScore")),
 		photoHash: String(getFieldValue(decoded, "photoHash")),
-		assessorNotes: getFieldValue(decoded, "assessorNotes") as string,
-		interventionNeeded: Boolean(getFieldValue(decoded, "interventionNeeded")),
 		assessorId: String(getFieldValue(decoded, "assessorId")),
+		metadataHash: String(getFieldValue(decoded, "metadataHash")),
 	};
 }
 

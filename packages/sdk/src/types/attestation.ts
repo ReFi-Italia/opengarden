@@ -20,15 +20,14 @@ export interface ScheduledIntervention {
 
 export interface Healthcheck {
 	uid: string;
-	areaUID: string;
 	/** UID of the linked ScheduledIntervention, or ZERO_BYTES32 for standalone monitoring. */
 	interventionUID: string;
 	healthScore: number;
 	photoHash: string;
-	assessorNotes: string;
-	interventionNeeded: boolean;
 	/** On-chain bytes32 hash of the assessor staff identifier (or ZERO_BYTES32 for organizational attribution). */
 	assessorId: string;
+	/** Keccak256 of off-chain metadata JSON (baseline score, assessorNotes, interventionNeeded). ZERO_BYTES32 if none. */
+	metadataHash: string;
 	attester: string;
 	time: bigint;
 }

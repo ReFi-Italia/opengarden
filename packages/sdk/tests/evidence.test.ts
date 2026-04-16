@@ -115,27 +115,34 @@ describe("buildEvidenceBundle", () => {
 		expect(bundle.photos.afterPhotos).toBeUndefined();
 	});
 
-	it("omits healthchecks when not provided", () => {
+	it("omits healthcheck when not provided", () => {
 		const bundle = buildEvidenceBundle(soloInput);
-		expect(bundle.attestations.healthcheckBefore).toBeUndefined();
-		expect(bundle.attestations.healthcheckAfter).toBeUndefined();
+		expect(bundle.attestations.healthcheck).toBeUndefined();
 	});
 
-	it("includes healthchecks when provided", () => {
+	it("includes healthcheck when provided (score only)", () => {
 		const withHealth: EvidenceBundleBuilderInput = {
 			...soloInput,
-			healthcheckBefore: mockHealthcheck("0xhcbefore", 3, 500n),
-			healthcheckAfter: mockHealthcheck("0xhcafter", 8, 5000n),
+			healthcheck: mockHealthcheck("0xhc", 8, 5000n),
 		};
 		const bundle = buildEvidenceBundle(withHealth);
-		expect(bundle.attestations.healthcheckBefore).toEqual({
-			uid: "0xhcbefore",
-			score: 3,
-			onchainTimestamp: 500,
-		});
-		expect(bundle.attestations.healthcheckAfter).toEqual({
-			uid: "0xhcafter",
+		expect(bundle.attestations.healthcheck).toEqual({
+			uid: "0xhc",
 			score: 8,
+			onchainTimestamp: 5000,
+		});
+	});
+
+	it("includes healthcheck with baselineScore when provided", () => {
+		const withHealth: EvidenceBundleBuilderInput = {
+			...soloInput,
+			healthcheck: { ...mockHealthcheck("0xhc", 8, 5000n), baselineScore: 3 },
+		};
+		const bundle = buildEvidenceBundle(withHealth);
+		expect(bundle.attestations.healthcheck).toEqual({
+			uid: "0xhc",
+			score: 8,
+			baselineScore: 3,
 			onchainTimestamp: 5000,
 		});
 	});

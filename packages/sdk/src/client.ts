@@ -426,6 +426,7 @@ export class OpenGardenClient {
 	}
 
 	async recordHealthcheck(
+		areaUID: string,
 		data: HealthcheckInput,
 	): Promise<TimestampedOffChainResult> {
 		const encodedData = encodeHealthcheck(data);
@@ -433,7 +434,7 @@ export class OpenGardenClient {
 			"Healthcheck",
 			encodedData,
 			ZERO_ADDRESS,
-			data.areaUID,
+			areaUID,
 			false,
 		);
 	}
@@ -483,18 +484,11 @@ export class OpenGardenClient {
 			sig: input.validation.signedAttestation,
 			role: "validation",
 		});
-		if (input.healthcheckBefore) {
+		if (input.healthcheck) {
 			entries.push({
-				uid: input.healthcheckBefore.uid,
-				sig: input.healthcheckBefore.signedAttestation,
-				role: "healthcheckBefore",
-			});
-		}
-		if (input.healthcheckAfter) {
-			entries.push({
-				uid: input.healthcheckAfter.uid,
-				sig: input.healthcheckAfter.signedAttestation,
-				role: "healthcheckAfter",
+				uid: input.healthcheck.uid,
+				sig: input.healthcheck.signedAttestation,
+				role: "healthcheck",
 			});
 		}
 
@@ -534,8 +528,7 @@ export class OpenGardenClient {
 		const indexedCount = indexingResults.filter((r) => r.ok).length;
 
 		let offchainCount = 2 + 3 * input.crew.length;
-		if (input.healthcheckBefore) offchainCount++;
-		if (input.healthcheckAfter) offchainCount++;
+		if (input.healthcheck) offchainCount++;
 
 		const publication = await this.publishIntervention({
 			areaUID: input.areaUID,

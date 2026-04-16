@@ -384,15 +384,13 @@ async function dispatchSdkCall(
 					: null;
 
 			const sdkInput: HealthcheckInput = {
-				areaUID,
 				interventionUID,
 				healthScore: activity.healthScore,
 				photoHash,
-				assessorNotes: String(activity.assessorNotes ?? ""),
-				interventionNeeded: activity.healthScore < 5,
 				assessorId,
+				metadataHash: (activity as { metadataHash?: string | null }).metadataHash ?? null,
 			};
-			const result = await context.client.recordHealthcheck(sdkInput);
+			const result = await context.client.recordHealthcheck(areaUID, sdkInput);
 			return { result, schemaName: "Healthcheck" };
 		}
 	}

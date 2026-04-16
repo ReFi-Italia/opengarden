@@ -19,8 +19,7 @@ function makeBundle(
 		validationTs?: number;
 		bundleVersion?: string;
 		approved?: boolean;
-		healthcheckBeforeTs?: number;
-		healthcheckAfterTs?: number;
+		healthcheckTs?: number;
 		mismatchCrew?: { checkouts?: number; reports?: number };
 	} = {},
 ): EvidenceBundle {
@@ -83,18 +82,12 @@ function makeBundle(
 			EVIDENCE_BUNDLE_VERSION) as typeof EVIDENCE_BUNDLE_VERSION,
 	};
 
-	if (overrides.healthcheckBeforeTs != null) {
-		bundle.attestations.healthcheckBefore = {
-			uid: "0xhcbefore",
-			score: 3,
-			onchainTimestamp: overrides.healthcheckBeforeTs,
-		};
-	}
-	if (overrides.healthcheckAfterTs != null) {
-		bundle.attestations.healthcheckAfter = {
-			uid: "0xhcafter",
+	if (overrides.healthcheckTs != null) {
+		bundle.attestations.healthcheck = {
+			uid: "0xhc",
 			score: 8,
-			onchainTimestamp: overrides.healthcheckAfterTs,
+			baselineScore: 3,
+			onchainTimestamp: overrides.healthcheckTs,
 		};
 	}
 
@@ -126,15 +119,11 @@ describe("verifyBundleCompleteness", () => {
 		expect(result.expectedCount).toBe(5);
 	});
 
-	it("counts healthchecks toward the total", () => {
-		const bundle = makeBundle({
-			crewCount: 1,
-			healthcheckBeforeTs: 50,
-			healthcheckAfterTs: 450,
-		});
-		const result = verifyBundleCompleteness(bundle, 7);
+	it("counts healthcheck toward the total", () => {
+		const bundle = makeBundle({ crewCount: 1, healthcheckTs: 450 });
+		const result = verifyBundleCompleteness(bundle, 6);
 		expect(result.valid).toBe(true);
-		expect(result.attestationCount).toBe(7);
+		expect(result.attestationCount).toBe(6);
 	});
 
 	it("fails when counts disagree", () => {
@@ -191,30 +180,16 @@ describe("verifyBundleTemporalOrder", () => {
 });
 
 describe("verifyBundleHealthcheckBracket", () => {
-	it("passes when healthchecks are absent", () => {
+	// Healthcheck is retroactive (recorded at validation time) — no temporal
+	// bracket is enforced against crew activity timestamps.
+	it("passes when healthcheck is absent", () => {
 		expect(verifyBundleHealthcheckBracket(makeBundle()).valid).toBe(true);
 	});
 
-	it("passes when healthchecks bracket the work", () => {
-		const bundle = makeBundle({
-			healthcheckBeforeTs: 50,
-			healthcheckAfterTs: 450,
-		});
+	it("passes when healthcheck is present at any timestamp", () => {
+		// Recorded at validation time — timestamp ordering vs crew is not enforced
+		const bundle = makeBundle({ healthcheckTs: 450 });
 		expect(verifyBundleHealthcheckBracket(bundle).valid).toBe(true);
-	});
-
-	it("fails when healthcheckBefore is not before the first checkin", () => {
-		const bundle = makeBundle({ healthcheckBeforeTs: 250 });
-		const result = verifyBundleHealthcheckBracket(bundle);
-		expect(result.valid).toBe(false);
-		expect(result.message).toContain("Healthcheck-before");
-	});
-
-	it("fails when healthcheckAfter is not after the last checkout", () => {
-		const bundle = makeBundle({ healthcheckAfterTs: 250 });
-		const result = verifyBundleHealthcheckBracket(bundle);
-		expect(result.valid).toBe(false);
-		expect(result.message).toContain("Healthcheck-after");
 	});
 });
 

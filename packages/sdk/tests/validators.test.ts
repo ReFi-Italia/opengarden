@@ -113,13 +113,11 @@ const validFeedback = {
 };
 
 const validHealthcheck = {
-	areaUID: ZERO_BYTES32,
 	interventionUID: ZERO_BYTES32,
 	healthScore: 6,
 	photoHash: ZERO_BYTES32,
-	assessorNotes: "ok",
-	interventionNeeded: false,
 	assessorId: null,
+	metadataHash: null,
 };
 
 describe("AreaRegistration validator", () => {
