@@ -90,7 +90,8 @@ export interface CitizenFeedbackInput {
 }
 
 export interface HealthcheckInput {
-	interventionUID: string;
+	/** EAS UID of the linked ScheduledIntervention. `null` for standalone monitoring (encodes as ZERO_BYTES32). */
+	interventionUID: string | null;
 	healthScore: number;
 	photoHash: string;
 	/** Plain staff identifier of the assessing staff member; `null` for organizational assessment without individual attribution. Hashed internally per spec §9.1. */

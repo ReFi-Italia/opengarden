@@ -113,7 +113,7 @@ const validFeedback = {
 };
 
 const validHealthcheck = {
-	interventionUID: ZERO_BYTES32,
+	interventionUID: null,
 	healthScore: 6,
 	photoHash: ZERO_BYTES32,
 	assessorId: null,

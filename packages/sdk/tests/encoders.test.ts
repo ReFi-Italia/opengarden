@@ -231,9 +231,9 @@ describe("CitizenFeedback encoder", () => {
 describe("Healthcheck encoder", () => {
 	const ASSESSOR_STAFF_ID = "staff-cafe";
 
-	it("encodes a standalone healthcheck (ZERO_BYTES32 interventionUID, null metadataHash)", () => {
+	it("encodes a standalone healthcheck using null interventionUID (→ ZERO_BYTES32)", () => {
 		const encoded = encodeHealthcheck({
-			interventionUID: ZERO_BYTES32,
+			interventionUID: null,
 			healthScore: 7,
 			photoHash: ZERO_BYTES32,
 			assessorId: ASSESSOR_STAFF_ID,
@@ -242,6 +242,27 @@ describe("Healthcheck encoder", () => {
 		expect(encoded).toBeTruthy();
 		const encoder = new SchemaEncoder(SCHEMA_STRINGS.Healthcheck);
 		expect(encoder.isEncodedDataValid(encoded)).toBe(true);
+
+		const decoded = decodeHealthcheck(encoded);
+		expect(decoded.interventionUID).toBe(ZERO_BYTES32);
+	});
+
+	it("standalone healthcheck ZERO_BYTES32 and null interventionUID encode identically", () => {
+		const withNull = encodeHealthcheck({
+			interventionUID: null,
+			healthScore: 7,
+			photoHash: ZERO_BYTES32,
+			assessorId: null,
+			metadataHash: null,
+		});
+		const withZero = encodeHealthcheck({
+			interventionUID: ZERO_BYTES32,
+			healthScore: 7,
+			photoHash: ZERO_BYTES32,
+			assessorId: null,
+			metadataHash: null,
+		});
+		expect(withNull).toBe(withZero);
 	});
 
 	it("encodes and decodes a healthcheck linked to an intervention", () => {

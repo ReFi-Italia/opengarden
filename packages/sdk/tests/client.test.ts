@@ -1734,6 +1734,87 @@ describe("OpenGardenClient getScheduledInterventions", () => {
 	});
 });
 
+describe("OpenGardenClient recordHealthcheck", () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	const AREA_UID =
+		"0x000000000000000000000000000000000000000000000000000000000000cafe";
+	const INTERVENTION_UID =
+		"0x000000000000000000000000000000000000000000000000000000000000beef";
+
+	function createRecordClient() {
+		const signCalls: any[] = [];
+		const eas = {
+			getOffchain: async () => ({
+				signOffchainAttestation: async (params: any) => {
+					signCalls.push(params);
+					return {
+						uid: "0xhcuid",
+						signer: MOCK_SIGNER_ADDRESS,
+						message: params,
+					};
+				},
+			}),
+			timestamp: async () => ({
+				wait: async () => 999999n,
+				receipt: FAKE_TX_RECEIPT,
+			}),
+		};
+		const client = createTestClient({
+			eas: eas as any,
+			schemaUIDs: { Healthcheck: "0xhcschema" },
+		});
+		return { client, signCalls };
+	}
+
+	it("passes areaUID as EAS refUID for intervention-linked healthcheck", async () => {
+		const { client, signCalls } = createRecordClient();
+
+		await client.recordHealthcheck(AREA_UID, {
+			interventionUID: INTERVENTION_UID,
+			healthScore: 8,
+			photoHash: ZERO_BYTES32,
+			assessorId: null,
+			metadataHash: null,
+		});
+
+		expect(signCalls).toHaveLength(1);
+		expect(signCalls[0].refUID).toBe(AREA_UID);
+	});
+
+	it("passes areaUID as EAS refUID for standalone healthcheck (null interventionUID)", async () => {
+		const { client, signCalls } = createRecordClient();
+
+		await client.recordHealthcheck(AREA_UID, {
+			interventionUID: null,
+			healthScore: 6,
+			photoHash: ZERO_BYTES32,
+			assessorId: null,
+			metadataHash: null,
+		});
+
+		expect(signCalls).toHaveLength(1);
+		expect(signCalls[0].refUID).toBe(AREA_UID);
+	});
+
+	it("areaUID and interventionUID are independent — different fields, different values", async () => {
+		const { client, signCalls } = createRecordClient();
+
+		await client.recordHealthcheck(AREA_UID, {
+			interventionUID: INTERVENTION_UID,
+			healthScore: 7,
+			photoHash: ZERO_BYTES32,
+			assessorId: null,
+			metadataHash: null,
+		});
+
+		expect(signCalls[0].refUID).toBe(AREA_UID);
+		expect(signCalls[0].refUID).not.toBe(INTERVENTION_UID);
+	});
+});
+
 describe("OpenGardenClient getAreaHealthchecks", () => {
 	afterEach(() => {
 		vi.restoreAllMocks();

@@ -254,7 +254,7 @@ export function encodeHealthcheck(input: HealthcheckInput): string {
 	validateHealthcheck(input);
 	const encoder = newSchemaEncoder(SCHEMA_STRINGS.Healthcheck);
 	return encoder.encodeData([
-		{ name: "interventionUID", value: input.interventionUID, type: "bytes32" },
+		{ name: "interventionUID", value: input.interventionUID ?? ZERO_BYTES32, type: "bytes32" },
 		{ name: "healthScore", value: input.healthScore, type: "uint8" },
 		{ name: "photoHash", value: input.photoHash, type: "bytes32" },
 		{
