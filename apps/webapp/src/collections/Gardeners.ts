@@ -25,7 +25,7 @@ const enforceUniqueWallet: CollectionBeforeValidateHook = async ({
 		where: { wallet: { equals: wallet } },
 		limit: 2,
 		depth: 0,
-		req,
+		overrideAccess: true,
 	});
 	const duplicate = existing.docs.find(
 		(doc) => !originalDoc || doc.id !== originalDoc.id,

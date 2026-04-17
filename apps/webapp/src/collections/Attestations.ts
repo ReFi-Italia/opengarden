@@ -14,18 +14,7 @@ export const ATTESTATION_SCHEMAS = [
 	"Healthcheck",
 ] as const;
 
-/**
- * Canonical store for signed off-chain attestations. Every chain commit
- * performed by a task handler creates a row here and links it back from
- * the entity that owns the attestation (for `activities` today, for
- * `interventions`/`areas` in a follow-up refactor).
- *
- * The collection is read-only from the admin UI: creation is driven by
- * task handlers via `overrideAccess: true`. `relatedCollection` +
- * `relatedId` exist as informational back-references so an operator can
- * query "give me every attestation for intervention X" without joining
- * through the activity relationships.
- */
+// relatedCollection + relatedId are back-references — query all attestations for entity X without joining through activities.
 export const Attestations: CollectionConfig = {
 	slug: "attestations",
 	admin: {

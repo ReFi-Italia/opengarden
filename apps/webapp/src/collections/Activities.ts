@@ -6,6 +6,7 @@ import type {
 } from "payload";
 import { APIError } from "payload";
 import { keccak256, toUtf8Bytes } from "ethers";
+import { after } from "next/server";
 import { authenticated } from "../access/authenticated";
 import { isAuthoringOrAbove } from "../access/isAuthoringOrAbove";
 
@@ -23,8 +24,6 @@ const INTERVENTION_SCOPED_TYPES: readonly ActivityType[] = [
 	"checkout",
 	"report",
 ];
-// healthcheck can be area-scoped or intervention-scoped — handled separately
-const AREA_SCOPED_TYPES: readonly ActivityType[] = [];
 
 const TYPES_REQUIRING_GARDENER: readonly ActivityType[] = [
 	"checkin",
@@ -37,18 +36,7 @@ const TYPES_REQUIRING_DURATION: readonly ActivityType[] = ["checkout"];
 const TYPES_REQUIRING_REPORT_BODY: readonly ActivityType[] = ["report"];
 const TYPES_REQUIRING_HEALTHSCORE: readonly ActivityType[] = ["healthcheck"];
 
-/**
- * For `checkout` and `report`, automatically resolves the nearest open parent
- * activity when `parentActivity` is not supplied by the caller:
- *
- *  - checkout → latest checkin for the same intervention+gardener that has no
- *               matching checkout yet
- *  - report   → latest checkout for the same intervention that has no matching
- *               report yet
- *
- * Runs before `guardActivityInvariants` so that the "parentActivity required"
- * guard sees the resolved value.
- */
+// Runs before guardActivityInvariants so the "parentActivity required" guard sees the resolved value.
 const autoLinkParentActivity: CollectionBeforeValidateHook = async ({
 	data,
 	req,
@@ -92,6 +80,9 @@ const autoLinkParentActivity: CollectionBeforeValidateHook = async ({
 						and: [
 							{ intervention: { equals: idStr } },
 							{ type: { equals: "checkout" } },
+							...(gardenerId
+								? [{ gardener: { equals: String(gardenerId) } }]
+								: []),
 						],
 					},
 					limit: 50,
@@ -181,11 +172,6 @@ const autoLinkParentActivity: CollectionBeforeValidateHook = async ({
 	return data;
 };
 
-/**
- * Enforces polymorphic parent (intervention XOR area per type) plus the
- * per-type required fields. Replaces the four separate beforeValidate
- * guards we used to have on GardenerCheckins/Checkouts/Reports/Healthchecks.
- */
 const guardActivityInvariants: CollectionBeforeValidateHook = async ({
 	data,
 	req,
@@ -200,8 +186,6 @@ const guardActivityInvariants: CollectionBeforeValidateHook = async ({
 		throw new APIError(`Unknown activity type "${type}".`, 400);
 	}
 
-	// Parent XOR: intervention-scoped types need intervention, area-scoped
-	// types need area. Exactly one parent per row.
 	const hasIntervention = Boolean(data.intervention);
 	const hasArea = Boolean(data.area);
 
@@ -212,8 +196,6 @@ const guardActivityInvariants: CollectionBeforeValidateHook = async ({
 				400,
 			);
 		}
-		// Confirm the intervention is in a state that accepts crew-field data.
-		// Mirrors the old GardenerCheckins guard.
 		const intervention = await req.payload.findByID({
 			collection: "interventions",
 			id: data.intervention as string | number,
@@ -229,7 +211,6 @@ const guardActivityInvariants: CollectionBeforeValidateHook = async ({
 			);
 		}
 
-		// Verify the gardener is a member of the crew for crew-authored types.
 		if (TYPES_REQUIRING_GARDENER.includes(type) && data.gardener) {
 			const crew = (
 				intervention as {
@@ -326,11 +307,6 @@ const guardActivityInvariants: CollectionBeforeValidateHook = async ({
 	return data;
 };
 
-/**
- * Computes a keccak256 fingerprint of the healthcheck off-chain metadata JSON
- * so the SDK can include it in the on-chain attestation. Only runs for
- * `healthcheck` activities with non-empty metadata. Null otherwise.
- */
 const computeHealthcheckMetadataHash: CollectionBeforeChangeHook = async ({
 	data,
 }) => {
@@ -348,11 +324,7 @@ const computeHealthcheckMetadataHash: CollectionBeforeChangeHook = async ({
 	return { ...data, metadataHash: hash };
 };
 
-/**
- * On insert, queue the unified `commitActivityChain` task to commit the
- * off-chain attestation and write the Attestations row + relationship
- * back on the activity. Best-effort drain via Next's `after()`.
- */
+// Best-effort drain via Next's `after()` to commit immediately; cron fallback if drain fails.
 const queueChainCommit: CollectionAfterChangeHook = async ({
 	doc,
 	operation,
@@ -367,7 +339,6 @@ const queueChainCommit: CollectionAfterChangeHook = async ({
 			input: { activityId: String((doc as { id: string | number }).id) },
 			queue: "default",
 		});
-		const { after } = await import("next/server");
 		after(async () => {
 			try {
 				await req.payload.jobs.run({ queue: "default", limit: 1 });
