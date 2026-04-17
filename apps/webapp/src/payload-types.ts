@@ -392,15 +392,11 @@ export interface Activity {
   parentActivity?: (string | null) | Activity;
   gardener?: (string | null) | Gardener;
   claimedTimestamp: string;
-  latitude?: number | null;
-  longitude?: number | null;
-  actualMinutes?: number | null;
-  tasksCompleted?: string | null;
-  taskCount?: number | null;
-  notes?: string | null;
-  healthScore?: number | null;
   assessor?: (string | null) | Staff;
-  metadata?:
+  /**
+   * checkin → {latitude, longitude} · checkout → {actualMinutes} · report → {tasksCompleted, taskCount, notes} · healthcheck → {healthScore, metadata, metadataHash}
+   */
+  data?:
     | {
         [k: string]: unknown;
       }
@@ -409,8 +405,6 @@ export interface Activity {
     | number
     | boolean
     | null;
-  metadataHash?: string | null;
-  priorHealthcheck?: (string | null) | Attestation;
   photo?: (string | null) | Media;
   photoHash?: string | null;
   attestation?: (string | null) | Attestation;
@@ -948,17 +942,8 @@ export interface ActivitiesSelect<T extends boolean = true> {
   parentActivity?: T;
   gardener?: T;
   claimedTimestamp?: T;
-  latitude?: T;
-  longitude?: T;
-  actualMinutes?: T;
-  tasksCompleted?: T;
-  taskCount?: T;
-  notes?: T;
-  healthScore?: T;
   assessor?: T;
-  metadata?: T;
-  metadataHash?: T;
-  priorHealthcheck?: T;
+  data?: T;
   photo?: T;
   photoHash?: T;
   attestation?: T;

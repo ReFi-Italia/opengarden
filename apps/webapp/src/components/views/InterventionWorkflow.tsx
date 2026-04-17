@@ -16,33 +16,29 @@ import "./InterventionWorkflow.scss";
 // parent reference keys that are pre-filled in initialState.
 const CHECKIN_FORM_FIELDS: readonly string[] = [
 	"gardener",
-	"latitude",
-	"longitude",
 	"claimedTimestamp",
 	"photo",
+	"data",
 ];
 
 const CHECKOUT_FORM_FIELDS: readonly string[] = [
 	"gardener",
 	"claimedTimestamp",
-	"actualMinutes",
+	"data",
 ];
 
 const REPORT_FORM_FIELDS: readonly string[] = [
 	"gardener",
 	"claimedTimestamp",
-	"tasksCompleted",
-	"taskCount",
-	"notes",
 	"photo",
+	"data",
 ];
 
 const HEALTHCHECK_FORM_FIELDS: readonly string[] = [
 	"claimedTimestamp",
-	"healthScore",
 	"assessor",
-	"metadata",
 	"photo",
+	"data",
 ];
 
 // Which field names inside each group are operator-editable per stage. Mirrors
@@ -254,12 +250,11 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 			(latestCheckout.docs[0] as { claimedTimestamp?: string })
 				?.claimedTimestamp ?? null;
 		const hc = latestHealthcheck.docs[0] as {
-			healthScore?: number;
-			metadata?: Record<string, unknown> | null;
+			data?: { healthScore?: number; metadata?: Record<string, unknown> | null } | null;
 		} | undefined;
 		if (hc) {
-			derivedHealthAfter = hc.healthScore ?? null;
-			const baseline = (hc.metadata as { baseline?: { score?: number } } | null)
+			derivedHealthAfter = hc.data?.healthScore ?? null;
+			const baseline = (hc.data?.metadata as { baseline?: { score?: number } } | null)
 				?.baseline;
 			derivedHealthBefore = baseline?.score ?? null;
 		}
@@ -328,17 +323,13 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 				value: firstGardenerId || null,
 				initialValue: firstGardenerId || null,
 			},
-			latitude: {
-				value: areaLat ?? 0,
-				initialValue: areaLat ?? 0,
-			},
-			longitude: {
-				value: areaLng ?? 0,
-				initialValue: areaLng ?? 0,
-			},
 			claimedTimestamp: {
 				value: nowISO,
 				initialValue: nowISO,
+			},
+			data: {
+				value: { latitude: areaLat ?? 0, longitude: areaLng ?? 0 },
+				initialValue: { latitude: areaLat ?? 0, longitude: areaLng ?? 0 },
 			},
 		} as FormState;
 
@@ -393,9 +384,9 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 				value: nowISO,
 				initialValue: nowISO,
 			},
-			actualMinutes: {
-				value: defaultActualMinutes,
-				initialValue: defaultActualMinutes,
+			data: {
+				value: { actualMinutes: defaultActualMinutes },
+				initialValue: { actualMinutes: defaultActualMinutes },
 			},
 		} as FormState;
 
@@ -416,9 +407,10 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 				value: nowISO,
 				initialValue: nowISO,
 			},
-			taskCount: { value: 1, initialValue: 1 },
-			tasksCompleted: { value: "", initialValue: "" },
-			notes: { value: "", initialValue: "" },
+			data: {
+				value: { tasksCompleted: "", taskCount: 1, notes: "" },
+				initialValue: { tasksCompleted: "", taskCount: 1, notes: "" },
+			},
 		} as FormState;
 
 		// ─── Healthcheck defaults (single assessment, hide once recorded) ──
@@ -468,10 +460,11 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 				const priorHc = priorHcResult.docs[0];
 				if (priorHc) {
 					const priorAtt = priorHc.attestation as { uid?: string } | null;
+					const priorData = priorHc.data as { healthScore?: number } | null;
 					baselineMetadata = {
 						version: 1,
 						baseline: {
-							score: priorHc.healthScore,
+							score: priorData?.healthScore,
 							...(priorAtt?.uid ? { sourceUID: priorAtt.uid } : {}),
 						},
 					};
@@ -489,10 +482,10 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 				value: nowISO,
 				initialValue: nowISO,
 			},
-			healthScore: { value: 7, initialValue: 7 },
-			...(baselineMetadata
-				? { metadata: { value: baselineMetadata, initialValue: baselineMetadata } }
-				: {}),
+			data: {
+				value: { healthScore: 7, ...(baselineMetadata ? { metadata: baselineMetadata } : {}) },
+				initialValue: { healthScore: 7, ...(baselineMetadata ? { metadata: baselineMetadata } : {}) },
+			},
 		} as FormState;
 	}
 

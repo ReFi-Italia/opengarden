@@ -265,40 +265,42 @@ const guardActivityInvariants: CollectionBeforeValidateHook = async ({
 			400,
 		);
 	}
+	const dataObj = (data.data ?? {}) as Record<string, unknown>;
+
 	if (TYPES_REQUIRING_GEOLOCATION.includes(type)) {
 		if (
-			typeof data.latitude !== "number" ||
-			typeof data.longitude !== "number"
+			typeof dataObj.latitude !== "number" ||
+			typeof dataObj.longitude !== "number"
 		) {
 			throw new APIError(
-				`Activity type "${type}" requires latitude and longitude.`,
+				`Activity type "${type}" requires data.latitude and data.longitude.`,
 				400,
 			);
 		}
 	}
 	if (TYPES_REQUIRING_DURATION.includes(type)) {
-		if (typeof data.actualMinutes !== "number") {
+		if (typeof dataObj.actualMinutes !== "number") {
 			throw new APIError(
-				`Activity type "${type}" requires actualMinutes.`,
+				`Activity type "${type}" requires data.actualMinutes.`,
 				400,
 			);
 		}
 	}
 	if (TYPES_REQUIRING_REPORT_BODY.includes(type)) {
 		if (
-			typeof data.tasksCompleted !== "string" ||
-			typeof data.taskCount !== "number"
+			typeof dataObj.tasksCompleted !== "string" ||
+			typeof dataObj.taskCount !== "number"
 		) {
 			throw new APIError(
-				`Activity type "${type}" requires tasksCompleted and taskCount.`,
+				`Activity type "${type}" requires data.tasksCompleted and data.taskCount.`,
 				400,
 			);
 		}
 	}
 	if (TYPES_REQUIRING_HEALTHSCORE.includes(type)) {
-		if (typeof data.healthScore !== "number") {
+		if (typeof dataObj.healthScore !== "number") {
 			throw new APIError(
-				`Activity type "${type}" requires healthScore.`,
+				`Activity type "${type}" requires data.healthScore.`,
 				400,
 			);
 		}
@@ -313,15 +315,15 @@ const computeHealthcheckMetadataHash: CollectionBeforeChangeHook = async ({
 	if (!data) return data;
 	if (data.type !== "healthcheck") return data;
 
-	const metadata = data.metadata as Record<string, unknown> | null | undefined;
+	const dataObj = (data.data ?? {}) as Record<string, unknown>;
+	const metadata = dataObj.metadata as Record<string, unknown> | null | undefined;
 	if (!metadata || Object.keys(metadata).length === 0) {
-		return { ...data, metadataHash: null };
+		return { ...data, data: { ...dataObj, metadataHash: null } };
 	}
 
-	// Canonical: sorted keys, no extra whitespace
 	const canonical = JSON.stringify(metadata, Object.keys(metadata).sort());
 	const hash = keccak256(toUtf8Bytes(canonical));
-	return { ...data, metadataHash: hash };
+	return { ...data, data: { ...dataObj, metadataHash: hash } };
 };
 
 // Best-effort drain via Next's `after()` to commit immediately; cron fallback if drain fails.
@@ -339,6 +341,17 @@ const queueChainCommit: CollectionAfterChangeHook = async ({
 			input: { activityId: String((doc as { id: string | number }).id) },
 			queue: "default",
 		});
+	} catch (err) {
+		req.payload.logger.error({
+			msg: "Failed to queue commitActivityChain on activity create",
+			err: err instanceof Error ? err.message : String(err),
+		});
+		return doc;
+	}
+
+	// Best-effort immediate drain. Silently skipped outside a Next.js request
+	// context (local API calls, seed scripts) — cron picks up the queued job.
+	try {
 		after(async () => {
 			try {
 				await req.payload.jobs.run({ queue: "default", limit: 1 });
@@ -349,11 +362,8 @@ const queueChainCommit: CollectionAfterChangeHook = async ({
 				});
 			}
 		});
-	} catch (err) {
-		req.payload.logger.error({
-			msg: "Failed to queue commitActivityChain on activity create",
-			err: err instanceof Error ? err.message : String(err),
-		});
+	} catch {
+		// not in a request scope — cron will drain
 	}
 	return doc;
 };
@@ -370,7 +380,6 @@ export const Activities: CollectionConfig = {
 	slug: "activities",
 	admin: {
 		group: "Lifecycle",
-		hidden: true,
 		useAsTitle: "id",
 		defaultColumns: ["type", "intervention", "area", "claimedTimestamp"],
 	},
@@ -425,69 +434,17 @@ export const Activities: CollectionConfig = {
 			required: true,
 		},
 		{
-			name: "latitude",
-			type: "number",
-			min: -90,
-			max: 90,
-			admin: { condition: showWhenType(TYPES_REQUIRING_GEOLOCATION) },
-		},
-		{
-			name: "longitude",
-			type: "number",
-			min: -180,
-			max: 180,
-			admin: { condition: showWhenType(TYPES_REQUIRING_GEOLOCATION) },
-		},
-		{
-			name: "actualMinutes",
-			type: "number",
-			min: 0,
-			admin: { condition: showWhenType(TYPES_REQUIRING_DURATION) },
-		},
-		{
-			name: "tasksCompleted",
-			type: "text",
-			admin: { condition: showWhenType(TYPES_REQUIRING_REPORT_BODY) },
-		},
-		{
-			name: "taskCount",
-			type: "number",
-			min: 0,
-			admin: { condition: showWhenType(TYPES_REQUIRING_REPORT_BODY) },
-		},
-		{
-			name: "notes",
-			type: "textarea",
-			admin: { condition: showWhenType(TYPES_REQUIRING_REPORT_BODY) },
-		},
-		{
-			name: "healthScore",
-			type: "number",
-			min: 0,
-			max: 10,
-			admin: { condition: showWhenType(TYPES_REQUIRING_HEALTHSCORE) },
-		},
-		{
 			name: "assessor",
 			type: "relationship",
 			relationTo: "staff",
 			admin: { condition: showWhenType(TYPES_REQUIRING_HEALTHSCORE) },
 		},
 		{
-			name: "metadata",
+			name: "data",
 			type: "json",
-			admin: { condition: showWhenType(["healthcheck"]) },
-		},
-		{
-			name: "metadataHash",
-			type: "text",
-			admin: { readOnly: true },
-		},
-		{
-			name: "priorHealthcheck",
-			type: "relationship",
-			relationTo: "attestations",
-			admin: { condition: showWhenType(["healthcheck"]) },
+			admin: {
+				description: "checkin → {latitude, longitude} · checkout → {actualMinutes} · report → {tasksCompleted, taskCount, notes} · healthcheck → {healthScore, metadata, metadataHash}",
+			},
 		},
 		{
 			name: "photo",
@@ -497,9 +454,7 @@ export const Activities: CollectionConfig = {
 		{
 			name: "photoHash",
 			type: "text",
-			admin: {
-				readOnly: true,
-			},
+			admin: { readOnly: true },
 		},
 		{
 			name: "attestation",

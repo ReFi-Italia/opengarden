@@ -255,15 +255,16 @@ export const buildBundleTask: TaskConfig<{
 		// Single healthcheck per intervention (latest committed one).
 		// biome-ignore lint/suspicious/noExplicitAny: same
 		const healthcheckRow = interventionHcs.find((a: any) => a.attestation?.status === "committed");
+		// biome-ignore lint/suspicious/noExplicitAny: data is a freeform JSON field
+		const hcData = (healthcheckRow as any)?.data as Record<string, unknown> | undefined;
 		const healthcheck = healthcheckRow
 			? {
 					...attestationToTimestampedResult(
 						healthcheckRow,
 						`healthcheck activity ${healthcheckRow.id}`,
 					),
-					score: healthcheckRow.healthScore as number,
-					// biome-ignore lint/suspicious/noExplicitAny: metadata is a freeform JSON field — Phase E adds the field
-					baselineScore: ((healthcheckRow as any).metadata)?.baseline?.score as number | undefined,
+					score: hcData?.healthScore as number,
+					baselineScore: (hcData?.metadata as any)?.baseline?.score as number | undefined,
 				}
 			: undefined;
 

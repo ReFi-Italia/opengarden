@@ -104,9 +104,8 @@ describe("Referential integrity walkthrough", () => {
 					type: "checkin",
 					intervention: intervention.id,
 					gardener: g.id,
-					latitude: 41.91,
-					longitude: 12.48,
 					claimedTimestamp: t0.toISOString(),
+					data: { latitude: 41.91, longitude: 12.48 },
 				},
 			});
 			checkins.push(checkin);
@@ -117,7 +116,7 @@ describe("Referential integrity walkthrough", () => {
 					intervention: intervention.id,
 					gardener: g.id,
 					claimedTimestamp: t1.toISOString(),
-					actualMinutes: 210,
+					data: { actualMinutes: 210 },
 					// parentActivity auto-linked by hook to this gardener's open checkin
 				},
 			});

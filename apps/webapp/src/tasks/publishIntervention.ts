@@ -130,9 +130,10 @@ export const publishInterventionTask: TaskConfig<{
 		// health scores: from healthcheck activity
 		// biome-ignore lint/suspicious/noExplicitAny: activity rows
 		const healthcheckActivity = activities.find((a: any) => a.type === "healthcheck");
-		// biome-ignore lint/suspicious/noExplicitAny: metadata field
-		const healthBefore = (healthcheckActivity as any)?.metadata?.baseline?.score ?? 0;
-		const healthAfter = (healthcheckActivity as any)?.healthScore ?? 0;
+		// biome-ignore lint/suspicious/noExplicitAny: data is a freeform JSON field
+		const hcData = (healthcheckActivity as any)?.data as Record<string, unknown> | undefined;
+		const healthBefore = (hcData?.metadata as any)?.baseline?.score ?? 0;
+		const healthAfter = (hcData?.healthScore as number) ?? 0;
 
 		// ─── Find the evidence bundle ──────────────────────────────────────
 		const bundlesResult = await payload.find({

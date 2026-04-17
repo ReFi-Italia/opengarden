@@ -250,6 +250,7 @@ async function dispatchSdkCall(
 		throw new Error("Activity is missing claimedTimestamp.");
 	}
 	const timestamp = new Date(claimedTimestamp);
+	const data = (activity.data ?? {}) as Record<string, unknown>;
 
 	switch (type) {
 		case "checkin": {
@@ -272,15 +273,15 @@ async function dispatchSdkCall(
 				);
 			}
 			if (
-				typeof activity.latitude !== "number" ||
-				typeof activity.longitude !== "number"
+				typeof data.latitude !== "number" ||
+				typeof data.longitude !== "number"
 			) {
-				throw new Error("Checkin is missing latitude/longitude.");
+				throw new Error("Checkin is missing data.latitude/data.longitude.");
 			}
 			const sdkInput: GardenerCheckinInput = {
 				interventionUID,
-				latitude: activity.latitude,
-				longitude: activity.longitude,
+				latitude: data.latitude,
+				longitude: data.longitude,
 				timestamp,
 				photoHash,
 			};
@@ -307,13 +308,13 @@ async function dispatchSdkCall(
 			if (!checkinUID) {
 				throw new Error("Parent checkin attestation has no uid.");
 			}
-			if (typeof activity.actualMinutes !== "number") {
-				throw new Error("Checkout is missing actualMinutes.");
+			if (typeof data.actualMinutes !== "number") {
+				throw new Error("Checkout is missing data.actualMinutes.");
 			}
 			const sdkInput: GardenerCheckoutInput = {
 				checkinUID,
 				timestamp,
-				actualMinutes: activity.actualMinutes,
+				actualMinutes: data.actualMinutes,
 			};
 			const result = await context.client.checkout(sdkInput);
 			return { result, schemaName: "GardenerCheckout" };
@@ -354,17 +355,16 @@ async function dispatchSdkCall(
 			const sdkInput: GardenerReportInput = {
 				interventionUID,
 				checkoutUID,
-				tasksCompleted: String(activity.tasksCompleted ?? ""),
-				taskCount: Number(activity.taskCount ?? 0),
+				tasksCompleted: String(data.tasksCompleted ?? ""),
+				taskCount: Number(data.taskCount ?? 0),
 				photosHash: photoHash,
-				notes: String(activity.notes ?? ""),
+				notes: String(data.notes ?? ""),
 			};
 			const result = await context.client.submitReport(sdkInput);
 			return { result, schemaName: "GardenerReport" };
 		}
 
 		case "healthcheck": {
-			// Area can be explicit (standalone monitoring) or derived from intervention
 			const area =
 				(activity.area && typeof activity.area === "object")
 					? activity.area
@@ -382,8 +382,8 @@ async function dispatchSdkCall(
 			if (!areaUID) {
 				throw new Error("Area has no attestation.uid; register it first.");
 			}
-			if (typeof activity.healthScore !== "number") {
-				throw new Error("Healthcheck is missing healthScore.");
+			if (typeof data.healthScore !== "number") {
+				throw new Error("Healthcheck is missing data.healthScore.");
 			}
 
 			const intervention = activity.intervention;
@@ -409,10 +409,10 @@ async function dispatchSdkCall(
 
 			const sdkInput: HealthcheckInput = {
 				interventionUID,
-				healthScore: activity.healthScore,
+				healthScore: data.healthScore,
 				photoHash,
 				assessorId,
-				metadataHash: (activity as { metadataHash?: string | null }).metadataHash ?? null,
+				metadataHash: (data.metadataHash as string | null) ?? null,
 			};
 			const result = await context.client.recordHealthcheck(areaUID, sdkInput);
 			return { result, schemaName: "Healthcheck" };
