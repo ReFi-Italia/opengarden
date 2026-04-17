@@ -169,28 +169,29 @@ describe("Intervention lifecycle transitions", () => {
 			id: intervention.id,
 			data: {
 				scheduling: {
-					chainUID: "0xdeadbeef",
 					scheduledDate: new Date("2026-05-01").toISOString(),
+					estimatedMinutes: 120,
 				},
 			},
 			context: { skipLifecycleHooks: true },
 		});
 
-		// Form write attempting to overwrite scheduling.chainUID is silently
-		// reset to original (the stage group is past-stage and frozen for
-		// form callers).
+		// Form write attempting to overwrite scheduling.estimatedMinutes is
+		// silently reset to original: status is "scheduled", editableIn is
+		// ["draft", "failed"], so the whole scheduling group is frozen for
+		// form callers.
 		const formAttempt = await payload.update({
 			collection: "interventions",
 			id: intervention.id,
 			data: {
 				description: "updated description",
 				scheduling: {
-					chainUID: "0xnewvalue",
+					estimatedMinutes: 999,
 				},
 			},
 		});
 		expect(formAttempt.description).toBe("updated description");
-		expect(formAttempt.scheduling?.chainUID).toBe("0xdeadbeef");
+		expect(formAttempt.scheduling?.estimatedMinutes).toBe(120);
 	});
 });
 

@@ -28,6 +28,13 @@ export default buildConfig({
 		importMap: {
 			baseDir: path.resolve(dirname),
 		},
+		components: {
+			views: {
+				dashboard: {
+					Component: "@/components/dashboard/DashboardHome#default",
+				},
+			},
+		},
 	},
 	collections: [
 		Users,

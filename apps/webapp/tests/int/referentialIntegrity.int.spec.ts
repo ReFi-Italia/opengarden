@@ -93,12 +93,15 @@ describe("Referential integrity walkthrough", () => {
 		const t0 = new Date("2026-05-01T08:00:00Z");
 		const t1 = new Date("2026-05-01T11:30:00Z");
 
+		// Checkins and checkouts now live in the unified `activities` collection.
+		// parentActivity for checkout is auto-resolved by autoLinkParentActivity.
 		const checkins = [];
 		const checkouts = [];
 		for (const g of [gardenerA, gardenerB]) {
 			const checkin = await payload.create({
-				collection: "gardenerCheckins",
+				collection: "activities",
 				data: {
+					type: "checkin",
 					intervention: intervention.id,
 					gardener: g.id,
 					latitude: 41.91,
@@ -108,24 +111,31 @@ describe("Referential integrity walkthrough", () => {
 			});
 			checkins.push(checkin);
 			const checkout = await payload.create({
-				collection: "gardenerCheckouts",
+				collection: "activities",
 				data: {
-					checkin: checkin.id,
+					type: "checkout",
+					intervention: intervention.id,
+					gardener: g.id,
 					claimedTimestamp: t1.toISOString(),
 					actualMinutes: 210,
+					// parentActivity auto-linked by hook to this gardener's open checkin
 				},
 			});
 			checkouts.push(checkout);
 		}
 
-		const validation = await payload.create({
-			collection: "adminValidations",
+		// Validation is now written inline on the intervention's validation group.
+		await payload.update({
+			collection: "interventions",
+			id: intervention.id,
 			data: {
-				intervention: intervention.id,
-				validator: validatorStaff.id,
-				approved: true,
-				qualityScore: 9,
+				validation: {
+					validator: validatorStaff.id,
+					approved: true,
+					qualityScore: 9,
+				},
 			},
+			context: { skipLifecycleHooks: true },
 		});
 
 		// Reload everything and assert relationships resolve.
@@ -145,26 +155,31 @@ describe("Referential integrity walkthrough", () => {
 			typeof sponsorRef === "object" ? sponsorRef?.id : sponsorRef;
 		expect(sponsorId).toBe(sponsor.id);
 
-		const checkinRows = await payload.find({
-			collection: "gardenerCheckins",
-			where: { intervention: { equals: intervention.id } },
-		});
-		expect(checkinRows.totalDocs).toBe(2);
-
-		const checkoutRows = await payload.find({
-			collection: "gardenerCheckouts",
+		const checkinActivities = await payload.find({
+			collection: "activities",
 			where: {
-				checkin: { in: checkins.map((c) => c.id) },
+				and: [
+					{ intervention: { equals: intervention.id } },
+					{ type: { equals: "checkin" } },
+				],
 			},
 		});
-		expect(checkoutRows.totalDocs).toBe(2);
+		expect(checkinActivities.totalDocs).toBe(2);
 
-		const validationsRows = await payload.find({
-			collection: "adminValidations",
-			where: { intervention: { equals: intervention.id } },
+		const checkoutActivities = await payload.find({
+			collection: "activities",
+			where: {
+				and: [
+					{ intervention: { equals: intervention.id } },
+					{ type: { equals: "checkout" } },
+				],
+			},
 		});
-		expect(validationsRows.totalDocs).toBe(1);
-		expect(validationsRows.docs[0].id).toBe(validation.id);
+		expect(checkoutActivities.totalDocs).toBe(2);
+
+		// Validation fields land on the intervention itself.
+		expect(reloaded.validation?.approved).toBe(true);
+		expect(reloaded.validation?.qualityScore).toBe(9);
 	});
 
 	it("rejects more than one crew lead", async () => {

@@ -10,7 +10,8 @@
 		"includes": [
 			"**",
 			"!**/payload-types.ts",
-			"!**/payload-generated-schema.ts"
+			"!**/payload-generated-schema.ts",
+			"!**/app/(payload)/**/importMap.js"
 		]
 	},
 	"formatter": {

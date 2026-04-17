@@ -75,7 +75,6 @@ export interface Config {
     areas: Area;
     interventions: Intervention;
     activities: Activity;
-    adminValidations: AdminValidation;
     evidenceBundles: EvidenceBundle;
     attestations: Attestation;
     'payload-kv': PayloadKv;
@@ -101,7 +100,6 @@ export interface Config {
     areas: AreasSelect<false> | AreasSelect<true>;
     interventions: InterventionsSelect<false> | InterventionsSelect<true>;
     activities: ActivitiesSelect<false> | ActivitiesSelect<true>;
-    adminValidations: AdminValidationsSelect<false> | AdminValidationsSelect<true>;
     evidenceBundles: EvidenceBundlesSelect<false> | EvidenceBundlesSelect<true>;
     attestations: AttestationsSelect<false> | AttestationsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
@@ -332,22 +330,10 @@ export interface Area {
    * Empty when no extended details are set.
    */
   metadataHash?: string | null;
-  chain?: {
-    chainUID?: string | null;
-    txHash?: string | null;
-    onchainTimestamp?: number | null;
-    attesterWallet?: string | null;
-    chainIdSnapshot?: number | null;
-    signedAttestation?:
-      | {
-          [k: string]: unknown;
-        }
-      | unknown[]
-      | string
-      | number
-      | boolean
-      | null;
-  };
+  /**
+   * Populated on registration — inspect only.
+   */
+  attestation?: (string | null) | Attestation;
   lifecycleStatus: 'draft' | 'registering' | 'registered' | 'failed';
   activities?: {
     docs?: (string | Activity)[];
@@ -360,11 +346,47 @@ export interface Area {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "attestations".
+ */
+export interface Attestation {
+  id: string;
+  uid: string;
+  schemaName:
+    | 'ScheduledIntervention'
+    | 'AdminValidation'
+    | 'PublishedIntervention'
+    | 'AreaRegistration'
+    | 'GardenerCheckin'
+    | 'GardenerCheckout'
+    | 'GardenerReport'
+    | 'Healthcheck';
+  signedAttestation:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  timestampTxHash?: string | null;
+  onchainTimestamp?: number | null;
+  chainIdSnapshot?: number | null;
+  attesterWallet?: string | null;
+  status: 'committed' | 'failed';
+  error?: string | null;
+  relatedCollection?: string | null;
+  relatedId?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "activities".
  */
 export interface Activity {
   id: string;
-  type: 'checkin' | 'checkout' | 'report' | 'interventionHealthcheck' | 'areaHealthcheck';
+  type: 'checkin' | 'checkout' | 'report' | 'healthcheck';
   intervention?: (string | null) | Intervention;
   area?: (string | null) | Area;
   parentActivity?: (string | null) | Activity;
@@ -376,10 +398,19 @@ export interface Activity {
   tasksCompleted?: string | null;
   taskCount?: number | null;
   notes?: string | null;
-  kind?: ('before' | 'after') | null;
   healthScore?: number | null;
   assessor?: (string | null) | Staff;
-  assessorNotes?: string | null;
+  metadata?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  metadataHash?: string | null;
+  priorHealthcheck?: (string | null) | Attestation;
   photo?: (string | null) | Media;
   photoHash?: string | null;
   attestation?: (string | null) | Attestation;
@@ -411,63 +442,14 @@ export interface Intervention {
   scheduling?: {
     scheduledDate?: string | null;
     estimatedMinutes?: number | null;
-    chainUID?: string | null;
-    txHash?: string | null;
-    onchainTimestamp?: number | null;
-    attesterWallet?: string | null;
-    chainIdSnapshot?: number | null;
-    signedAttestation?:
-      | {
-          [k: string]: unknown;
-        }
-      | unknown[]
-      | string
-      | number
-      | boolean
-      | null;
+    attestation?: (string | null) | Attestation;
   };
   validation?: {
     validator?: (string | null) | Staff;
     approved?: boolean | null;
     qualityScore?: number | null;
     feedback?: string | null;
-    validatorIdHashAtValidation?: string | null;
-    currentAttestation?: (string | null) | AdminValidation;
-    chainUID?: string | null;
-    txHash?: string | null;
-    onchainTimestamp?: number | null;
-    attesterWallet?: string | null;
-    chainIdSnapshot?: number | null;
-    signedAttestation?:
-      | {
-          [k: string]: unknown;
-        }
-      | unknown[]
-      | string
-      | number
-      | boolean
-      | null;
-  };
-  execution?: {
-    executionDate?: string | null;
-    healthBefore?: number | null;
-    healthAfter?: number | null;
-    evidenceBundle?: (string | null) | EvidenceBundle;
-    offchainCount?: number | null;
-    chainUID?: string | null;
-    txHash?: string | null;
-    onchainTimestamp?: number | null;
-    attesterWallet?: string | null;
-    chainIdSnapshot?: number | null;
-    signedAttestation?:
-      | {
-          [k: string]: unknown;
-        }
-      | unknown[]
-      | string
-      | number
-      | boolean
-      | null;
+    attestation?: (string | null) | Attestation;
   };
   /**
    * Populated when the intervention is revoked or fails mid-lifecycle.
@@ -476,54 +458,14 @@ export interface Intervention {
     reason?: string | null;
     revokedAt?: string | null;
     revokedScheduleUID?: string | null;
-    failedFrom?: ('draft' | 'scheduled' | 'in_progress' | 'pending_validation' | 'validated') | null;
+    failedFrom?: ('draft' | 'scheduled' | 'in_progress' | 'validated') | null;
   };
-  lifecycleStatus:
-    | 'draft'
-    | 'scheduled'
-    | 'in_progress'
-    | 'pending_validation'
-    | 'validated'
-    | 'published'
-    | 'revoked'
-    | 'failed';
+  lifecycleStatus: 'draft' | 'scheduled' | 'in_progress' | 'validated' | 'published' | 'revoked' | 'failed';
+  publishAttestation?: (string | null) | Attestation;
   activities?: {
     docs?: (string | Activity)[];
     hasNextPage?: boolean;
     totalDocs?: number;
-  };
-  updatedAt: string;
-  createdAt: string;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "adminValidations".
- */
-export interface AdminValidation {
-  id: string;
-  intervention: string | Intervention;
-  validator: string | Staff;
-  approved: boolean;
-  qualityScore?: number | null;
-  feedback?: string | null;
-  revoked?: boolean | null;
-  revokedAt?: string | null;
-  revocationTxHash?: string | null;
-  chain?: {
-    chainUID?: string | null;
-    txHash?: string | null;
-    onchainTimestamp?: number | null;
-    attesterWallet?: string | null;
-    chainIdSnapshot?: number | null;
-    signedAttestation?:
-      | {
-          [k: string]: unknown;
-        }
-      | unknown[]
-      | string
-      | number
-      | boolean
-      | null;
   };
   updatedAt: string;
   createdAt: string;
@@ -542,6 +484,7 @@ export interface EvidenceBundle {
   areaUIDSnapshot?: string | null;
   bundleVersion?: string | null;
   evidenceBundleHash?: string | null;
+  offchainCount?: number | null;
   crewMembers?:
     | {
         gardener?: (string | null) | Gardener;
@@ -553,9 +496,8 @@ export interface EvidenceBundle {
       }[]
     | null;
   scheduledRef?: string | null;
-  validationRef?: (string | null) | AdminValidation;
-  healthcheckBefore?: (string | null) | Activity;
-  healthcheckAfter?: (string | null) | Activity;
+  validationRef?: (string | null) | Attestation;
+  healthcheckActivity?: (string | null) | Activity;
   verification?: {
     valid?: boolean | null;
     attestationCount?: number | null;
@@ -599,42 +541,6 @@ export interface EvidenceBundle {
     | boolean
     | null;
   bundleState: 'draft' | 'built' | 'uploaded' | 'published' | 'verified' | 'failed';
-  updatedAt: string;
-  createdAt: string;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "attestations".
- */
-export interface Attestation {
-  id: string;
-  uid: string;
-  schemaName:
-    | 'ScheduledIntervention'
-    | 'AdminValidation'
-    | 'PublishedIntervention'
-    | 'AreaRegistration'
-    | 'GardenerCheckin'
-    | 'GardenerCheckout'
-    | 'GardenerReport'
-    | 'Healthcheck';
-  signedAttestation:
-    | {
-        [k: string]: unknown;
-      }
-    | unknown[]
-    | string
-    | number
-    | boolean
-    | null;
-  timestampTxHash?: string | null;
-  onchainTimestamp?: number | null;
-  chainIdSnapshot?: number | null;
-  attesterWallet?: string | null;
-  status: 'committed' | 'failed';
-  error?: string | null;
-  relatedCollection?: string | null;
-  relatedId?: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -806,10 +712,6 @@ export interface PayloadLockedDocument {
         value: string | Activity;
       } | null)
     | ({
-        relationTo: 'adminValidations';
-        value: string | AdminValidation;
-      } | null)
-    | ({
         relationTo: 'evidenceBundles';
         value: string | EvidenceBundle;
       } | null)
@@ -975,16 +877,7 @@ export interface AreasSelect<T extends boolean = true> {
         gallery?: T;
       };
   metadataHash?: T;
-  chain?:
-    | T
-    | {
-        chainUID?: T;
-        txHash?: T;
-        onchainTimestamp?: T;
-        attesterWallet?: T;
-        chainIdSnapshot?: T;
-        signedAttestation?: T;
-      };
+  attestation?: T;
   lifecycleStatus?: T;
   activities?: T;
   updatedAt?: T;
@@ -1019,12 +912,7 @@ export interface InterventionsSelect<T extends boolean = true> {
     | {
         scheduledDate?: T;
         estimatedMinutes?: T;
-        chainUID?: T;
-        txHash?: T;
-        onchainTimestamp?: T;
-        attesterWallet?: T;
-        chainIdSnapshot?: T;
-        signedAttestation?: T;
+        attestation?: T;
       };
   validation?:
     | T
@@ -1033,29 +921,7 @@ export interface InterventionsSelect<T extends boolean = true> {
         approved?: T;
         qualityScore?: T;
         feedback?: T;
-        validatorIdHashAtValidation?: T;
-        currentAttestation?: T;
-        chainUID?: T;
-        txHash?: T;
-        onchainTimestamp?: T;
-        attesterWallet?: T;
-        chainIdSnapshot?: T;
-        signedAttestation?: T;
-      };
-  execution?:
-    | T
-    | {
-        executionDate?: T;
-        healthBefore?: T;
-        healthAfter?: T;
-        evidenceBundle?: T;
-        offchainCount?: T;
-        chainUID?: T;
-        txHash?: T;
-        onchainTimestamp?: T;
-        attesterWallet?: T;
-        chainIdSnapshot?: T;
-        signedAttestation?: T;
+        attestation?: T;
       };
   revocation?:
     | T
@@ -1066,6 +932,7 @@ export interface InterventionsSelect<T extends boolean = true> {
         failedFrom?: T;
       };
   lifecycleStatus?: T;
+  publishAttestation?: T;
   activities?: T;
   updatedAt?: T;
   createdAt?: T;
@@ -1087,39 +954,14 @@ export interface ActivitiesSelect<T extends boolean = true> {
   tasksCompleted?: T;
   taskCount?: T;
   notes?: T;
-  kind?: T;
   healthScore?: T;
   assessor?: T;
-  assessorNotes?: T;
+  metadata?: T;
+  metadataHash?: T;
+  priorHealthcheck?: T;
   photo?: T;
   photoHash?: T;
   attestation?: T;
-  updatedAt?: T;
-  createdAt?: T;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "adminValidations_select".
- */
-export interface AdminValidationsSelect<T extends boolean = true> {
-  intervention?: T;
-  validator?: T;
-  approved?: T;
-  qualityScore?: T;
-  feedback?: T;
-  revoked?: T;
-  revokedAt?: T;
-  revocationTxHash?: T;
-  chain?:
-    | T
-    | {
-        chainUID?: T;
-        txHash?: T;
-        onchainTimestamp?: T;
-        attesterWallet?: T;
-        chainIdSnapshot?: T;
-        signedAttestation?: T;
-      };
   updatedAt?: T;
   createdAt?: T;
 }
@@ -1133,6 +975,7 @@ export interface EvidenceBundlesSelect<T extends boolean = true> {
   areaUIDSnapshot?: T;
   bundleVersion?: T;
   evidenceBundleHash?: T;
+  offchainCount?: T;
   crewMembers?:
     | T
     | {
@@ -1145,8 +988,7 @@ export interface EvidenceBundlesSelect<T extends boolean = true> {
       };
   scheduledRef?: T;
   validationRef?: T;
-  healthcheckBefore?: T;
-  healthcheckAfter?: T;
+  healthcheckActivity?: T;
   verification?:
     | T
     | {
