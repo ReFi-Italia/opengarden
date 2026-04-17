@@ -332,6 +332,15 @@ export const Interventions: CollectionConfig = {
 			required: true,
 		},
 		{
+			name: "tasks",
+			type: "array",
+			label: "Tasks",
+			fields: [
+				{ name: "code", type: "text", label: "Code", required: true },
+				{ name: "label", type: "text", label: "Label", required: true },
+			],
+		},
+		{
 			name: "commissioning",
 			type: "group",
 			label: "Commissioning",

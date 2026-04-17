@@ -33,7 +33,7 @@ const TYPES_REQUIRING_GARDENER: readonly ActivityType[] = [
 const TYPES_REQUIRING_PARENT: readonly ActivityType[] = ["checkout", "report"];
 const TYPES_REQUIRING_GEOLOCATION: readonly ActivityType[] = ["checkin"];
 const TYPES_REQUIRING_DURATION: readonly ActivityType[] = ["checkout"];
-const TYPES_REQUIRING_REPORT_BODY: readonly ActivityType[] = ["report"];
+const TYPES_REQUIRING_REPORT_BODY: readonly ActivityType[] = [];
 const TYPES_REQUIRING_HEALTHSCORE: readonly ActivityType[] = ["healthcheck"];
 
 const toIdStr = (field: unknown): string => {
@@ -207,6 +207,7 @@ const guardActivityInvariants: CollectionBeforeValidateHook = async ({
 
 	const hasIntervention = Boolean(data.intervention);
 	const hasArea = Boolean(data.area);
+	const dataObj = (data.data ?? {}) as Record<string, unknown>;
 
 	if (INTERVENTION_SCOPED_TYPES.includes(type)) {
 		if (!hasIntervention) {
@@ -259,6 +260,33 @@ const guardActivityInvariants: CollectionBeforeValidateHook = async ({
 				);
 			}
 		}
+
+		if (type === "report") {
+			const completedTaskCodes = dataObj.completedTaskCodes;
+			if (!Array.isArray(completedTaskCodes)) {
+				throw new APIError(
+					'Activity type "report" requires data.completedTaskCodes (array of task codes).',
+					400,
+				);
+			}
+			const validCodes = new Set<string>(
+				(
+					(intervention as { tasks?: { code?: string }[] }).tasks ?? []
+				)
+					.map((t) => t.code)
+					.filter((c): c is string => typeof c === "string"),
+			);
+			for (const code of completedTaskCodes as string[]) {
+				if (!validCodes.has(code)) {
+					throw new APIError(
+						`Task code "${code}" does not exist on this intervention.`,
+						400,
+					);
+				}
+			}
+			dataObj.taskCount = (completedTaskCodes as string[]).length;
+			data.data = dataObj;
+		}
 	}
 
 	if (type === "healthcheck") {
@@ -283,7 +311,6 @@ const guardActivityInvariants: CollectionBeforeValidateHook = async ({
 			400,
 		);
 	}
-	const dataObj = (data.data ?? {}) as Record<string, unknown>;
 
 	if (TYPES_REQUIRING_GEOLOCATION.includes(type)) {
 		if (
@@ -388,6 +415,131 @@ const queueChainCommit: CollectionAfterChangeHook = async ({
 	return doc;
 };
 
+const computeLabelBeforeChange: CollectionBeforeChangeHook = async ({
+	data,
+	req,
+	operation,
+}) => {
+	// Activities are write-once; skip on updates (label was set at create time)
+	if (operation !== "create") return data;
+	if (!data) return data;
+
+	const type = data.type as ActivityType | undefined;
+	const actData = (data.data ?? {}) as Record<string, unknown>;
+
+	// Resolve gardener → first name
+	let firstName: string | null = null;
+	if (data.gardener) {
+		const g = await req.payload
+			.findByID({
+				collection: "gardeners",
+				id: data.gardener as string,
+				depth: 0,
+				overrideAccess: true,
+			})
+			.catch(() => null);
+		firstName =
+			(g as { displayName?: string } | null)?.displayName?.split(" ")[0] ??
+			null;
+	}
+
+	// Resolve intervention → interventionId + nested area name (depth:1)
+	let interventionRef: string | null = null;
+	let nestedAreaName: string | null = null;
+	if (data.intervention) {
+		const inv = await req.payload
+			.findByID({
+				collection: "interventions",
+				id: data.intervention as string,
+				depth: 1,
+				overrideAccess: true,
+			})
+			.catch(() => null);
+		if (inv) {
+			interventionRef =
+				(inv as { interventionId?: string }).interventionId ?? null;
+			const invArea = (inv as { area?: unknown }).area;
+			if (typeof invArea === "object" && invArea) {
+				nestedAreaName = (invArea as { name?: string }).name ?? null;
+			}
+		}
+	}
+
+	// Resolve area (direct field on healthcheck)
+	let directAreaName: string | null = null;
+	if (data.area) {
+		const a = await req.payload
+			.findByID({
+				collection: "areas",
+				id: data.area as string,
+				depth: 0,
+				overrideAccess: true,
+			})
+			.catch(() => null);
+		directAreaName = (a as { name?: string } | null)?.name ?? null;
+	}
+
+	const areaName = directAreaName ?? nestedAreaName;
+
+	const parts = (...tokens: (string | null | undefined)[]) =>
+		tokens.filter(Boolean).join(" ");
+
+	let label: string;
+	switch (type) {
+		case "checkin":
+			label = parts(
+				firstName ?? "Gardener",
+				"checked in",
+				areaName ? `· ${areaName}` : null,
+				interventionRef ? `(${interventionRef})` : null,
+			);
+			break;
+		case "checkout": {
+			const mins =
+				typeof actData.actualMinutes === "number"
+					? actData.actualMinutes
+					: null;
+			label = parts(
+				firstName ?? "Gardener",
+				"checked out",
+				mins != null ? `(${mins} min)` : null,
+				areaName ? `· ${areaName}` : null,
+				interventionRef ? `(${interventionRef})` : null,
+			);
+			break;
+		}
+		case "report": {
+			const taskCount = Array.isArray(actData.completedTaskCodes)
+				? (actData.completedTaskCodes as string[]).length
+				: typeof actData.taskCount === "number"
+					? actData.taskCount
+					: null;
+			label = parts(
+				firstName ?? "Gardener",
+				"submitted report",
+				taskCount != null ? `(${taskCount} tasks)` : null,
+				areaName ? `· ${areaName}` : null,
+				interventionRef ? `(${interventionRef})` : null,
+			);
+			break;
+		}
+		case "healthcheck": {
+			const score =
+				typeof actData.healthScore === "number" ? actData.healthScore : null;
+			label = parts(
+				"Health check",
+				areaName ? `at ${areaName}` : null,
+				score != null ? `· score ${score}` : null,
+			);
+			break;
+		}
+		default:
+			label = type ?? "";
+	}
+
+	return { ...data, label };
+};
+
 // Conditional visibility helpers for admin.condition
 const showWhenType =
 	(allowed: readonly ActivityType[]) =>
@@ -400,8 +552,8 @@ export const Activities: CollectionConfig = {
 	slug: "activities",
 	admin: {
 		group: "Lifecycle",
-		useAsTitle: "id",
-		defaultColumns: ["type", "intervention", "area", "claimedTimestamp"],
+		useAsTitle: "label",
+		defaultColumns: ["label", "type", "intervention", "area", "claimedTimestamp"],
 	},
 	access: {
 		read: authenticated,
@@ -411,7 +563,7 @@ export const Activities: CollectionConfig = {
 	},
 	hooks: {
 		beforeValidate: [autoLinkParentActivity, guardActivityInvariants],
-		beforeChange: [computeHealthcheckMetadataHash],
+		beforeChange: [computeHealthcheckMetadataHash, computeLabelBeforeChange],
 		afterChange: [queueChainCommit],
 	},
 	fields: [
@@ -463,7 +615,7 @@ export const Activities: CollectionConfig = {
 			name: "data",
 			type: "json",
 			admin: {
-				description: "checkin → {latitude, longitude} · checkout → {actualMinutes} · report → {tasksCompleted, taskCount, notes} · healthcheck → {healthScore, metadata, metadataHash}",
+				description: "checkin → {latitude, longitude} · checkout → {actualMinutes} · report → {completedTaskCodes: string[], taskCount: number (derived), notes} · healthcheck → {healthScore, metadata, metadataHash}",
 			},
 		},
 		{
@@ -480,6 +632,11 @@ export const Activities: CollectionConfig = {
 			name: "attestation",
 			type: "relationship",
 			relationTo: "attestations",
+			admin: { readOnly: true },
+		},
+		{
+			name: "label",
+			type: "text",
 			admin: { readOnly: true },
 		},
 	],

@@ -408,8 +408,8 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 				initialValue: nowISO,
 			},
 			data: {
-				value: { tasksCompleted: "", taskCount: 1, notes: "" },
-				initialValue: { tasksCompleted: "", taskCount: 1, notes: "" },
+				value: { completedTaskCodes: [], notes: "" },
+				initialValue: { completedTaskCodes: [], notes: "" },
 			},
 		} as FormState;
 

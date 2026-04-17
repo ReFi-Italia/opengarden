@@ -401,6 +401,12 @@ const progIntervention = await findOrCreate(
 				interventionType: String(InterventionType.RoutineMaintenance) as "1",
 				description:
 					"Emergency debris removal following storm damage at Parco degli Acquedotti.",
+				tasks: [
+					{ code: "BRANCH_CLEAR", label: "Clear fallen branches from pathways" },
+					{ code: "DEBRIS_REMOVE", label: "Remove debris from fountain area" },
+					{ code: "FENCE_SECURE", label: "Secure unstable fence sections" },
+					{ code: "DRAIN_CLEAR", label: "Free blocked storm drain" },
+				],
 				commissioning: { sponsor: (sponsor as { id: string }).id },
 				crew: [
 					{ gardener: (gardener3 as { id: string }).id, isCrewLead: true },
@@ -475,9 +481,12 @@ await findOrCreate(
 				gardener: g3Id,
 				claimedTimestamp: T_REPORT,
 				data: {
-					tasksCompleted:
-						"Cleared fallen branches from main pathways, removed debris from fountain area, secured two unstable fence sections, freed partially blocked storm drain",
-					taskCount: 9,
+					completedTaskCodes: [
+						"BRANCH_CLEAR",
+						"DEBRIS_REMOVE",
+						"FENCE_SECURE",
+						"DRAIN_CLEAR",
+					],
 					notes:
 						"Storm drain on the south path is still partially restricted — flagged for municipal maintenance. Fence repairs are temporary; permanent fix needed within 2 weeks.",
 				},

@@ -355,8 +355,12 @@ async function dispatchSdkCall(
 			const sdkInput: GardenerReportInput = {
 				interventionUID,
 				checkoutUID,
-				tasksCompleted: String(data.tasksCompleted ?? ""),
-				taskCount: Number(data.taskCount ?? 0),
+				tasksCompleted: Array.isArray(data.completedTaskCodes)
+					? (data.completedTaskCodes as string[]).join(",")
+					: String(data.tasksCompleted ?? ""),
+				taskCount: Array.isArray(data.completedTaskCodes)
+					? (data.completedTaskCodes as string[]).length
+					: Number(data.taskCount ?? 0),
 				photosHash: photoHash,
 				notes: String(data.notes ?? ""),
 			};

@@ -394,7 +394,7 @@ export interface Activity {
   claimedTimestamp: string;
   assessor?: (string | null) | Staff;
   /**
-   * checkin → {latitude, longitude} · checkout → {actualMinutes} · report → {tasksCompleted, taskCount, notes} · healthcheck → {healthScore, metadata, metadataHash}
+   * checkin → {latitude, longitude} · checkout → {actualMinutes} · report → {completedTaskCodes: string[], taskCount: number (derived), notes} · healthcheck → {healthScore, metadata, metadataHash}
    */
   data?:
     | {
@@ -408,6 +408,7 @@ export interface Activity {
   photo?: (string | null) | Media;
   photoHash?: string | null;
   attestation?: (string | null) | Attestation;
+  label?: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -421,6 +422,13 @@ export interface Intervention {
   area: string | Area;
   interventionType: '0' | '1' | '2' | '3' | '4' | '5';
   description: string;
+  tasks?:
+    | {
+        code: string;
+        label: string;
+        id?: string | null;
+      }[]
+    | null;
   commissioning: {
     sponsor: string | Sponsor;
     commissionRefHashAtSchedule?: string | null;
@@ -887,6 +895,13 @@ export interface InterventionsSelect<T extends boolean = true> {
   area?: T;
   interventionType?: T;
   description?: T;
+  tasks?:
+    | T
+    | {
+        code?: T;
+        label?: T;
+        id?: T;
+      };
   commissioning?:
     | T
     | {
@@ -947,6 +962,7 @@ export interface ActivitiesSelect<T extends boolean = true> {
   photo?: T;
   photoHash?: T;
   attestation?: T;
+  label?: T;
   updatedAt?: T;
   createdAt?: T;
 }
