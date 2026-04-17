@@ -18,18 +18,16 @@ type RegisterAreaOutput = {
 
 /**
  * Task that drives an `areas` row from `draft` / `failed` → `registered` by
- * calling `OpenGardenClient.registerArea` and populating the `chain.*` mirror.
+ * calling `OpenGardenClient.registerArea`, writing an `attestations` row,
+ * and setting `area.attestation`.
  *
  * - Runs with Payload's job queue so the admin UI never blocks on a chain
  *   call that can exceed Vercel's serverless function timeout.
  * - Writes all mutations via `overrideAccess: true` +
  *   `context.skipLifecycleHooks: true` so the freeze-on-registered guard in
- *   `freezeRegisteredAreaInputs` stays authoritative for form-based edits
- *   but lets this handler populate the chain mirror.
+ *   `freezeRegisteredAreaInputs` stays authoritative for form-based edits.
  * - Idempotent: a retried run over an already-registered area short-circuits
- *   and returns the existing `chainUID`, so `retries.shouldRestore` (Payload's
- *   default `true`) and worst-case duplicate dispatch can't double-attest.
- * - Every attempt — success or failure — appends a `chainTransactions` row.
+ *   and returns the existing UID so worst-case duplicate dispatch can't double-attest.
  */
 export const registerAreaTask: TaskConfig<{
 	input: RegisterAreaInput;

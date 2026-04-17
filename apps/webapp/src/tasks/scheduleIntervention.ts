@@ -23,9 +23,9 @@ type ScheduleInterventionOutput = {
 
 /**
  * Task that drives an `interventions` row from `draft` / `failed` →
- * `scheduled` by calling `OpenGardenClient.scheduleIntervention` and
- * populating the `scheduling.chain.*` mirror. Idempotent on retry: an
- * already-scheduled row short-circuits to its existing UID.
+ * `scheduled` by calling `OpenGardenClient.scheduleIntervention`, writing
+ * an `attestations` row, and setting `scheduling.attestation`. Idempotent
+ * on retry: an already-scheduled row short-circuits to its existing UID.
  */
 export const scheduleInterventionTask: TaskConfig<{
 	input: ScheduleInterventionInput;

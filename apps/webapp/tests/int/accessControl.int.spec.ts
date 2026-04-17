@@ -34,13 +34,7 @@ const seedUser = async (role: UserRole) => {
 };
 
 interface AccessExpectation {
-	collection:
-		| "sponsors"
-		| "staff"
-		| "gardeners"
-		| "areas"
-		| "adminValidations"
-		| "healthchecks";
+	collection: "sponsors" | "staff" | "gardeners" | "areas";
 	data: Record<string, unknown>;
 	allowedRoles: UserRole[];
 }

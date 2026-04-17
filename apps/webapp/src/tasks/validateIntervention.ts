@@ -20,11 +20,11 @@ type ValidateInterventionOutput = {
 
 /**
  * Task that drives an `interventions` row from `in_progress` →
- * `validated` by calling `OpenGardenClient.validateIntervention` and
- * populating the `validation.chain.*` mirror. Assumes the validation
- * input fields (`approved`, `qualityScore`, `feedback`, `validator`)
- * have already been written by the validate server action via
- * `skipLifecycleHooks: true`.
+ * `validated` by calling `OpenGardenClient.validateIntervention`, writing
+ * an `attestations` row, and setting `validation.attestation`. Assumes
+ * the validation input fields (`approved`, `qualityScore`, `feedback`,
+ * `validator`) have already been written by the validate server action
+ * via `skipLifecycleHooks: true`.
  */
 export const validateInterventionTask: TaskConfig<{
 	input: ValidateInterventionInput;

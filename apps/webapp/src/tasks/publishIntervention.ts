@@ -21,16 +21,16 @@ type PublishInterventionOutput = {
 
 /**
  * Task that drives an `interventions` row from `validated` →
- * `published` by calling `OpenGardenClient.publishIntervention` and
- * populating the `execution.chain.*` mirror. Also flips the linked
- * `evidenceBundles` row from `uploaded` → `published` so the two
- * lifecycles stay coherent.
+ * `published` by calling `OpenGardenClient.publishIntervention`, writing
+ * an `attestations` row, and setting `publishAttestation`. Also flips
+ * the linked `evidenceBundles` row from `uploaded` → `published` so
+ * the two lifecycles stay coherent.
  *
- * Preconditions (server action / upstream flows must set):
- * - `execution.executionDate`, `execution.healthBefore`,
- *   `execution.healthAfter`, `execution.offchainCount`
- * - `execution.evidenceBundle` pointing at a bundle row with
- *   `bundleState === "uploaded"` and `evidenceBundleHash` set
+ * Preconditions:
+ * - `scheduling.attestation` set (scheduleIntervention task)
+ * - `validation.attestation` set (validateIntervention task)
+ * - Crew activities (checkin/checkout/report) all have committed attestations
+ * - An `evidenceBundles` row in `bundleState === "uploaded"` with `evidenceBundleHash` set
  */
 export const publishInterventionTask: TaskConfig<{
 	input: PublishInterventionInput;

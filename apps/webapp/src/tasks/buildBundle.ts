@@ -22,17 +22,16 @@ type BuildBundleOutput = {
 /**
  * Task that drives an `evidenceBundles` row from `draft` →
  * `built` → `uploaded` by rehydrating every off-chain attestation
- * from its parent collection's `chain.*` mirror, calling
+ * from the `attestations` relationships, calling
  * `OpenGardenClient.buildEvidenceBundle`, uploading the resulting
  * JSON via the configured storage adapter, and snapshotting the
  * bundle hash + metadata onto the row.
  *
  * Preconditions (upstream tasks must have populated):
- * - `intervention.scheduling.attestation` (scheduleIntervention)
- * - `intervention.validation.attestation` (validateIntervention)
- * - One checkin, checkout, report activity row per crew member,
- *   each with `attestation` populated (commitActivityChain)
- * - Optionally one `healthcheck` activity row with `attestation` populated
+ * - `intervention.scheduling.attestation` (scheduleIntervention task)
+ * - `intervention.validation.attestation` (validateIntervention task)
+ * - One checkin, checkout, report activity per crew member with `attestation` set (commitActivityChain task)
+ * - Optionally one `healthcheck` activity with `attestation` set
  */
 export const buildBundleTask: TaskConfig<{
 	input: BuildBundleInput;

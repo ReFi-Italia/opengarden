@@ -37,11 +37,10 @@ type CommitActivityChainOutput = {
  * row, short-circuit.
  *
  * Preconditions by type:
- * - `checkin` — parent intervention must have `scheduling.chain.chainUID`
+ * - `checkin` — parent intervention must have `scheduling.attestation.uid` (populated by scheduleIntervention task)
  * - `checkout` — `parentActivity` (the checkin) must have a committed attestation
  * - `report` — `parentActivity` (the checkout) must have a committed attestation
- * - `interventionHealthcheck` — parent intervention must have an area with a registration chain UID
- * - `areaHealthcheck` — parent area must have a registration chain UID
+ * - `healthcheck` — parent area must have `attestation.uid` (populated by registerArea task)
  */
 export const commitActivityChainTask: TaskConfig<{
 	input: CommitActivityChainInput;
@@ -100,7 +99,7 @@ export const commitActivityChainTask: TaskConfig<{
 
 			const { result, schemaName } = await dispatchSdkCall(
 				type,
-				activity,
+				activity as unknown as Record<string, unknown>,
 				context,
 				photoHash,
 			);
@@ -258,12 +257,18 @@ async function dispatchSdkCall(
 			if (typeof intervention !== "object" || intervention === null) {
 				throw new Error("Checkin activity has no resolved intervention.");
 			}
-			const interventionUID = (
-				intervention as { scheduling?: { chainUID?: string } }
-			).scheduling?.chainUID;
+			const schedAtt = (
+				intervention as { scheduling?: { attestation?: unknown } }
+			).scheduling?.attestation;
+			const interventionUID =
+				typeof schedAtt === "object" &&
+				schedAtt !== null &&
+				typeof (schedAtt as { uid?: unknown }).uid === "string"
+					? (schedAtt as { uid: string }).uid
+					: null;
 			if (!interventionUID) {
 				throw new Error(
-					`Intervention ${(intervention as { id: string }).id} has no scheduling.chainUID; schedule it first.`,
+					`Intervention ${(intervention as { id: string }).id} has no scheduling.attestation.uid; schedule it first.`,
 				);
 			}
 			if (
@@ -319,11 +324,17 @@ async function dispatchSdkCall(
 			if (typeof intervention !== "object" || intervention === null) {
 				throw new Error("Report activity has no resolved intervention.");
 			}
-			const interventionUID = (
-				intervention as { scheduling?: { chainUID?: string } }
-			).scheduling?.chainUID;
+			const schedAtt2 = (
+				intervention as { scheduling?: { attestation?: unknown } }
+			).scheduling?.attestation;
+			const interventionUID =
+				typeof schedAtt2 === "object" &&
+				schedAtt2 !== null &&
+				typeof (schedAtt2 as { uid?: unknown }).uid === "string"
+					? (schedAtt2 as { uid: string }).uid
+					: null;
 			if (!interventionUID) {
-				throw new Error("Intervention has no scheduling.chainUID.");
+				throw new Error("Intervention has no scheduling.attestation.uid.");
 			}
 			const parent = activity.parentActivity;
 			if (typeof parent !== "object" || parent === null) {
