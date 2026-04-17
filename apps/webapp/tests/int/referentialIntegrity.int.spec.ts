@@ -181,6 +181,108 @@ describe("Referential integrity walkthrough", () => {
 		expect(reloaded.validation?.qualityScore).toBe(9);
 	});
 
+	it("healthcheck with explicit area persists", async () => {
+		const area = await payload.create({
+			collection: "areas",
+			data: {
+				areaId: uniqueId("AREA"),
+				name: "Standalone check area",
+				municipality: "Roma",
+				areaType: String(AreaType.PublicGreenSpace) as "1",
+				latitude: 41.9,
+				longitude: 12.5,
+				lifecycleStatus: "registered",
+			},
+		});
+
+		const hc = await payload.create({
+			collection: "activities",
+			data: {
+				type: "healthcheck",
+				area: area.id,
+				claimedTimestamp: new Date().toISOString(),
+				data: { healthScore: 7 },
+			},
+		});
+
+		expect(hc.area).toBeTruthy();
+		const areaId = typeof hc.area === "object" ? (hc.area as { id: unknown }).id : hc.area;
+		expect(areaId).toBe(area.id);
+	});
+
+	it("healthcheck derives area from intervention when area omitted", async () => {
+		const sponsor = await payload.create({
+			collection: "sponsors",
+			data: {
+				displayName: "Test Sponsor",
+				kind: "municipal",
+				canonicalKey: { contractNumber: uniqueId("CT") },
+			},
+		});
+		const area = await payload.create({
+			collection: "areas",
+			data: {
+				areaId: uniqueId("AREA"),
+				name: "Auto-link area",
+				municipality: "Roma",
+				areaType: String(AreaType.PublicGreenSpace) as "1",
+				latitude: 41.9,
+				longitude: 12.5,
+				lifecycleStatus: "registered",
+			},
+		});
+		const intervention = await payload.create({
+			collection: "interventions",
+			data: {
+				interventionId: uniqueId("INT"),
+				area: area.id,
+				interventionType: String(InterventionType.RoutineMaintenance) as "1",
+				description: "Healthcheck auto-link test",
+				commissioning: { sponsor: sponsor.id },
+				lifecycleStatus: "draft",
+			},
+		});
+		await payload.update({
+			collection: "interventions",
+			id: intervention.id,
+			data: { lifecycleStatus: "scheduled" },
+			context: { skipLifecycleHooks: true },
+		});
+		await payload.update({
+			collection: "interventions",
+			id: intervention.id,
+			data: { lifecycleStatus: "in_progress" },
+			context: { skipLifecycleHooks: true },
+		});
+
+		const hc = await payload.create({
+			collection: "activities",
+			data: {
+				type: "healthcheck",
+				intervention: intervention.id,
+				claimedTimestamp: new Date().toISOString(),
+				data: { healthScore: 6 },
+				// no explicit area — should be derived from intervention
+			},
+		});
+
+		const areaId = typeof hc.area === "object" ? (hc.area as { id: unknown }).id : hc.area;
+		expect(areaId).toBe(area.id);
+	});
+
+	it("rejects healthcheck with no area and no intervention", async () => {
+		await expect(
+			payload.create({
+				collection: "activities",
+				data: {
+					type: "healthcheck",
+					claimedTimestamp: new Date().toISOString(),
+					data: { healthScore: 5 },
+				},
+			}),
+		).rejects.toThrow(/requires an area/i);
+	});
+
 	it("rejects more than one crew lead", async () => {
 		const sponsor = await payload.create({
 			collection: "sponsors",

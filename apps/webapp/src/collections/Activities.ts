@@ -36,6 +36,12 @@ const TYPES_REQUIRING_DURATION: readonly ActivityType[] = ["checkout"];
 const TYPES_REQUIRING_REPORT_BODY: readonly ActivityType[] = ["report"];
 const TYPES_REQUIRING_HEALTHSCORE: readonly ActivityType[] = ["healthcheck"];
 
+const toIdStr = (field: unknown): string => {
+	if (field && typeof field === "object" && "id" in field)
+		return String((field as { id?: string | number }).id ?? "");
+	return String(field ?? "");
+};
+
 // Runs before guardActivityInvariants so the "parentActivity required" guard sees the resolved value.
 const autoLinkParentActivity: CollectionBeforeValidateHook = async ({
 	data,
@@ -43,6 +49,27 @@ const autoLinkParentActivity: CollectionBeforeValidateHook = async ({
 }) => {
 	if (!data) return data;
 	const type = data.type as ActivityType | undefined;
+
+	if (type === "healthcheck" && !data.area && data.intervention) {
+		const intervention = await req.payload
+			.findByID({
+				collection: "interventions",
+				id: data.intervention as string | number,
+				depth: 1,
+				req,
+				overrideAccess: true,
+			})
+			.catch(() => null);
+		const areaRef = (intervention as { area?: unknown } | null)?.area;
+		if (areaRef) {
+			data.area =
+				typeof areaRef === "object" && areaRef !== null && "id" in areaRef
+					? (areaRef as { id: unknown }).id
+					: areaRef;
+		}
+		return data;
+	}
+
 	if (type !== "checkout" && type !== "report") return data;
 	if (data.parentActivity) return data; // already supplied
 
@@ -97,13 +124,9 @@ const autoLinkParentActivity: CollectionBeforeValidateHook = async ({
 		]);
 
 		const usedCheckinIds = new Set(
-			checkouts.docs.map((co) => {
-				const p = (co as { parentActivity?: string | number | { id?: string | number } }).parentActivity;
-				if (typeof p === "object" && p !== null) {
-					return String((p as { id?: string | number }).id ?? "");
-				}
-				return String(p ?? "");
-			}),
+			checkouts.docs.map((co) =>
+				toIdStr((co as { parentActivity?: unknown }).parentActivity),
+			),
 		);
 
 		const openCheckin = checkins.docs.find(
@@ -152,13 +175,9 @@ const autoLinkParentActivity: CollectionBeforeValidateHook = async ({
 		]);
 
 		const usedCheckoutIds = new Set(
-			reports.docs.map((r) => {
-				const p = (r as { parentActivity?: string | number | { id?: string | number } }).parentActivity;
-				if (typeof p === "object" && p !== null) {
-					return String((p as { id?: string | number }).id ?? "");
-				}
-				return String(p ?? "");
-			}),
+			reports.docs.map((r) =>
+				toIdStr((r as { parentActivity?: unknown }).parentActivity),
+			),
 		);
 
 		const openCheckout = checkouts.docs.find(
@@ -242,11 +261,10 @@ const guardActivityInvariants: CollectionBeforeValidateHook = async ({
 		}
 	}
 
-	// healthcheck requires either intervention or area (not necessarily both)
 	if (type === "healthcheck") {
-		if (!hasIntervention && !hasArea) {
+		if (!hasArea) {
 			throw new APIError(
-				'Activity type "healthcheck" requires an intervention or an area.',
+				'Activity type "healthcheck" requires an area. Provide one explicitly, or link an intervention whose area is set.',
 				400,
 			);
 		}
@@ -317,11 +335,13 @@ const computeHealthcheckMetadataHash: CollectionBeforeChangeHook = async ({
 
 	const dataObj = (data.data ?? {}) as Record<string, unknown>;
 	const metadata = dataObj.metadata as Record<string, unknown> | null | undefined;
-	if (!metadata || Object.keys(metadata).length === 0) {
+	const metaKeys = metadata ? Object.keys(metadata) : [];
+	if (!metaKeys.length) {
 		return { ...data, data: { ...dataObj, metadataHash: null } };
 	}
 
-	const canonical = JSON.stringify(metadata, Object.keys(metadata).sort());
+	metaKeys.sort();
+	const canonical = JSON.stringify(metadata, metaKeys);
 	const hash = keccak256(toUtf8Bytes(canonical));
 	return { ...data, data: { ...dataObj, metadataHash: hash } };
 };
