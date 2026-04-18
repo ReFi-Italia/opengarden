@@ -224,93 +224,58 @@ export class OpenGardenClient {
 		return this.graphqlUrl;
 	}
 
+	private async attestOnChain(
+		schemaUID: string,
+		encodedData: string,
+		recipient: string,
+		refUID: string,
+	): Promise<OnChainAttestationResult> {
+		const tx = await this.eas.attest({
+			schema: schemaUID,
+			data: { recipient, data: encodedData, expirationTime: 0n, revocable: false, refUID, value: 0n },
+		});
+		const uid = await tx.wait();
+		const receipt = tx.receipt;
+		if (!receipt) {
+			throw new OpenGardenError(
+				OpenGardenErrorCode.SIGNER_ERROR,
+				"Transaction receipt unavailable after wait()",
+			);
+		}
+		return { uid, txHash: receipt.hash, receipt };
+	}
+
+	private async gqlFetch<T>(query: string, variables: Record<string, string>): Promise<T[]> {
+		const response = await fetch(this.requireGraphqlUrl(), {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ query, variables }),
+		});
+		const json = (await response.json()) as { data?: { attestations: T[] } };
+		return json.data?.attestations ?? [];
+	}
+
 	// --- On-Chain Writes ---
 
 	async registerArea(
 		data: AreaRegistrationInput,
 	): Promise<OnChainAttestationResult> {
 		const schemaUID = this.requireSchemaUID("AreaRegistration");
-		const encodedData = encodeAreaRegistration(data);
-
-		const tx = await this.eas.attest({
-			schema: schemaUID,
-			data: {
-				recipient: ZERO_ADDRESS,
-				data: encodedData,
-				expirationTime: 0n,
-				revocable: false,
-				refUID: ZERO_BYTES32,
-				value: 0n,
-			},
-		});
-
-		const uid = await tx.wait();
-		const receipt = tx.receipt;
-		if (!receipt) {
-			throw new OpenGardenError(
-				OpenGardenErrorCode.SIGNER_ERROR,
-				"Transaction receipt unavailable after wait()",
-			);
-		}
-		return { uid, txHash: receipt.hash, receipt };
+		return this.attestOnChain(schemaUID, encodeAreaRegistration(data), ZERO_ADDRESS, ZERO_BYTES32);
 	}
 
 	async publishIntervention(
 		data: PublishedInterventionInput,
 	): Promise<OnChainAttestationResult> {
 		const schemaUID = this.requireSchemaUID("PublishedIntervention");
-		const encodedData = encodePublishedIntervention(data);
-
-		const tx = await this.eas.attest({
-			schema: schemaUID,
-			data: {
-				recipient: ZERO_ADDRESS,
-				data: encodedData,
-				expirationTime: 0n,
-				revocable: false,
-				refUID: data.areaUID,
-				value: 0n,
-			},
-		});
-
-		const uid = await tx.wait();
-		const receipt = tx.receipt;
-		if (!receipt) {
-			throw new OpenGardenError(
-				OpenGardenErrorCode.SIGNER_ERROR,
-				"Transaction receipt unavailable after wait()",
-			);
-		}
-		return { uid, txHash: receipt.hash, receipt };
+		return this.attestOnChain(schemaUID, encodePublishedIntervention(data), ZERO_ADDRESS, data.areaUID);
 	}
 
 	async mintMilestone(
 		data: GardenerMilestoneInput,
 	): Promise<OnChainAttestationResult> {
 		const schemaUID = this.requireSchemaUID("GardenerMilestone");
-		const encodedData = encodeGardenerMilestone(data);
-
-		const tx = await this.eas.attest({
-			schema: schemaUID,
-			data: {
-				recipient: data.recipient,
-				data: encodedData,
-				expirationTime: 0n,
-				revocable: false,
-				refUID: ZERO_BYTES32,
-				value: 0n,
-			},
-		});
-
-		const uid = await tx.wait();
-		const receipt = tx.receipt;
-		if (!receipt) {
-			throw new OpenGardenError(
-				OpenGardenErrorCode.SIGNER_ERROR,
-				"Transaction receipt unavailable after wait()",
-			);
-		}
-		return { uid, txHash: receipt.hash, receipt };
+		return this.attestOnChain(schemaUID, encodeGardenerMilestone(data), data.recipient, ZERO_BYTES32);
 	}
 
 	// --- Timestamped Off-Chain Writes ---
@@ -635,40 +600,17 @@ export class OpenGardenClient {
         }
       }
     `;
-
-		const response = await fetch(this.requireGraphqlUrl(), {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				query,
-				variables: { schemaId: schemaUID, refUID: areaUID },
-			}),
-		});
-
-		const json = (await response.json()) as {
-			data?: {
-				attestations: Array<{
-					id: string;
-					attester: string;
-					recipient: string;
-					time: string;
-					data: string;
-					refUID: string;
-				}>;
-			};
-		};
-		const attestations = json.data?.attestations ?? [];
-
-		return attestations.map((a) => {
-			const decoded = decodePublishedIntervention(a.data);
-			return {
-				uid: a.id,
-				...decoded,
-				attester: a.attester,
-				recipient: a.recipient,
-				time: BigInt(a.time),
-			};
-		});
+		const items = await this.gqlFetch<{ id: string; attester: string; recipient: string; time: string; data: string; refUID: string }>(
+			query,
+			{ schemaId: schemaUID, refUID: areaUID },
+		);
+		return items.map((a) => ({
+			uid: a.id,
+			...decodePublishedIntervention(a.data),
+			attester: a.attester,
+			recipient: a.recipient,
+			time: BigInt(a.time),
+		}));
 	}
 
 	async getGardenerMilestones(address: string): Promise<Milestone[]> {
@@ -684,39 +626,17 @@ export class OpenGardenClient {
         }
       }
     `;
-
-		const response = await fetch(this.requireGraphqlUrl(), {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				query,
-				variables: { schemaId: schemaUID, recipient: address },
-			}),
-		});
-
-		const json = (await response.json()) as {
-			data?: {
-				attestations: Array<{
-					id: string;
-					attester: string;
-					recipient: string;
-					time: string;
-					data: string;
-				}>;
-			};
-		};
-		const attestations = json.data?.attestations ?? [];
-
-		return attestations.map((a) => {
-			const decoded = decodeGardenerMilestone(a.data);
-			return {
-				uid: a.id,
-				...decoded,
-				recipient: a.recipient,
-				attester: a.attester,
-				time: BigInt(a.time),
-			};
-		});
+		const items = await this.gqlFetch<{ id: string; attester: string; recipient: string; time: string; data: string }>(
+			query,
+			{ schemaId: schemaUID, recipient: address },
+		);
+		return items.map((a) => ({
+			uid: a.id,
+			...decodeGardenerMilestone(a.data),
+			recipient: a.recipient,
+			attester: a.attester,
+			time: BigInt(a.time),
+		}));
 	}
 
 	async getScheduledInterventions(filter: {
@@ -761,35 +681,17 @@ export class OpenGardenClient {
       }
     `;
 
-		const response = await fetch(this.requireGraphqlUrl(), {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ query, variables }),
-		});
-
-		const json = (await response.json()) as {
-			data?: {
-				attestations: Array<{
-					id: string;
-					attester: string;
-					recipient: string;
-					time: string;
-					data: string;
-				}>;
-			};
-		};
-		const attestations = json.data?.attestations ?? [];
-
-		return attestations.map((a) => {
-			const decoded = decodeScheduledIntervention(a.data);
-			return {
-				uid: a.id,
-				...decoded,
-				attester: a.attester,
-				recipient: a.recipient,
-				time: BigInt(a.time),
-			};
-		});
+		const items = await this.gqlFetch<{ id: string; attester: string; recipient: string; time: string; data: string }>(
+			query,
+			variables,
+		);
+		return items.map((a) => ({
+			uid: a.id,
+			...decodeScheduledIntervention(a.data),
+			attester: a.attester,
+			recipient: a.recipient,
+			time: BigInt(a.time),
+		}));
 	}
 
 	async getAreaHealthchecks(areaUID: string): Promise<Healthcheck[]> {
@@ -804,37 +706,16 @@ export class OpenGardenClient {
         }
       }
     `;
-
-		const response = await fetch(this.requireGraphqlUrl(), {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				query,
-				variables: { schemaId: schemaUID, refUID: areaUID },
-			}),
-		});
-
-		const json = (await response.json()) as {
-			data?: {
-				attestations: Array<{
-					id: string;
-					attester: string;
-					time: string;
-					data: string;
-				}>;
-			};
-		};
-		const attestations = json.data?.attestations ?? [];
-
-		return attestations.map((a) => {
-			const decoded = decodeHealthcheck(a.data);
-			return {
-				uid: a.id,
-				...decoded,
-				attester: a.attester,
-				time: BigInt(a.time),
-			};
-		});
+		const items = await this.gqlFetch<{ id: string; attester: string; time: string; data: string }>(
+			query,
+			{ schemaId: schemaUID, refUID: areaUID },
+		);
+		return items.map((a) => ({
+			uid: a.id,
+			...decodeHealthcheck(a.data),
+			attester: a.attester,
+			time: BigInt(a.time),
+		}));
 	}
 
 	async getAreaCitizenFeedback(areaUID: string): Promise<CitizenFeedback[]> {
@@ -849,37 +730,16 @@ export class OpenGardenClient {
         }
       }
     `;
-
-		const response = await fetch(this.requireGraphqlUrl(), {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				query,
-				variables: { schemaId: schemaUID, refUID: areaUID },
-			}),
-		});
-
-		const json = (await response.json()) as {
-			data?: {
-				attestations: Array<{
-					id: string;
-					attester: string;
-					time: string;
-					data: string;
-				}>;
-			};
-		};
-		const attestations = json.data?.attestations ?? [];
-
-		return attestations.map((a) => {
-			const decoded = decodeCitizenFeedback(a.data);
-			return {
-				uid: a.id,
-				...decoded,
-				attester: a.attester,
-				time: BigInt(a.time),
-			};
-		});
+		const items = await this.gqlFetch<{ id: string; attester: string; time: string; data: string }>(
+			query,
+			{ schemaId: schemaUID, refUID: areaUID },
+		);
+		return items.map((a) => ({
+			uid: a.id,
+			...decodeCitizenFeedback(a.data),
+			attester: a.attester,
+			time: BigInt(a.time),
+		}));
 	}
 
 	// --- Evidence Bundle ---

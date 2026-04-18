@@ -5,6 +5,7 @@ import {
 	getOpenGardenContext,
 	type OpenGardenContext,
 } from "../lib/openGardenClient";
+import { createAttestationRecord } from "./taskHelpers";
 
 type RegisterAreaInput = {
 	/** Payload document id of the `areas` row to register on-chain. */
@@ -84,15 +85,6 @@ export const registerAreaTask: TaskConfig<{
 			);
 		}
 
-		await payload.update({
-			collection: "areas",
-			id: areaId,
-			data: { lifecycleStatus: "registering" },
-			overrideAccess: true,
-			context: { skipLifecycleHooks: true },
-			req,
-		});
-
 		const sdkInput: AreaRegistrationInput = {
 			areaId: area.areaId,
 			latitude: area.coordinates?.[1] ?? 0,
@@ -111,21 +103,15 @@ export const registerAreaTask: TaskConfig<{
 			context = await getOpenGardenContext(payload);
 			const result = await context.client.registerArea(sdkInput);
 
-			const attestationRow = await payload.create({
-				collection: "attestations",
-				data: {
-					uid: result.uid,
-					schemaName: "AreaRegistration",
-					signedAttestation: {} as unknown as Record<string, unknown>,
-					timestampTxHash: result.txHash,
-					chainIdSnapshot: context.chainId,
-					attesterWallet: context.attesterWallet,
-					status: "committed",
-					relatedCollection: "areas",
-					relatedId: areaId,
-				},
-				overrideAccess: true,
-				req,
+			const attestationRow = await createAttestationRecord(req, {
+				uid: result.uid,
+				schemaName: "AreaRegistration",
+				signedAttestation: {} as unknown as Record<string, unknown>,
+				timestampTxHash: result.txHash,
+				chainIdSnapshot: context.chainId,
+				attesterWallet: context.attesterWallet,
+				relatedCollection: "areas",
+				relatedId: areaId,
 			});
 
 			await payload.update({

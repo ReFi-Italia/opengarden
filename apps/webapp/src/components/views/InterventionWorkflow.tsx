@@ -3,6 +3,7 @@ import type {
 	DocumentViewServerProps,
 	Field,
 	FormState,
+	Payload,
 } from "payload";
 import { createClientFields } from "payload";
 import { importMap } from "@/app/(payload)/admin/importMap.js";
@@ -48,6 +49,41 @@ const STAGE_INPUTS: Record<string, readonly string[]> = {
 	scheduling: ["scheduledDate", "estimatedMinutes"],
 	validation: ["validator", "approved", "qualityScore", "feedback"],
 };
+
+async function findLatestHealthcheckActivity(
+	payload: Payload,
+	where: Record<string, { equals: string }>,
+): Promise<Array<Record<string, unknown>>> {
+	const result = await payload
+		.find({
+			collection: "activities",
+			where: {
+				and: [{ type: { equals: "healthcheck" } }, ...Object.entries(where).map(([k, v]) => ({ [k]: v }))],
+			},
+			depth: 1,
+			limit: 1,
+			sort: "-claimedTimestamp",
+			overrideAccess: true,
+		})
+		.catch(() => ({ docs: [] as Array<Record<string, unknown>> }));
+	return result.docs as Array<Record<string, unknown>>;
+}
+
+function makeCrewFormState(
+	type: string,
+	interventionId: string | number,
+	gardenerId: string | null,
+	nowISO: string,
+	data: Record<string, unknown>,
+): FormState {
+	return {
+		type: { value: type, initialValue: type },
+		intervention: { value: String(interventionId), initialValue: String(interventionId) },
+		gardener: { value: gardenerId, initialValue: gardenerId },
+		claimedTimestamp: { value: nowISO, initialValue: nowISO },
+		data: { value: data, initialValue: data },
+	} as FormState;
+}
 
 function findGroupFields(
 	fields: readonly Field[],
@@ -316,25 +352,13 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 
 		const nowISO = new Date().toISOString();
 
-		checkinInitialState = {
-			type: { value: "checkin", initialValue: "checkin" },
-			intervention: {
-				value: String(id),
-				initialValue: String(id),
-			},
-			gardener: {
-				value: firstGardenerId || null,
-				initialValue: firstGardenerId || null,
-			},
-			claimedTimestamp: {
-				value: nowISO,
-				initialValue: nowISO,
-			},
-			data: {
-				value: { latitude: areaLat ?? 0, longitude: areaLng ?? 0 },
-				initialValue: { latitude: areaLat ?? 0, longitude: areaLng ?? 0 },
-			},
-		} as FormState;
+		checkinInitialState = makeCrewFormState(
+			"checkin",
+			id,
+			firstGardenerId || null,
+			nowISO,
+			{ latitude: areaLat ?? 0, longitude: areaLng ?? 0 },
+		);
 
 		// ─── Checkout defaults ──────────────────────────────────────────
 		// parentActivity auto-linked by autoLinkParentActivity hook server-side.
@@ -373,70 +397,34 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 		}
 
 		checkoutClientFields = pickFields(CHECKOUT_FORM_FIELDS);
-		checkoutInitialState = {
-			type: { value: "checkout", initialValue: "checkout" },
-			intervention: {
-				value: String(id),
-				initialValue: String(id),
-			},
-			gardener: {
-				value: firstGardenerId || null,
-				initialValue: firstGardenerId || null,
-			},
-			claimedTimestamp: {
-				value: nowISO,
-				initialValue: nowISO,
-			},
-			data: {
-				value: { actualMinutes: defaultActualMinutes },
-				initialValue: { actualMinutes: defaultActualMinutes },
-			},
-		} as FormState;
+		checkoutInitialState = makeCrewFormState(
+			"checkout",
+			id,
+			firstGardenerId || null,
+			nowISO,
+			{ actualMinutes: defaultActualMinutes },
+		);
 
 		// ─── Report defaults ─────────────────────────────────────────────
 		// parentActivity auto-linked by autoLinkParentActivity hook server-side.
 		reportClientFields = pickFields(REPORT_FORM_FIELDS);
-		reportInitialState = {
-			type: { value: "report", initialValue: "report" },
-			intervention: {
-				value: String(id),
-				initialValue: String(id),
-			},
-			gardener: {
-				value: firstGardenerId || null,
-				initialValue: firstGardenerId || null,
-			},
-			claimedTimestamp: {
-				value: nowISO,
-				initialValue: nowISO,
-			},
-			data: {
-				value: { completedTaskCodes: [], notes: "" },
-				initialValue: { completedTaskCodes: [], notes: "" },
-			},
-		} as FormState;
+		reportInitialState = makeCrewFormState(
+			"report",
+			id,
+			firstGardenerId || null,
+			nowISO,
+			{ completedTaskCodes: [], notes: "" },
+		);
 
 		// ─── Healthcheck defaults (single assessment, hide once recorded) ──
 		healthcheckClientFields = pickFields(HEALTHCHECK_FORM_FIELDS);
 
-		const existingHcResult = await payload
-			.find({
-				collection: "activities",
-				where: {
-					and: [
-						{ intervention: { equals: String(id) } },
-						{ type: { equals: "healthcheck" } },
-					],
-				},
-				depth: 1,
-				limit: 1,
-				sort: "-claimedTimestamp",
-				overrideAccess: true,
-			})
-			.catch(() => ({ docs: [] as Array<Record<string, unknown>> }));
+		const existingHcDocs = await findLatestHealthcheckActivity(payload, {
+			intervention: { equals: String(id) },
+		});
 
 		// Render only if no healthcheck recorded for this intervention yet
-		healthcheckCanRender = existingHcResult.docs.length === 0;
+		healthcheckCanRender = existingHcDocs.length === 0;
 
 		// Pre-fill baseline from the latest committed healthcheck for this area
 		let baselineMetadata: Record<string, unknown> | null = null;
@@ -445,22 +433,10 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 				? (inv.area as { id?: string | number }).id
 				: inv?.area;
 			if (areaId) {
-				const priorHcResult = await payload
-					.find({
-						collection: "activities",
-						where: {
-							and: [
-								{ area: { equals: String(areaId) } },
-								{ type: { equals: "healthcheck" } },
-							],
-						},
-						depth: 1,
-						limit: 1,
-						sort: "-claimedTimestamp",
-						overrideAccess: true,
-					})
-					.catch(() => ({ docs: [] as Array<Record<string, unknown>> }));
-				const priorHc = priorHcResult.docs[0];
+				const priorHcDocs = await findLatestHealthcheckActivity(payload, {
+					area: { equals: String(areaId) },
+				});
+				const priorHc = priorHcDocs[0];
 				if (priorHc) {
 					const priorAtt = priorHc.attestation as { uid?: string } | null;
 					const priorData = priorHc.data as { healthScore?: number } | null;

@@ -287,9 +287,12 @@ function getFieldValue(decoded: DecodedField[], name: string): unknown {
 		: val;
 }
 
+function decodeSchema(schemaString: string, data: string): DecodedField[] {
+	return newSchemaEncoder(schemaString).decodeData(data) as unknown as DecodedField[];
+}
+
 export function decodeAreaRegistration(data: string) {
-	const encoder = newSchemaEncoder(SCHEMA_STRINGS.AreaRegistration);
-	const decoded = encoder.decodeData(data) as unknown as DecodedField[];
+	const decoded = decodeSchema(SCHEMA_STRINGS.AreaRegistration, data);
 	return {
 		areaId: getFieldValue(decoded, "areaId") as string,
 		latitude: fromMicrodegrees(Number(getFieldValue(decoded, "latitude"))),
@@ -302,8 +305,7 @@ export function decodeAreaRegistration(data: string) {
 }
 
 export function decodePublishedIntervention(data: string) {
-	const encoder = newSchemaEncoder(SCHEMA_STRINGS.PublishedIntervention);
-	const decoded = encoder.decodeData(data) as unknown as DecodedField[];
+	const decoded = decodeSchema(SCHEMA_STRINGS.PublishedIntervention, data);
 	return {
 		areaUID: String(getFieldValue(decoded, "areaUID")),
 		interventionId: getFieldValue(decoded, "interventionId") as string,
@@ -321,8 +323,7 @@ export function decodePublishedIntervention(data: string) {
 }
 
 export function decodeGardenerMilestone(data: string) {
-	const encoder = newSchemaEncoder(SCHEMA_STRINGS.GardenerMilestone);
-	const decoded = encoder.decodeData(data) as unknown as DecodedField[];
+	const decoded = decodeSchema(SCHEMA_STRINGS.GardenerMilestone, data);
 	return {
 		milestoneLevel: Number(
 			getFieldValue(decoded, "milestoneLevel"),
@@ -339,8 +340,7 @@ export function decodeGardenerMilestone(data: string) {
 }
 
 export function decodeScheduledIntervention(data: string) {
-	const encoder = newSchemaEncoder(SCHEMA_STRINGS.ScheduledIntervention);
-	const decoded = encoder.decodeData(data) as unknown as DecodedField[];
+	const decoded = decodeSchema(SCHEMA_STRINGS.ScheduledIntervention, data);
 	return {
 		areaUID: String(getFieldValue(decoded, "areaUID")),
 		interventionId: getFieldValue(decoded, "interventionId") as string,
@@ -356,8 +356,7 @@ export function decodeScheduledIntervention(data: string) {
 }
 
 export function decodeHealthcheck(data: string) {
-	const encoder = newSchemaEncoder(SCHEMA_STRINGS.Healthcheck);
-	const decoded = encoder.decodeData(data) as unknown as DecodedField[];
+	const decoded = decodeSchema(SCHEMA_STRINGS.Healthcheck, data);
 	return {
 		interventionUID: String(getFieldValue(decoded, "interventionUID")),
 		healthScore: Number(getFieldValue(decoded, "healthScore")),
@@ -368,8 +367,7 @@ export function decodeHealthcheck(data: string) {
 }
 
 export function decodeCitizenFeedback(data: string) {
-	const encoder = newSchemaEncoder(SCHEMA_STRINGS.CitizenFeedback);
-	const decoded = encoder.decodeData(data) as unknown as DecodedField[];
+	const decoded = decodeSchema(SCHEMA_STRINGS.CitizenFeedback, data);
 	return {
 		areaUID: String(getFieldValue(decoded, "areaUID")),
 		rating: Number(getFieldValue(decoded, "rating")),
