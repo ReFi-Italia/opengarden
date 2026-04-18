@@ -310,22 +310,23 @@ export interface Area {
   areaId: string;
   municipality: string;
   areaType: '0' | '1' | '2' | '3' | '4';
-  latitude: number;
-  longitude: number;
-  extendedMetadata?: {
-    surfaceAreaSqm?: number | null;
-    boundaryGeojson?:
-      | {
-          [k: string]: unknown;
-        }
-      | unknown[]
-      | string
-      | number
-      | boolean
-      | null;
-    coverPhoto?: (string | null) | Media;
-    gallery?: (string | Media)[] | null;
-  };
+  /**
+   * @minItems 2
+   * @maxItems 2
+   */
+  coordinates?: [number, number] | null;
+  surfaceAreaSqm?: number | null;
+  boundaryGeojson?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  coverPhoto?: (string | null) | Media;
+  gallery?: (string | Media)[] | null;
   /**
    * Empty when no extended details are set.
    */
@@ -386,16 +387,13 @@ export interface Attestation {
  */
 export interface Activity {
   id: string;
+  label?: string | null;
   type: 'checkin' | 'checkout' | 'report' | 'healthcheck';
   intervention?: (string | null) | Intervention;
   area?: (string | null) | Area;
   parentActivity?: (string | null) | Activity;
   gardener?: (string | null) | Gardener;
-  claimedTimestamp: string;
   assessor?: (string | null) | Staff;
-  /**
-   * checkin → {latitude, longitude} · checkout → {actualMinutes} · report → {completedTaskCodes: string[], taskCount: number (derived), notes} · healthcheck → {healthScore, metadata, metadataHash}
-   */
   data?:
     | {
         [k: string]: unknown;
@@ -405,10 +403,10 @@ export interface Activity {
     | number
     | boolean
     | null;
+  claimedTimestamp: string;
   photo?: (string | null) | Media;
   photoHash?: string | null;
   attestation?: (string | null) | Attestation;
-  label?: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -868,16 +866,11 @@ export interface AreasSelect<T extends boolean = true> {
   areaId?: T;
   municipality?: T;
   areaType?: T;
-  latitude?: T;
-  longitude?: T;
-  extendedMetadata?:
-    | T
-    | {
-        surfaceAreaSqm?: T;
-        boundaryGeojson?: T;
-        coverPhoto?: T;
-        gallery?: T;
-      };
+  coordinates?: T;
+  surfaceAreaSqm?: T;
+  boundaryGeojson?: T;
+  coverPhoto?: T;
+  gallery?: T;
   metadataHash?: T;
   attestation?: T;
   lifecycleStatus?: T;
@@ -951,18 +944,18 @@ export interface InterventionsSelect<T extends boolean = true> {
  * via the `definition` "activities_select".
  */
 export interface ActivitiesSelect<T extends boolean = true> {
+  label?: T;
   type?: T;
   intervention?: T;
   area?: T;
   parentActivity?: T;
   gardener?: T;
-  claimedTimestamp?: T;
   assessor?: T;
   data?: T;
+  claimedTimestamp?: T;
   photo?: T;
   photoHash?: T;
   attestation?: T;
-  label?: T;
   updatedAt?: T;
   createdAt?: T;
 }

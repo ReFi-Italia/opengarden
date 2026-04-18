@@ -1,12 +1,17 @@
-import { AreaType, InterventionType } from "@refi-italia/opengarden";
 import { getPayload, type Payload } from "payload";
 import { beforeAll, describe, expect, it } from "vitest";
 import config from "@/payload.config";
+import {
+	advanceToInProgress,
+	createArea,
+	createGardener,
+	createIntervention,
+	createSponsor,
+	createStaff,
+	uniqueId,
+} from "../helpers/fixtures";
 
 let payload: Payload;
-
-const uniqueId = (prefix: string) =>
-	`${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 describe("Referential integrity walkthrough", () => {
 	beforeAll(async () => {
@@ -14,87 +19,29 @@ describe("Referential integrity walkthrough", () => {
 	});
 
 	it("persists a full intervention chain end-to-end without invoking any SDK write", async () => {
-		// Registry rows.
-		const sponsor = await payload.create({
-			collection: "sponsors",
-			data: {
-				displayName: "Roma Capitale",
-				kind: "municipal",
-				canonicalKey: { contractNumber: uniqueId("CT") },
-			},
+		const sponsor = await createSponsor(payload, { displayName: "Roma Capitale", kind: "municipal" });
+		const validatorStaff = await createStaff(payload, { displayName: "Anna Rossi" });
+		const gardenerA = await createGardener(payload, { displayName: "Marco Verdi" });
+		const gardenerB = await createGardener(payload, { displayName: "Giulia Neri" });
+		const area = await createArea(payload, {
+			name: "Villa Borghese - Pratone",
+			coordinates: [12.48, 41.91] as [number, number],
 		});
-		const validatorStaff = await payload.create({
-			collection: "staff",
-			data: {
-				displayName: "Anna Rossi",
-				staffId: uniqueId("STAFF"),
-				capabilities: ["validator"],
-			},
-		});
-		const gardenerA = await payload.create({
-			collection: "gardeners",
-			data: {
-				displayName: "Marco Verdi",
-				status: "active",
-			},
-		});
-		const gardenerB = await payload.create({
-			collection: "gardeners",
-			data: {
-				displayName: "Giulia Neri",
-				status: "active",
-			},
-		});
-		const area = await payload.create({
-			collection: "areas",
-			data: {
-				areaId: uniqueId("AREA"),
-				name: "Villa Borghese - Pratone",
-				municipality: "Roma",
-				areaType: String(AreaType.PublicGreenSpace) as "1",
-				latitude: 41.91,
-				longitude: 12.48,
-				lifecycleStatus: "registered",
-			},
+		const intervention = await createIntervention(payload, {
+			areaId: area.id,
+			sponsorId: sponsor.id,
+			description: "Spring cleanup",
+			crew: [
+				{ gardener: gardenerA.id, isCrewLead: true },
+				{ gardener: gardenerB.id, isCrewLead: false },
+			],
 		});
 
-		// Intervention draft with crew.
-		const intervention = await payload.create({
-			collection: "interventions",
-			data: {
-				interventionId: uniqueId("INT"),
-				area: area.id,
-				interventionType: String(InterventionType.RoutineMaintenance) as "1",
-				description: "Spring cleanup",
-				commissioning: { sponsor: sponsor.id },
-				crew: [
-					{ gardener: gardenerA.id, isCrewLead: true },
-					{ gardener: gardenerB.id, isCrewLead: false },
-				],
-				lifecycleStatus: "draft",
-			},
-		});
-
-		// Move to scheduled then in_progress (through server-action context) so
-		// we can attach checkin rows.
-		await payload.update({
-			collection: "interventions",
-			id: intervention.id,
-			data: { lifecycleStatus: "scheduled" },
-			context: { skipLifecycleHooks: true },
-		});
-		await payload.update({
-			collection: "interventions",
-			id: intervention.id,
-			data: { lifecycleStatus: "in_progress" },
-			context: { skipLifecycleHooks: true },
-		});
+		await advanceToInProgress(payload, intervention.id);
 
 		const t0 = new Date("2026-05-01T08:00:00Z");
 		const t1 = new Date("2026-05-01T11:30:00Z");
 
-		// Checkins and checkouts now live in the unified `activities` collection.
-		// parentActivity for checkout is auto-resolved by autoLinkParentActivity.
 		const checkins = [];
 		const checkouts = [];
 		for (const g of [gardenerA, gardenerB]) {
@@ -117,13 +64,11 @@ describe("Referential integrity walkthrough", () => {
 					gardener: g.id,
 					claimedTimestamp: t1.toISOString(),
 					data: { actualMinutes: 210 },
-					// parentActivity auto-linked by hook to this gardener's open checkin
 				},
 			});
 			checkouts.push(checkout);
 		}
 
-		// Validation is now written inline on the intervention's validation group.
 		await payload.update({
 			collection: "interventions",
 			id: intervention.id,
@@ -137,7 +82,6 @@ describe("Referential integrity walkthrough", () => {
 			context: { skipLifecycleHooks: true },
 		});
 
-		// Reload everything and assert relationships resolve.
 		const reloaded = await payload.findByID({
 			collection: "interventions",
 			id: intervention.id,
@@ -176,24 +120,12 @@ describe("Referential integrity walkthrough", () => {
 		});
 		expect(checkoutActivities.totalDocs).toBe(2);
 
-		// Validation fields land on the intervention itself.
 		expect(reloaded.validation?.approved).toBe(true);
 		expect(reloaded.validation?.qualityScore).toBe(9);
 	});
 
 	it("healthcheck with explicit area persists", async () => {
-		const area = await payload.create({
-			collection: "areas",
-			data: {
-				areaId: uniqueId("AREA"),
-				name: "Standalone check area",
-				municipality: "Roma",
-				areaType: String(AreaType.PublicGreenSpace) as "1",
-				latitude: 41.9,
-				longitude: 12.5,
-				lifecycleStatus: "registered",
-			},
-		});
+		const area = await createArea(payload, { name: "Standalone check area" });
 
 		const hc = await payload.create({
 			collection: "activities",
@@ -206,54 +138,21 @@ describe("Referential integrity walkthrough", () => {
 		});
 
 		expect(hc.area).toBeTruthy();
-		const areaId = typeof hc.area === "object" ? (hc.area as { id: unknown }).id : hc.area;
+		const areaId =
+			typeof hc.area === "object" ? (hc.area as { id: unknown }).id : hc.area;
 		expect(areaId).toBe(area.id);
 	});
 
 	it("healthcheck derives area from intervention when area omitted", async () => {
-		const sponsor = await payload.create({
-			collection: "sponsors",
-			data: {
-				displayName: "Test Sponsor",
-				kind: "municipal",
-				canonicalKey: { contractNumber: uniqueId("CT") },
-			},
+		const sponsor = await createSponsor(payload);
+		const area = await createArea(payload, { name: "Auto-link area" });
+		const intervention = await createIntervention(payload, {
+			areaId: area.id,
+			sponsorId: sponsor.id,
+			description: "Healthcheck auto-link test",
+			crew: [],
 		});
-		const area = await payload.create({
-			collection: "areas",
-			data: {
-				areaId: uniqueId("AREA"),
-				name: "Auto-link area",
-				municipality: "Roma",
-				areaType: String(AreaType.PublicGreenSpace) as "1",
-				latitude: 41.9,
-				longitude: 12.5,
-				lifecycleStatus: "registered",
-			},
-		});
-		const intervention = await payload.create({
-			collection: "interventions",
-			data: {
-				interventionId: uniqueId("INT"),
-				area: area.id,
-				interventionType: String(InterventionType.RoutineMaintenance) as "1",
-				description: "Healthcheck auto-link test",
-				commissioning: { sponsor: sponsor.id },
-				lifecycleStatus: "draft",
-			},
-		});
-		await payload.update({
-			collection: "interventions",
-			id: intervention.id,
-			data: { lifecycleStatus: "scheduled" },
-			context: { skipLifecycleHooks: true },
-		});
-		await payload.update({
-			collection: "interventions",
-			id: intervention.id,
-			data: { lifecycleStatus: "in_progress" },
-			context: { skipLifecycleHooks: true },
-		});
+		await advanceToInProgress(payload, intervention.id);
 
 		const hc = await payload.create({
 			collection: "activities",
@@ -262,11 +161,11 @@ describe("Referential integrity walkthrough", () => {
 				intervention: intervention.id,
 				claimedTimestamp: new Date().toISOString(),
 				data: { healthScore: 6 },
-				// no explicit area — should be derived from intervention
 			},
 		});
 
-		const areaId = typeof hc.area === "object" ? (hc.area as { id: unknown }).id : hc.area;
+		const areaId =
+			typeof hc.area === "object" ? (hc.area as { id: unknown }).id : hc.area;
 		expect(areaId).toBe(area.id);
 	});
 
@@ -284,64 +183,26 @@ describe("Referential integrity walkthrough", () => {
 	});
 
 	it("report with valid completedTaskCodes succeeds and derives taskCount", async () => {
-		const sponsor = await payload.create({
-			collection: "sponsors",
-			data: {
-				displayName: "Test Sponsor",
-				kind: "municipal",
-				canonicalKey: { contractNumber: uniqueId("CT") },
-			},
+		const sponsor = await createSponsor(payload);
+		const area = await createArea(payload, { name: "Report test area" });
+		const gardener = await createGardener(payload, { displayName: "Report Gardener" });
+		const intervention = await createIntervention(payload, {
+			areaId: area.id,
+			sponsorId: sponsor.id,
+			description: "Task report test",
+			crew: [{ gardener: gardener.id, isCrewLead: true }],
+			tasks: [
+				{ code: "PRUNE", label: "Prune trees" },
+				{ code: "CLEAN", label: "Clean pathways" },
+			],
 		});
-		const area = await payload.create({
-			collection: "areas",
-			data: {
-				areaId: uniqueId("AREA"),
-				name: "Report test area",
-				municipality: "Roma",
-				areaType: String(AreaType.PublicGreenSpace) as "1",
-				latitude: 41.9,
-				longitude: 12.5,
-				lifecycleStatus: "registered",
-			},
-		});
-		const gardener = await payload.create({
-			collection: "gardeners",
-			data: { displayName: "Report Gardener", status: "active" },
-		});
-		const intervention = await payload.create({
-			collection: "interventions",
-			data: {
-				interventionId: uniqueId("INT"),
-				area: area.id,
-				interventionType: String(InterventionType.RoutineMaintenance) as "1",
-				description: "Task report test",
-				commissioning: { sponsor: sponsor.id },
-				tasks: [
-					{ code: "PRUNE", label: "Prune trees" },
-					{ code: "CLEAN", label: "Clean pathways" },
-				],
-				crew: [{ gardener: gardener.id, isCrewLead: true }],
-				lifecycleStatus: "draft",
-			},
-		});
-		await payload.update({
-			collection: "interventions",
-			id: intervention.id,
-			data: { lifecycleStatus: "scheduled" },
-			context: { skipLifecycleHooks: true },
-		});
-		await payload.update({
-			collection: "interventions",
-			id: intervention.id,
-			data: { lifecycleStatus: "in_progress" },
-			context: { skipLifecycleHooks: true },
-		});
+		await advanceToInProgress(payload, intervention.id);
 
 		const t0 = new Date("2026-06-01T08:00:00Z");
 		const t1 = new Date("2026-06-01T10:00:00Z");
 		const t2 = new Date("2026-06-01T11:00:00Z");
 
-		const checkin = await payload.create({
+		await payload.create({
 			collection: "activities",
 			data: {
 				type: "checkin",
@@ -359,7 +220,6 @@ describe("Referential integrity walkthrough", () => {
 				gardener: gardener.id,
 				claimedTimestamp: t1.toISOString(),
 				data: { actualMinutes: 120 },
-				// parentActivity auto-linked
 			},
 		});
 		expect(checkout.parentActivity).toBeTruthy();
@@ -371,11 +231,7 @@ describe("Referential integrity walkthrough", () => {
 				intervention: intervention.id,
 				gardener: gardener.id,
 				claimedTimestamp: t2.toISOString(),
-				data: {
-					completedTaskCodes: ["PRUNE", "CLEAN"],
-					notes: "All done",
-				},
-				// parentActivity auto-linked to checkout
+				data: { completedTaskCodes: ["PRUNE", "CLEAN"], notes: "All done" },
 			},
 		});
 
@@ -384,61 +240,22 @@ describe("Referential integrity walkthrough", () => {
 		expect(reportData.completedTaskCodes).toEqual(["PRUNE", "CLEAN"]);
 		expect(reportData.taskCount).toBe(2);
 		expect(report.parentActivity).toBeTruthy();
-		// label should be computed at create time
 		expect(report.label).toMatch(/report/i);
 		expect(report.label).toContain("(2 tasks)");
 	});
 
 	it("report with unknown task code is rejected", async () => {
-		const sponsor = await payload.create({
-			collection: "sponsors",
-			data: {
-				displayName: "Test Sponsor B",
-				kind: "municipal",
-				canonicalKey: { contractNumber: uniqueId("CT") },
-			},
+		const sponsor = await createSponsor(payload, { displayName: "Test Sponsor B" });
+		const area = await createArea(payload, { name: "Reject test area" });
+		const gardener = await createGardener(payload, { displayName: "Bad Code Gardener" });
+		const intervention = await createIntervention(payload, {
+			areaId: area.id,
+			sponsorId: sponsor.id,
+			description: "Reject task test",
+			crew: [{ gardener: gardener.id, isCrewLead: true }],
+			tasks: [{ code: "PRUNE", label: "Prune trees" }],
 		});
-		const area = await payload.create({
-			collection: "areas",
-			data: {
-				areaId: uniqueId("AREA"),
-				name: "Reject test area",
-				municipality: "Roma",
-				areaType: String(AreaType.PublicGreenSpace) as "1",
-				latitude: 41.9,
-				longitude: 12.5,
-				lifecycleStatus: "registered",
-			},
-		});
-		const gardener = await payload.create({
-			collection: "gardeners",
-			data: { displayName: "Bad Code Gardener", status: "active" },
-		});
-		const intervention = await payload.create({
-			collection: "interventions",
-			data: {
-				interventionId: uniqueId("INT"),
-				area: area.id,
-				interventionType: String(InterventionType.RoutineMaintenance) as "1",
-				description: "Reject task test",
-				commissioning: { sponsor: sponsor.id },
-				tasks: [{ code: "PRUNE", label: "Prune trees" }],
-				crew: [{ gardener: gardener.id, isCrewLead: true }],
-				lifecycleStatus: "draft",
-			},
-		});
-		await payload.update({
-			collection: "interventions",
-			id: intervention.id,
-			data: { lifecycleStatus: "scheduled" },
-			context: { skipLifecycleHooks: true },
-		});
-		await payload.update({
-			collection: "interventions",
-			id: intervention.id,
-			data: { lifecycleStatus: "in_progress" },
-			context: { skipLifecycleHooks: true },
-		});
+		await advanceToInProgress(payload, intervention.id);
 
 		const t0 = new Date("2026-06-02T08:00:00Z");
 		const t1 = new Date("2026-06-02T10:00:00Z");
@@ -473,65 +290,24 @@ describe("Referential integrity walkthrough", () => {
 					intervention: intervention.id,
 					gardener: gardener.id,
 					claimedTimestamp: t2.toISOString(),
-					data: {
-						completedTaskCodes: ["PRUNE", "NONEXISTENT"],
-						notes: "",
-					},
+					data: { completedTaskCodes: ["PRUNE", "NONEXISTENT"], notes: "" },
 				},
 			}),
 		).rejects.toThrow(/task code "NONEXISTENT"/i);
 	});
 
 	it("report without completedTaskCodes is rejected", async () => {
-		const sponsor = await payload.create({
-			collection: "sponsors",
-			data: {
-				displayName: "Test Sponsor C",
-				kind: "municipal",
-				canonicalKey: { contractNumber: uniqueId("CT") },
-			},
+		const sponsor = await createSponsor(payload, { displayName: "Test Sponsor C" });
+		const area = await createArea(payload, { name: "Missing codes area" });
+		const gardener = await createGardener(payload, { displayName: "No Codes Gardener" });
+		const intervention = await createIntervention(payload, {
+			areaId: area.id,
+			sponsorId: sponsor.id,
+			description: "Missing codes test",
+			crew: [{ gardener: gardener.id, isCrewLead: true }],
+			tasks: [{ code: "PRUNE", label: "Prune trees" }],
 		});
-		const area = await payload.create({
-			collection: "areas",
-			data: {
-				areaId: uniqueId("AREA"),
-				name: "Missing codes area",
-				municipality: "Roma",
-				areaType: String(AreaType.PublicGreenSpace) as "1",
-				latitude: 41.9,
-				longitude: 12.5,
-				lifecycleStatus: "registered",
-			},
-		});
-		const gardener = await payload.create({
-			collection: "gardeners",
-			data: { displayName: "No Codes Gardener", status: "active" },
-		});
-		const intervention = await payload.create({
-			collection: "interventions",
-			data: {
-				interventionId: uniqueId("INT"),
-				area: area.id,
-				interventionType: String(InterventionType.RoutineMaintenance) as "1",
-				description: "Missing codes test",
-				commissioning: { sponsor: sponsor.id },
-				tasks: [{ code: "PRUNE", label: "Prune trees" }],
-				crew: [{ gardener: gardener.id, isCrewLead: true }],
-				lifecycleStatus: "draft",
-			},
-		});
-		await payload.update({
-			collection: "interventions",
-			id: intervention.id,
-			data: { lifecycleStatus: "scheduled" },
-			context: { skipLifecycleHooks: true },
-		});
-		await payload.update({
-			collection: "interventions",
-			id: intervention.id,
-			data: { lifecycleStatus: "in_progress" },
-			context: { skipLifecycleHooks: true },
-		});
+		await advanceToInProgress(payload, intervention.id);
 
 		const t0 = new Date("2026-06-03T08:00:00Z");
 		const t1 = new Date("2026-06-03T10:00:00Z");
@@ -573,50 +349,23 @@ describe("Referential integrity walkthrough", () => {
 	});
 
 	it("rejects more than one crew lead", async () => {
-		const sponsor = await payload.create({
-			collection: "sponsors",
-			data: {
-				displayName: "ACME",
-				kind: "corporate",
-				canonicalKey: { sponsorId: uniqueId("ACME") },
-			},
+		const sponsor = await createSponsor(payload, {
+			kind: "corporate",
+			canonicalKey: { sponsorId: uniqueId("ACME") },
 		});
-		const area = await payload.create({
-			collection: "areas",
-			data: {
-				areaId: uniqueId("AREA"),
-				name: "Park",
-				municipality: "Roma",
-				areaType: String(AreaType.PublicGreenSpace) as "1",
-				latitude: 41.9,
-				longitude: 12.5,
-				lifecycleStatus: "registered",
-			},
-		});
-		const a = await payload.create({
-			collection: "gardeners",
-			data: { displayName: "A", status: "active" },
-		});
-		const b = await payload.create({
-			collection: "gardeners",
-			data: { displayName: "B", status: "active" },
-		});
+		const area = await createArea(payload, { name: "Park" });
+		const a = await createGardener(payload, { displayName: "A" });
+		const b = await createGardener(payload, { displayName: "B" });
 
 		await expect(
-			payload.create({
-				collection: "interventions",
-				data: {
-					interventionId: uniqueId("INT"),
-					area: area.id,
-					interventionType: String(InterventionType.RoutineMaintenance) as "1",
-					description: "two leads",
-					commissioning: { sponsor: sponsor.id },
-					crew: [
-						{ gardener: a.id, isCrewLead: true },
-						{ gardener: b.id, isCrewLead: true },
-					],
-					lifecycleStatus: "draft",
-				},
+			createIntervention(payload, {
+				areaId: area.id,
+				sponsorId: sponsor.id,
+				description: "two leads",
+				crew: [
+					{ gardener: a.id, isCrewLead: true },
+					{ gardener: b.id, isCrewLead: true },
+				],
 			}),
 		).rejects.toThrow(/at most one crew/i);
 	});

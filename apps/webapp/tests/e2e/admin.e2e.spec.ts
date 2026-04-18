@@ -1,9 +1,9 @@
-import { AreaType, InterventionType } from "@refi-italia/opengarden";
 import { expect, type Page, test } from "@playwright/test";
 import { getPayload } from "payload";
 import config from "../../src/payload.config.js";
 import { login } from "../helpers/login";
 import { cleanupTestUser, seedTestUser, testUser } from "../helpers/seedUser";
+import { createArea, createGardener, createIntervention, createSponsor } from "../helpers/fixtures";
 
 // Stable IDs so beforeAll can clean up leftovers from prior runs.
 const E2E_AREA_ID = "E2E-AREA-001";
@@ -33,41 +33,19 @@ test.describe("Admin Panel", () => {
 			where: { displayName: { equals: E2E_SPONSOR_NAME } },
 		});
 
-		const area = await payload.create({
-			collection: "areas",
-			data: {
-				areaId: E2E_AREA_ID,
-				name: "E2E Test Garden",
-				municipality: "Roma",
-				areaType: String(AreaType.PublicGreenSpace) as "1",
-				latitude: 41.9,
-				longitude: 12.5,
-				lifecycleStatus: "registered",
-			},
+		const area = await createArea(payload, { areaId: E2E_AREA_ID, name: "E2E Test Garden" });
+		const sponsor = await createSponsor(payload, {
+			displayName: E2E_SPONSOR_NAME,
+			kind: "corporate",
+			canonicalKey: { sponsorId: "E2E-SP-001" },
 		});
-		const sponsor = await payload.create({
-			collection: "sponsors",
-			data: {
-				displayName: E2E_SPONSOR_NAME,
-				kind: "corporate",
-				canonicalKey: { sponsorId: "E2E-SP-001" },
-			},
-		});
-		const gardener = await payload.create({
-			collection: "gardeners",
-			data: { displayName: "E2E Gardener", status: "active" },
-		});
-		const intervention = await payload.create({
-			collection: "interventions",
-			data: {
-				interventionId: E2E_INT_ID,
-				area: area.id,
-				interventionType: String(InterventionType.RoutineMaintenance) as "1",
-				description: "E2E test intervention",
-				commissioning: { sponsor: sponsor.id },
-				crew: [{ gardener: gardener.id, isCrewLead: true }],
-				lifecycleStatus: "draft",
-			},
+		const gardener = await createGardener(payload, { displayName: "E2E Gardener" });
+		const intervention = await createIntervention(payload, {
+			areaId: area.id,
+			sponsorId: sponsor.id,
+			interventionId: E2E_INT_ID,
+			description: "E2E test intervention",
+			crew: [{ gardener: gardener.id, isCrewLead: true }],
 		});
 		interventionId = intervention.id;
 

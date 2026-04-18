@@ -8,7 +8,6 @@ import { APIError } from "payload";
 import { keccak256, toUtf8Bytes } from "ethers";
 import { after } from "next/server";
 import { authenticated } from "../access/authenticated";
-import { isAuthoringOrAbove } from "../access/isAuthoringOrAbove";
 
 export const ACTIVITY_TYPES = [
 	"checkin",
@@ -33,7 +32,6 @@ const TYPES_REQUIRING_GARDENER: readonly ActivityType[] = [
 const TYPES_REQUIRING_PARENT: readonly ActivityType[] = ["checkout", "report"];
 const TYPES_REQUIRING_GEOLOCATION: readonly ActivityType[] = ["checkin"];
 const TYPES_REQUIRING_DURATION: readonly ActivityType[] = ["checkout"];
-const TYPES_REQUIRING_REPORT_BODY: readonly ActivityType[] = [];
 const TYPES_REQUIRING_HEALTHSCORE: readonly ActivityType[] = ["healthcheck"];
 
 const toIdStr = (field: unknown): string => {
@@ -243,12 +241,7 @@ const guardActivityInvariants: CollectionBeforeValidateHook = async ({
 			const inCrew = crew?.some((row) => {
 				const g = row.gardener;
 				if (g === gardenerId) return true;
-				if (
-					g &&
-					typeof g === "object" &&
-					"id" in g &&
-					g.id === gardenerId
-				) {
+				if (g && typeof g === "object" && "id" in g && g.id === gardenerId) {
 					return true;
 				}
 				return false;
@@ -270,9 +263,7 @@ const guardActivityInvariants: CollectionBeforeValidateHook = async ({
 				);
 			}
 			const validCodes = new Set<string>(
-				(
-					(intervention as { tasks?: { code?: string }[] }).tasks ?? []
-				)
+				((intervention as { tasks?: { code?: string }[] }).tasks ?? [])
 					.map((t) => t.code)
 					.filter((c): c is string => typeof c === "string"),
 			);
@@ -298,12 +289,8 @@ const guardActivityInvariants: CollectionBeforeValidateHook = async ({
 		}
 	}
 
-	// Per-type required fields
 	if (TYPES_REQUIRING_GARDENER.includes(type) && !data.gardener) {
-		throw new APIError(
-			`Activity type "${type}" requires a gardener.`,
-			400,
-		);
+		throw new APIError(`Activity type "${type}" requires a gardener.`, 400);
 	}
 	if (TYPES_REQUIRING_PARENT.includes(type) && !data.parentActivity) {
 		throw new APIError(
@@ -331,17 +318,6 @@ const guardActivityInvariants: CollectionBeforeValidateHook = async ({
 			);
 		}
 	}
-	if (TYPES_REQUIRING_REPORT_BODY.includes(type)) {
-		if (
-			typeof dataObj.tasksCompleted !== "string" ||
-			typeof dataObj.taskCount !== "number"
-		) {
-			throw new APIError(
-				`Activity type "${type}" requires data.tasksCompleted and data.taskCount.`,
-				400,
-			);
-		}
-	}
 	if (TYPES_REQUIRING_HEALTHSCORE.includes(type)) {
 		if (typeof dataObj.healthScore !== "number") {
 			throw new APIError(
@@ -361,7 +337,10 @@ const computeHealthcheckMetadataHash: CollectionBeforeChangeHook = async ({
 	if (data.type !== "healthcheck") return data;
 
 	const dataObj = (data.data ?? {}) as Record<string, unknown>;
-	const metadata = dataObj.metadata as Record<string, unknown> | null | undefined;
+	const metadata = dataObj.metadata as
+		| Record<string, unknown>
+		| null
+		| undefined;
 	const metaKeys = metadata ? Object.keys(metadata) : [];
 	if (!metaKeys.length) {
 		return { ...data, data: { ...dataObj, metadataHash: null } };
@@ -427,57 +406,54 @@ const computeLabelBeforeChange: CollectionBeforeChangeHook = async ({
 	const type = data.type as ActivityType | undefined;
 	const actData = (data.data ?? {}) as Record<string, unknown>;
 
-	// Resolve gardener → first name
-	let firstName: string | null = null;
-	if (data.gardener) {
-		const g = await req.payload
-			.findByID({
-				collection: "gardeners",
-				id: data.gardener as string,
-				depth: 0,
-				overrideAccess: true,
-			})
-			.catch(() => null);
-		firstName =
-			(g as { displayName?: string } | null)?.displayName?.split(" ")[0] ??
-			null;
-	}
+	const [g, inv, a] = await Promise.all([
+		data.gardener
+			? req.payload
+					.findByID({
+						collection: "gardeners",
+						id: data.gardener as string,
+						depth: 0,
+						overrideAccess: true,
+					})
+					.catch(() => null)
+			: null,
+		data.intervention
+			? req.payload
+					.findByID({
+						collection: "interventions",
+						id: data.intervention as string,
+						depth: 1,
+						overrideAccess: true,
+					})
+					.catch(() => null)
+			: null,
+		data.area
+			? req.payload
+					.findByID({
+						collection: "areas",
+						id: data.area as string,
+						depth: 0,
+						overrideAccess: true,
+					})
+					.catch(() => null)
+			: null,
+	]);
 
-	// Resolve intervention → interventionId + nested area name (depth:1)
+	const firstName =
+		(g as { displayName?: string } | null)?.displayName?.split(" ")[0] ?? null;
+
 	let interventionRef: string | null = null;
 	let nestedAreaName: string | null = null;
-	if (data.intervention) {
-		const inv = await req.payload
-			.findByID({
-				collection: "interventions",
-				id: data.intervention as string,
-				depth: 1,
-				overrideAccess: true,
-			})
-			.catch(() => null);
-		if (inv) {
-			interventionRef =
-				(inv as { interventionId?: string }).interventionId ?? null;
-			const invArea = (inv as { area?: unknown }).area;
-			if (typeof invArea === "object" && invArea) {
-				nestedAreaName = (invArea as { name?: string }).name ?? null;
-			}
+	if (inv) {
+		interventionRef =
+			(inv as { interventionId?: string }).interventionId ?? null;
+		const invArea = (inv as { area?: unknown }).area;
+		if (typeof invArea === "object" && invArea) {
+			nestedAreaName = (invArea as { name?: string }).name ?? null;
 		}
 	}
 
-	// Resolve area (direct field on healthcheck)
-	let directAreaName: string | null = null;
-	if (data.area) {
-		const a = await req.payload
-			.findByID({
-				collection: "areas",
-				id: data.area as string,
-				depth: 0,
-				overrideAccess: true,
-			})
-			.catch(() => null);
-		directAreaName = (a as { name?: string } | null)?.name ?? null;
-	}
+	const directAreaName = (a as { name?: string } | null)?.name ?? null;
 
 	const areaName = directAreaName ?? nestedAreaName;
 
@@ -540,12 +516,11 @@ const computeLabelBeforeChange: CollectionBeforeChangeHook = async ({
 	return { ...data, label };
 };
 
-// Conditional visibility helpers for admin.condition
 const showWhenType =
 	(allowed: readonly ActivityType[]) =>
 	(_data: unknown, siblingData: unknown) => {
-		const t = (siblingData as { type?: string })?.type;
-		return typeof t === "string" && (allowed as readonly string[]).includes(t);
+		const t = (siblingData as { type?: ActivityType })?.type;
+		return typeof t === "string" && allowed.includes(t);
 	};
 
 export const Activities: CollectionConfig = {
@@ -553,13 +528,13 @@ export const Activities: CollectionConfig = {
 	admin: {
 		group: "Lifecycle",
 		useAsTitle: "label",
-		defaultColumns: ["label", "type", "intervention", "area", "claimedTimestamp"],
+		defaultColumns: ["label", "type", "claimedTimestamp"],
 	},
 	access: {
 		read: authenticated,
-		create: isAuthoringOrAbove,
-		update: isAuthoringOrAbove,
-		delete: isAuthoringOrAbove,
+		create: () => false,
+		update: () => false,
+		delete: () => false,
 	},
 	hooks: {
 		beforeValidate: [autoLinkParentActivity, guardActivityInvariants],
@@ -567,6 +542,11 @@ export const Activities: CollectionConfig = {
 		afterChange: [queueChainCommit],
 	},
 	fields: [
+		{
+			name: "label",
+			type: "text",
+			admin: { readOnly: true },
+		},
 		{
 			name: "type",
 			type: "select",
@@ -601,11 +581,6 @@ export const Activities: CollectionConfig = {
 			admin: { condition: showWhenType(TYPES_REQUIRING_GARDENER) },
 		},
 		{
-			name: "claimedTimestamp",
-			type: "date",
-			required: true,
-		},
-		{
 			name: "assessor",
 			type: "relationship",
 			relationTo: "staff",
@@ -615,8 +590,16 @@ export const Activities: CollectionConfig = {
 			name: "data",
 			type: "json",
 			admin: {
-				description: "checkin → {latitude, longitude} · checkout → {actualMinutes} · report → {completedTaskCodes: string[], taskCount: number (derived), notes} · healthcheck → {healthScore, metadata, metadataHash}",
+				components: {
+					Field: "@/components/fields/ActivityDataField",
+				},
 			},
+		},
+		{
+			name: "claimedTimestamp",
+			label: "date",
+			type: "date",
+			required: true,
 		},
 		{
 			name: "photo",
@@ -626,17 +609,12 @@ export const Activities: CollectionConfig = {
 		{
 			name: "photoHash",
 			type: "text",
-			admin: { readOnly: true },
+			admin: { readOnly: true, hidden: true },
 		},
 		{
 			name: "attestation",
 			type: "relationship",
 			relationTo: "attestations",
-			admin: { readOnly: true },
-		},
-		{
-			name: "label",
-			type: "text",
 			admin: { readOnly: true },
 		},
 	],

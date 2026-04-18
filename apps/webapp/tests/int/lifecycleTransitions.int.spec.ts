@@ -1,49 +1,26 @@
-import { AreaType, InterventionType } from "@refi-italia/opengarden";
 import { getPayload, type Payload } from "payload";
 import { beforeAll, describe, expect, it } from "vitest";
 import config from "@/payload.config";
+import {
+	advanceToInProgress,
+	createArea,
+	createGardener,
+	createIntervention,
+	createSponsor,
+	uniqueId,
+} from "../helpers/fixtures";
 
 let payload: Payload;
 
-const uniqueId = (prefix: string) =>
-	`${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-
 const seedAreaAndIntervention = async () => {
-	const area = await payload.create({
-		collection: "areas",
-		data: {
-			areaId: uniqueId("AREA"),
-			name: "Pignatelli Garden",
-			municipality: "Roma",
-			areaType: String(AreaType.PublicGreenSpace) as "1",
-			latitude: 41.9,
-			longitude: 12.49,
-			lifecycleStatus: "registered",
-		},
-	});
-	const sponsor = await payload.create({
-		collection: "sponsors",
-		data: {
-			displayName: "ACME",
-			kind: "corporate",
-			canonicalKey: { sponsorId: uniqueId("ACME") },
-		},
-	});
-	const gardener = await payload.create({
-		collection: "gardeners",
-		data: { displayName: "Lead Gardener", status: "active" },
-	});
-	const intervention = await payload.create({
-		collection: "interventions",
-		data: {
-			interventionId: uniqueId("INT"),
-			area: area.id,
-			interventionType: String(InterventionType.RoutineMaintenance) as "1",
-			description: "Routine maintenance",
-			commissioning: { sponsor: sponsor.id },
-			crew: [{ gardener: gardener.id, isCrewLead: true }],
-			lifecycleStatus: "draft",
-		},
+	const area = await createArea(payload, { name: "Pignatelli Garden", coordinates: [12.49, 41.9] as [number, number] });
+	const sponsor = await createSponsor(payload, { kind: "corporate", canonicalKey: { sponsorId: uniqueId("ACME") } });
+	const gardener = await createGardener(payload, { displayName: "Lead Gardener" });
+	const intervention = await createIntervention(payload, {
+		areaId: area.id,
+		sponsorId: sponsor.id,
+		description: "Routine maintenance",
+		crew: [{ gardener: gardener.id, isCrewLead: true }],
 	});
 	return { area, sponsor, gardener, intervention };
 };
@@ -54,42 +31,17 @@ describe("Intervention lifecycle transitions", () => {
 	});
 
 	it("rejects creating an intervention in a non-draft state", async () => {
-		const area = await payload.create({
-			collection: "areas",
-			data: {
-				areaId: uniqueId("AREA"),
-				name: "Test",
-				municipality: "Roma",
-				areaType: String(AreaType.PublicGreenSpace) as "1",
-				latitude: 41.9,
-				longitude: 12.49,
-				lifecycleStatus: "registered",
-			},
-		});
-		const sponsor = await payload.create({
-			collection: "sponsors",
-			data: {
-				displayName: "ACME",
-				kind: "corporate",
-				canonicalKey: { sponsorId: uniqueId("ACME") },
-			},
-		});
-		const gardener = await payload.create({
-			collection: "gardeners",
-			data: { displayName: "Lead", status: "active" },
-		});
+		const area = await createArea(payload, { coordinates: [12.49, 41.9] as [number, number] });
+		const sponsor = await createSponsor(payload, { kind: "corporate", canonicalKey: { sponsorId: uniqueId("ACME") } });
+		const gardener = await createGardener(payload, { displayName: "Lead" });
+
 		await expect(
-			payload.create({
-				collection: "interventions",
-				data: {
-					interventionId: uniqueId("INT"),
-					area: area.id,
-					interventionType: String(InterventionType.RoutineMaintenance) as "1",
-					description: "should fail",
-					commissioning: { sponsor: sponsor.id },
-					crew: [{ gardener: gardener.id, isCrewLead: true }],
-					lifecycleStatus: "scheduled",
-				},
+			createIntervention(payload, {
+				areaId: area.id,
+				sponsorId: sponsor.id,
+				description: "should fail",
+				crew: [{ gardener: gardener.id, isCrewLead: true }],
+				lifecycleStatus: "scheduled",
 			}),
 		).rejects.toThrow(/draft/i);
 	});
@@ -97,7 +49,6 @@ describe("Intervention lifecycle transitions", () => {
 	it("rejects illegal transitions and accepts allowed ones (with skipLifecycleHooks bypass)", async () => {
 		const { intervention } = await seedAreaAndIntervention();
 
-		// draft → in_progress is illegal (must go through scheduled).
 		await expect(
 			payload.update({
 				collection: "interventions",
@@ -107,7 +58,6 @@ describe("Intervention lifecycle transitions", () => {
 			}),
 		).rejects.toThrow(/Illegal lifecycleStatus transition/i);
 
-		// draft → scheduled is allowed when invoked from a server action.
 		const scheduled = await payload.update({
 			collection: "interventions",
 			id: intervention.id,
@@ -116,7 +66,6 @@ describe("Intervention lifecycle transitions", () => {
 		});
 		expect(scheduled.lifecycleStatus).toBe("scheduled");
 
-		// published is terminal — no further forward edge.
 		const inProgress = await payload.update({
 			collection: "interventions",
 			id: intervention.id,
@@ -141,7 +90,6 @@ describe("Intervention lifecycle transitions", () => {
 		});
 		expect(published.lifecycleStatus).toBe("published");
 
-		// No edge out of published.
 		await expect(
 			payload.update({
 				collection: "interventions",
@@ -155,7 +103,6 @@ describe("Intervention lifecycle transitions", () => {
 	it("refuses form-level edits to stage groups while server actions can write them", async () => {
 		const { intervention } = await seedAreaAndIntervention();
 
-		// Push to scheduled via server-action context.
 		await payload.update({
 			collection: "interventions",
 			id: intervention.id,
@@ -163,7 +110,6 @@ describe("Intervention lifecycle transitions", () => {
 			context: { skipLifecycleHooks: true },
 		});
 
-		// Server action populates scheduling.* in one shot.
 		await payload.update({
 			collection: "interventions",
 			id: intervention.id,
@@ -176,18 +122,12 @@ describe("Intervention lifecycle transitions", () => {
 			context: { skipLifecycleHooks: true },
 		});
 
-		// Form write attempting to overwrite scheduling.estimatedMinutes is
-		// silently reset to original: status is "scheduled", editableIn is
-		// ["draft", "failed"], so the whole scheduling group is frozen for
-		// form callers.
 		const formAttempt = await payload.update({
 			collection: "interventions",
 			id: intervention.id,
 			data: {
 				description: "updated description",
-				scheduling: {
-					estimatedMinutes: 999,
-				},
+				scheduling: { estimatedMinutes: 999 },
 			},
 		});
 		expect(formAttempt.description).toBe("updated description");
@@ -209,7 +149,6 @@ describe("Evidence bundle build state machine", () => {
 		});
 		expect(bundle.bundleState).toBe("draft");
 
-		// draft → uploaded is illegal — must go through built first.
 		await expect(
 			payload.update({
 				collection: "evidenceBundles",
@@ -218,7 +157,6 @@ describe("Evidence bundle build state machine", () => {
 			}),
 		).rejects.toThrow(/Illegal bundleState transition/i);
 
-		// draft → built is allowed.
 		const built = await payload.update({
 			collection: "evidenceBundles",
 			id: bundle.id,
@@ -227,7 +165,6 @@ describe("Evidence bundle build state machine", () => {
 		});
 		expect(built.bundleState).toBe("built");
 
-		// built → uploaded → published → verified all allowed.
 		await payload.update({
 			collection: "evidenceBundles",
 			id: bundle.id,
@@ -248,7 +185,6 @@ describe("Evidence bundle build state machine", () => {
 		});
 		expect(verified.bundleState).toBe("verified");
 
-		// verified → verified self-loop is allowed (re-verification).
 		const reverified = await payload.update({
 			collection: "evidenceBundles",
 			id: bundle.id,
@@ -257,7 +193,6 @@ describe("Evidence bundle build state machine", () => {
 		});
 		expect(reverified.bundleState).toBe("verified");
 
-		// verified → draft is illegal.
 		await expect(
 			payload.update({
 				collection: "evidenceBundles",

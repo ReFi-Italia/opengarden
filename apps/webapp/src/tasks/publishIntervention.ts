@@ -65,9 +65,8 @@ export const publishInterventionTask: TaskConfig<{
 			overrideAccess: true,
 		});
 
-		const existingPubAtt = (
-			intervention as { publishAttestation?: unknown }
-		).publishAttestation;
+		const existingPubAtt = (intervention as { publishAttestation?: unknown })
+			.publishAttestation;
 		if (
 			intervention.lifecycleStatus === "published" &&
 			typeof existingPubAtt === "object" &&
@@ -91,7 +90,9 @@ export const publishInterventionTask: TaskConfig<{
 
 		const area = intervention.area;
 		if (typeof area !== "object" || area === null) {
-			throw new Error(`Intervention ${interventionId} → area could not be resolved.`);
+			throw new Error(
+				`Intervention ${interventionId} → area could not be resolved.`,
+			);
 		}
 		const areaAttestation = (area as { attestation?: unknown }).attestation;
 		const areaUID =
@@ -101,7 +102,9 @@ export const publishInterventionTask: TaskConfig<{
 				? (areaAttestation as { uid: string }).uid
 				: null;
 		if (!areaUID) {
-			throw new Error(`Intervention ${interventionId} → area has no on-chain UID.`);
+			throw new Error(
+				`Intervention ${interventionId} → area has no on-chain UID.`,
+			);
 		}
 
 		// ─── Derive execution values from activities ──────────────────────
@@ -117,21 +120,31 @@ export const publishInterventionTask: TaskConfig<{
 
 		// executionDate: latest checkout claimedTimestamp
 		// biome-ignore lint/suspicious/noExplicitAny: activity rows
-		const checkoutActivities = activities.filter((a: any) => a.type === "checkout");
+		const checkoutActivities = activities.filter(
+			(a: any) => a.type === "checkout",
+		);
 		// biome-ignore lint/suspicious/noExplicitAny: activity rows
-		const latestCheckout = checkoutActivities.sort((a: any, b: any) =>
-			new Date(b.claimedTimestamp).getTime() - new Date(a.claimedTimestamp).getTime()
+		const latestCheckout = checkoutActivities.sort(
+			(a: any, b: any) =>
+				new Date(b.claimedTimestamp).getTime() -
+				new Date(a.claimedTimestamp).getTime(),
 		)[0];
 		if (!latestCheckout) {
-			throw new Error(`Intervention ${interventionId} has no checkout activity; record crew activity first.`);
+			throw new Error(
+				`Intervention ${interventionId} has no checkout activity; record crew activity first.`,
+			);
 		}
 		const executionDate = new Date(latestCheckout.claimedTimestamp as string);
 
 		// health scores: from healthcheck activity
 		// biome-ignore lint/suspicious/noExplicitAny: activity rows
-		const healthcheckActivity = activities.find((a: any) => a.type === "healthcheck");
+		const healthcheckActivity = activities.find(
+			(a: any) => a.type === "healthcheck",
+		);
 		// biome-ignore lint/suspicious/noExplicitAny: data is a freeform JSON field
-		const hcData = (healthcheckActivity as any)?.data as Record<string, unknown> | undefined;
+		const hcData = (healthcheckActivity as any)?.data as
+			| Record<string, unknown>
+			| undefined;
 		const healthBefore = (hcData?.metadata as any)?.baseline?.score ?? 0;
 		const healthAfter = (hcData?.healthScore as number) ?? 0;
 
@@ -146,16 +159,24 @@ export const publishInterventionTask: TaskConfig<{
 		});
 		const bundle = bundlesResult.docs[0] ?? null;
 		if (!bundle) {
-			throw new Error(`Intervention ${interventionId} has no evidence bundle; run buildBundle first.`);
+			throw new Error(
+				`Intervention ${interventionId} has no evidence bundle; run buildBundle first.`,
+			);
 		}
 		if (bundle.bundleState !== "uploaded") {
-			throw new Error(`Evidence bundle ${bundle.id} is in bundleState="${bundle.bundleState}"; expected "uploaded".`);
+			throw new Error(
+				`Evidence bundle ${bundle.id} is in bundleState="${bundle.bundleState}"; expected "uploaded".`,
+			);
 		}
 		if (!bundle.evidenceBundleHash) {
-			throw new Error(`Evidence bundle ${bundle.id} has no evidenceBundleHash; re-run buildBundle.`);
+			throw new Error(
+				`Evidence bundle ${bundle.id} has no evidenceBundleHash; re-run buildBundle.`,
+			);
 		}
 		if (typeof bundle.offchainCount !== "number") {
-			throw new Error(`Evidence bundle ${bundle.id} is missing offchainCount; re-run buildBundle.`);
+			throw new Error(
+				`Evidence bundle ${bundle.id} is missing offchainCount; re-run buildBundle.`,
+			);
 		}
 
 		const sponsor = intervention.commissioning?.sponsor;

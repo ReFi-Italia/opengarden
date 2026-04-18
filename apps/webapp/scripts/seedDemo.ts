@@ -111,7 +111,11 @@ async function ensureAttestation(uid: string, data: Record<string, unknown>) {
 	const existing = await findOne("attestations", { uid: { equals: uid } });
 	if (existing) return existing;
 	// biome-ignore lint/suspicious/noExplicitAny: seed helper
-	return payload.create({ collection: "attestations", data: data as any, overrideAccess: true });
+	return payload.create({
+		collection: "attestations",
+		data: data as any,
+		overrideAccess: true,
+	});
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -124,7 +128,10 @@ console.log("── Registry ──");
 
 const sponsor = await findOrCreate(
 	"sponsor (Demo Municipality)",
-	() => findOne("sponsors", { "canonicalKey.contractNumber": { equals: SPONSOR_KEY } }),
+	() =>
+		findOne("sponsors", {
+			"canonicalKey.contractNumber": { equals: SPONSOR_KEY },
+		}),
 	() =>
 		payload.create({
 			collection: "sponsors",
@@ -157,7 +164,11 @@ const gardener = await findOrCreate(
 	() =>
 		payload.create({
 			collection: "gardeners",
-			data: { displayName: "Demo Gardener", wallet: GARDENER_WALLET, status: "active" },
+			data: {
+				displayName: "Demo Gardener",
+				wallet: GARDENER_WALLET,
+				status: "active",
+			},
 		}),
 );
 
@@ -167,7 +178,11 @@ const gardener2 = await findOrCreate(
 	() =>
 		payload.create({
 			collection: "gardeners",
-			data: { displayName: "Carlo Bianchi", wallet: GARDENER_2_WALLET, status: "active" },
+			data: {
+				displayName: "Carlo Bianchi",
+				wallet: GARDENER_2_WALLET,
+				status: "active",
+			},
 		}),
 );
 
@@ -177,7 +192,11 @@ const gardener3 = await findOrCreate(
 	() =>
 		payload.create({
 			collection: "gardeners",
-			data: { displayName: "Luca Moretti", wallet: GARDENER_3_WALLET, status: "active" },
+			data: {
+				displayName: "Luca Moretti",
+				wallet: GARDENER_3_WALLET,
+				status: "active",
+			},
 		}),
 );
 
@@ -187,7 +206,11 @@ const gardener4 = await findOrCreate(
 	() =>
 		payload.create({
 			collection: "gardeners",
-			data: { displayName: "Sofia Romano", wallet: GARDENER_4_WALLET, status: "active" },
+			data: {
+				displayName: "Sofia Romano",
+				wallet: GARDENER_4_WALLET,
+				status: "active",
+			},
 		}),
 );
 
@@ -197,7 +220,11 @@ await findOrCreate(
 	() =>
 		payload.create({
 			collection: "gardeners",
-			data: { displayName: "Matteo Gentile", wallet: GARDENER_5_WALLET, status: "onboarding" },
+			data: {
+				displayName: "Matteo Gentile",
+				wallet: GARDENER_5_WALLET,
+				status: "onboarding",
+			},
 		}),
 );
 
@@ -216,8 +243,7 @@ await findOrCreate(
 				name: "Demo Garden (draft)",
 				municipality: "Demo City",
 				areaType: String(AreaType.PublicGreenSpace) as "1",
-				latitude: 41.9028,
-				longitude: 12.4964,
+				coordinates: [12.4964, 41.9028],
 				lifecycleStatus: "draft",
 			},
 		}),
@@ -244,8 +270,7 @@ const registeredArea = await findOrCreate(
 				name: "Demo Garden (registered)",
 				municipality: "Demo City",
 				areaType: String(AreaType.PublicGreenSpace) as "1",
-				latitude: 41.9101,
-				longitude: 12.502,
+				coordinates: [12.502, 41.9101],
 				lifecycleStatus: "registered",
 				attestation: att.id,
 			},
@@ -275,8 +300,7 @@ const villaArea = await findOrCreate(
 				name: "Villa Borghese — Pratone",
 				municipality: "Roma",
 				areaType: String(AreaType.PublicGreenSpace) as "1",
-				latitude: 41.9134,
-				longitude: 12.4922,
+				coordinates: [12.4922, 41.9134],
 				lifecycleStatus: "registered",
 				attestation: att.id,
 			},
@@ -306,8 +330,7 @@ const parcoArea = await findOrCreate(
 				name: "Parco degli Acquedotti",
 				municipality: "Roma",
 				areaType: String(AreaType.PublicGreenSpace) as "1",
-				latitude: 41.8499,
-				longitude: 12.5547,
+				coordinates: [12.5547, 41.8499],
 				lifecycleStatus: "registered",
 				attestation: att.id,
 			},
@@ -322,7 +345,8 @@ console.log("\n── Interventions ──");
 
 await findOrCreate(
 	"intervention (Demo Intervention — draft)",
-	() => findOne("interventions", { interventionId: { equals: INTERVENTION_ID } }),
+	() =>
+		findOne("interventions", { interventionId: { equals: INTERVENTION_ID } }),
 	() =>
 		payload.create({
 			collection: "interventions",
@@ -330,7 +354,8 @@ await findOrCreate(
 				interventionId: INTERVENTION_ID,
 				area: (registeredArea as { id: string }).id,
 				interventionType: String(InterventionType.RoutineMaintenance) as "1",
-				description: "Spring cleanup and routine maintenance for the demo garden.",
+				description:
+					"Spring cleanup and routine maintenance for the demo garden.",
 				commissioning: { sponsor: (sponsor as { id: string }).id },
 				crew: [{ gardener: (gardener as { id: string }).id, isCrewLead: true }],
 				lifecycleStatus: "draft",
@@ -341,7 +366,10 @@ await findOrCreate(
 // Scheduled intervention — shows in week schedule panel (Apr 19)
 await findOrCreate(
 	"intervention (Spring Pruning — scheduled)",
-	() => findOne("interventions", { interventionId: { equals: INTERVENTION_SCHED_ID } }),
+	() =>
+		findOne("interventions", {
+			interventionId: { equals: INTERVENTION_SCHED_ID },
+		}),
 	async () => {
 		const schedAtt = await ensureAttestation(MOCK_SCHED_ATT_UID, {
 			uid: MOCK_SCHED_ATT_UID,
@@ -359,7 +387,8 @@ await findOrCreate(
 				interventionId: INTERVENTION_SCHED_ID,
 				area: (villaArea as { id: string }).id,
 				interventionType: String(InterventionType.RoutineMaintenance) as "1",
-				description: "Spring pruning, hedge trimming, and path clearing at Villa Borghese.",
+				description:
+					"Spring pruning, hedge trimming, and path clearing at Villa Borghese.",
 				commissioning: { sponsor: (sponsor as { id: string }).id },
 				crew: [
 					{ gardener: (gardener as { id: string }).id, isCrewLead: true },
@@ -381,7 +410,10 @@ await findOrCreate(
 // In-progress intervention — has activities for the ledger + live gardener
 const progIntervention = await findOrCreate(
 	"intervention (Storm cleanup — in progress)",
-	() => findOne("interventions", { interventionId: { equals: INTERVENTION_PROG_ID } }),
+	() =>
+		findOne("interventions", {
+			interventionId: { equals: INTERVENTION_PROG_ID },
+		}),
 	async () => {
 		const schedAtt = await ensureAttestation(MOCK_PROG_SCHED_ATT_UID, {
 			uid: MOCK_PROG_SCHED_ATT_UID,
@@ -402,7 +434,10 @@ const progIntervention = await findOrCreate(
 				description:
 					"Emergency debris removal following storm damage at Parco degli Acquedotti.",
 				tasks: [
-					{ code: "BRANCH_CLEAR", label: "Clear fallen branches from pathways" },
+					{
+						code: "BRANCH_CLEAR",
+						label: "Clear fallen branches from pathways",
+					},
 					{ code: "DEBRIS_REMOVE", label: "Remove debris from fountain area" },
 					{ code: "FENCE_SECURE", label: "Secure unstable fence sections" },
 					{ code: "DRAIN_CLEAR", label: "Free blocked storm drain" },

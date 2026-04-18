@@ -52,9 +52,7 @@ export const commitActivityChainTask: TaskConfig<{
 		attempts: 3,
 		backoff: { type: "exponential", delay: 5_000 },
 	},
-	inputSchema: [
-		{ name: "activityId", type: "text", required: true },
-	],
+	inputSchema: [{ name: "activityId", type: "text", required: true }],
 	outputSchema: [
 		{ name: "chainUID", type: "text", required: true },
 		{ name: "attestationId", type: "text", required: true },
@@ -198,9 +196,10 @@ async function resolvePhotoHash(
 	) {
 		return (photo as { storageHash: string }).storageHash;
 	}
-	const photoId = typeof photo === "object" && photo !== null
-		? (photo as { id?: string | number }).id
-		: photo;
+	const photoId =
+		typeof photo === "object" && photo !== null
+			? (photo as { id?: string | number }).id
+			: photo;
 	if (photoId === undefined || photoId === null) return "";
 	const media = await payload
 		.findByID({
@@ -296,10 +295,7 @@ async function dispatchSdkCall(
 			}
 			const parentAttestation = (parent as { attestation?: unknown })
 				.attestation;
-			if (
-				typeof parentAttestation !== "object" ||
-				parentAttestation === null
-			) {
+			if (typeof parentAttestation !== "object" || parentAttestation === null) {
 				throw new Error(
 					"Checkout's parent checkin has no attestation row yet. Wait for the checkin task to drain before recording the checkout.",
 				);
@@ -348,9 +344,7 @@ async function dispatchSdkCall(
 					? (parentAttestation as { uid?: string }).uid
 					: undefined;
 			if (!checkoutUID) {
-				throw new Error(
-					"Report's parent checkout has no attestation uid yet.",
-				);
+				throw new Error("Report's parent checkout has no attestation uid yet.");
 			}
 			const sdkInput: GardenerReportInput = {
 				interventionUID,
@@ -370,7 +364,7 @@ async function dispatchSdkCall(
 
 		case "healthcheck": {
 			const area =
-				(activity.area && typeof activity.area === "object")
+				activity.area && typeof activity.area === "object"
 					? activity.area
 					: (activity.intervention as { area?: unknown } | undefined)?.area;
 			if (typeof area !== "object" || area === null) {
@@ -393,8 +387,8 @@ async function dispatchSdkCall(
 			const intervention = activity.intervention;
 			const schedAtt =
 				typeof intervention === "object" && intervention !== null
-					? (intervention as { scheduling?: { attestation?: unknown } }).scheduling
-							?.attestation
+					? (intervention as { scheduling?: { attestation?: unknown } })
+							.scheduling?.attestation
 					: undefined;
 			const interventionUID =
 				(typeof schedAtt === "object" &&
@@ -408,7 +402,7 @@ async function dispatchSdkCall(
 				typeof assessor === "object" &&
 				assessor !== null &&
 				typeof (assessor as { staffId?: unknown }).staffId === "string"
-					? ((assessor as { staffId: string }).staffId)
+					? (assessor as { staffId: string }).staffId
 					: null;
 
 			const sdkInput: HealthcheckInput = {

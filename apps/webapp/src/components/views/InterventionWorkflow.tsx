@@ -202,6 +202,11 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 		: [];
 
 	const showCrewActivity = status === "in_progress";
+	const taskCodes = Array.isArray(inv?.tasks)
+		? (inv.tasks as Array<{ code?: string; label?: string }>)
+				.filter((t) => t.code && t.label)
+				.map((t) => ({ code: t.code as string, label: t.label as string }))
+		: [];
 
 	// Derived execution summary — populated when in_progress
 	let derivedExecutionDate: string | null = null;
@@ -293,14 +298,12 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 
 		// ─── Checkin defaults (gardener + lat/lng from area) ──────────
 		const areaObj = inv?.area;
-		const areaLat =
+		const areaCoords =
 			areaObj && typeof areaObj === "object"
-				? (areaObj as { latitude?: number }).latitude
+				? (areaObj as { coordinates?: [number, number] | null }).coordinates
 				: undefined;
-		const areaLng =
-			areaObj && typeof areaObj === "object"
-				? (areaObj as { longitude?: number }).longitude
-				: undefined;
+		const areaLat = areaCoords?.[1];
+		const areaLng = areaCoords?.[0];
 
 		const firstCrew = crew[0];
 		const firstGardener = (firstCrew as { gardener?: unknown })?.gardener;
@@ -718,6 +721,7 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 									doneLabel="Check-in recorded ✓"
 									clientFields={checkinClientFields}
 									formState={checkinInitialState}
+									activityType="checkin"
 								/>
 								<div
 									className="iw-form__section-label"
@@ -730,6 +734,7 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 									doneLabel="Check-out recorded ✓"
 									clientFields={checkoutClientFields}
 									formState={checkoutInitialState}
+									activityType="checkout"
 								/>
 								<div
 									className="iw-form__section-label"
@@ -742,6 +747,8 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 									doneLabel="Report recorded ✓"
 									clientFields={reportClientFields}
 									formState={reportInitialState}
+									activityType="report"
+									taskCodes={taskCodes}
 								/>
 								{healthcheckCanRender ? (
 									<>
@@ -756,6 +763,7 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 											doneLabel="Healthcheck recorded ✓"
 											clientFields={healthcheckClientFields}
 											formState={healthcheckInitialState}
+											activityType="healthcheck"
 										/>
 									</>
 								) : null}

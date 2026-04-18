@@ -4,10 +4,8 @@ import { APIError } from "payload";
 import { authenticated } from "../access/authenticated";
 import { isAuthoringOrAbove } from "../access/isAuthoringOrAbove";
 
-
 export const AREA_LIFECYCLE_STATUSES = [
 	"draft",
-	"registering",
 	"registered",
 	"failed",
 ] as const;
@@ -29,8 +27,8 @@ const AREA_TYPE_OPTIONS = [
 ];
 
 /**
- * Once an area is `registered`, the hash-affecting inputs (`latitude`,
- * `longitude`, `areaType`, `metadataHash`) must not change — they would
+ * Once an area is `registered`, the hash-affecting inputs (`coordinates`,
+ * `areaType`, `metadataHash`) must not change — they would
  * orphan the on-chain `AreaRegistration`. Display-only fields (`name`,
  * `municipality`, extended metadata display fields) remain editable.
  *
@@ -48,8 +46,7 @@ const freezeRegisteredAreaInputs: CollectionBeforeValidateHook = async ({
 	if (originalDoc.lifecycleStatus !== "registered") return data;
 
 	const frozenFields = [
-		"latitude",
-		"longitude",
+		"coordinates",
 		"areaType",
 		"metadataHash",
 	] as const;
@@ -119,25 +116,8 @@ export const Areas: CollectionConfig = {
 			options: AREA_TYPE_OPTIONS,
 		},
 		{
-			type: "row",
-			fields: [
-				{
-					name: "latitude",
-					type: "number",
-					label: "Latitude",
-					required: true,
-					min: -90,
-					max: 90,
-				},
-				{
-					name: "longitude",
-					type: "number",
-					label: "Longitude",
-					required: true,
-					min: -180,
-					max: 180,
-				},
-			],
+			name: "coordinates",
+			type: "point",
 		},
 		{
 			type: "collapsible",
@@ -145,34 +125,27 @@ export const Areas: CollectionConfig = {
 			admin: { initCollapsed: true },
 			fields: [
 				{
-					name: "extendedMetadata",
-					type: "group",
-					label: false,
-					fields: [
-						{
-							name: "surfaceAreaSqm",
-							type: "number",
-							label: "Surface area (m²)",
-						},
-						{
-							name: "boundaryGeojson",
-							type: "json",
-							label: "Boundary (GeoJSON)",
-						},
-						{
-							name: "coverPhoto",
-							type: "upload",
-							relationTo: "media",
-							label: "Cover photo",
-						},
-						{
-							name: "gallery",
-							type: "relationship",
-							relationTo: "media",
-							hasMany: true,
-							label: "Gallery",
-						},
-					],
+					name: "surfaceAreaSqm",
+					type: "number",
+					label: "Surface area (m²)",
+				},
+				{
+					name: "boundaryGeojson",
+					type: "json",
+					label: "Boundary (GeoJSON)",
+				},
+				{
+					name: "coverPhoto",
+					type: "upload",
+					relationTo: "media",
+					label: "Cover photo",
+				},
+				{
+					name: "gallery",
+					type: "relationship",
+					relationTo: "media",
+					hasMany: true,
+					label: "Gallery",
 				},
 			],
 		},
@@ -183,6 +156,7 @@ export const Areas: CollectionConfig = {
 			index: true,
 			admin: {
 				readOnly: true,
+				hidden: true,
 				description: "Empty when no extended details are set.",
 			},
 		},

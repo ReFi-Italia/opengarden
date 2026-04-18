@@ -2,6 +2,7 @@ import { getPayload, type Payload } from "payload";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { UserRole } from "@/collections/Users";
 import config from "@/payload.config";
+import { uniqueId } from "../helpers/fixtures";
 
 let payload: Payload;
 
@@ -13,9 +14,6 @@ const ROLES: UserRole[] = [
 	"authoring",
 	"viewer",
 ];
-
-const uniqueId = (prefix: string) =>
-	`${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 const seedUser = async (role: UserRole) => {
 	const email = `${role}-${uniqueId("user")}@test.local`;
@@ -71,8 +69,7 @@ const cases: AccessExpectation[] = [
 			name: "AccessTest area",
 			municipality: "Roma",
 			areaType: "1",
-			latitude: 0,
-			longitude: 0,
+			coordinates: [0, 0],
 		},
 		allowedRoles: ["admin", "manager", "authoring"],
 	},

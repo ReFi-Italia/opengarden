@@ -63,7 +63,10 @@ export interface EvidenceBundleBuilderInput {
 		approved: boolean;
 		qualityScore: number;
 	};
-	healthcheck?: TimestampedOffChainResult & { score: number; baselineScore?: number };
+	healthcheck?: TimestampedOffChainResult & {
+		score: number;
+		baselineScore?: number;
+	};
 	photos?: {
 		checkinPhotos?: string[];
 		reportPhotos?: string;

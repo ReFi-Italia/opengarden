@@ -95,8 +95,8 @@ export const registerAreaTask: TaskConfig<{
 
 		const sdkInput: AreaRegistrationInput = {
 			areaId: area.areaId,
-			latitude: area.latitude,
-			longitude: area.longitude,
+			latitude: area.coordinates?.[1] ?? 0,
+			longitude: area.coordinates?.[0] ?? 0,
 			areaType: Number(area.areaType) as AreaType,
 			name: area.name,
 			municipality: area.municipality,
