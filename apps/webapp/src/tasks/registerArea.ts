@@ -5,7 +5,7 @@ import {
 	getOpenGardenContext,
 	type OpenGardenContext,
 } from "../lib/openGardenClient";
-import { createAttestationRecord } from "./taskHelpers";
+import { createAttestationRecord } from "../lib/taskHelpers";
 
 type RegisterAreaInput = {
 	/** Payload document id of the `areas` row to register on-chain. */

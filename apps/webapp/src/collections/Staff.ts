@@ -1,6 +1,6 @@
 import type { CollectionConfig } from "payload";
-import { authenticated } from "../access/authenticated";
-import { isManagerOrAdmin } from "../access/isManagerOrAdmin";
+import { registryAccess } from "../access/registryAccess";
+import { displayNameField } from "../fields/displayName";
 import { computeStaffHash } from "../hooks/computeStaffHash";
 import { freezeOnFirstUse } from "../hooks/freezeOnFirstUse";
 
@@ -17,12 +17,7 @@ export const Staff: CollectionConfig = {
 		group: "Registry",
 		defaultColumns: ["displayName", "staffId", "capabilities", "frozen"],
 	},
-	access: {
-		read: authenticated,
-		create: isManagerOrAdmin,
-		update: isManagerOrAdmin,
-		delete: isManagerOrAdmin,
-	},
+	access: registryAccess,
 	hooks: {
 		beforeChange: [
 			computeStaffHash,
@@ -30,12 +25,7 @@ export const Staff: CollectionConfig = {
 		],
 	},
 	fields: [
-		{
-			name: "displayName",
-			type: "text",
-			required: true,
-			label: "Display name",
-		},
+		displayNameField,
 		{
 			type: "collapsible",
 			label: "Identification",

@@ -14,6 +14,7 @@ import {
 	type OpenGardenContext,
 } from "../lib/openGardenClient";
 import { serializeBigInts } from "../lib/serializeBigInts";
+import { createAttestationRecord } from "../lib/taskHelpers";
 
 type CommitActivityChainInput = {
 	/** Payload document id of the `activities` row to commit on-chain. */
@@ -103,24 +104,18 @@ export const commitActivityChainTask: TaskConfig<{
 			);
 
 			// Persist the signed attestation as its own row
-			const attestationRow = await payload.create({
-				collection: "attestations",
-				data: {
-					uid: result.uid,
-					schemaName,
-					signedAttestation: serializeBigInts(
-						result.signedAttestation,
-					) as unknown as Record<string, unknown>,
-					timestampTxHash: result.timestampTxHash,
-					onchainTimestamp: Number(result.onchainTimestamp),
-					chainIdSnapshot: context.chainId,
-					attesterWallet: context.attesterWallet,
-					status: "committed",
-					relatedCollection: "activities",
-					relatedId: activityId,
-				},
-				overrideAccess: true,
-				req,
+			const attestationRow = await createAttestationRecord(req, {
+				uid: result.uid,
+				schemaName,
+				signedAttestation: serializeBigInts(
+					result.signedAttestation,
+				) as unknown as Record<string, unknown>,
+				timestampTxHash: result.timestampTxHash,
+				onchainTimestamp: Number(result.onchainTimestamp),
+				chainIdSnapshot: context.chainId,
+				attesterWallet: context.attesterWallet,
+				relatedCollection: "activities",
+				relatedId: activityId,
 			});
 
 			// Link the activity to its attestation + snapshot the photoHash

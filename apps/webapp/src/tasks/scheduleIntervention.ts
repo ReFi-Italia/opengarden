@@ -8,7 +8,13 @@ import {
 	getOpenGardenContext,
 	type OpenGardenContext,
 } from "../lib/openGardenClient";
-import { serializeBigInts } from "../lib/serializeBigInts";
+import {
+	createAttestationRecord,
+	createInterventionAttestation,
+	extractCommissionId,
+	failInterventionAndRethrow,
+	requireAreaUID,
+} from "../lib/taskHelpers";
 
 
 type ScheduleInterventionInput = {
@@ -87,24 +93,7 @@ export const scheduleInterventionTask: TaskConfig<{
 			);
 		}
 
-		const area = intervention.area;
-		if (typeof area !== "object" || area === null) {
-			throw new Error(
-				`Intervention ${interventionId} → area could not be resolved.`,
-			);
-		}
-		const areaAttestation = (area as { attestation?: unknown }).attestation;
-		const areaUID =
-			typeof areaAttestation === "object" &&
-			areaAttestation !== null &&
-			typeof (areaAttestation as { uid?: unknown }).uid === "string"
-				? (areaAttestation as { uid: string }).uid
-				: null;
-		if (!areaUID) {
-			throw new Error(
-				`Intervention ${interventionId} → area has no on-chain UID. Register the area first.`,
-			);
-		}
+		const areaUID = requireAreaUID(intervention.area, `Intervention ${interventionId} →`);
 
 		if (!intervention.scheduling?.scheduledDate) {
 			throw new Error(
@@ -136,15 +125,7 @@ export const scheduleInterventionTask: TaskConfig<{
 			);
 		}
 
-		const sponsor = intervention.commissioning?.sponsor;
-		const commissionId =
-			typeof sponsor === "object" &&
-			sponsor !== null &&
-			sponsor.kind !== "volunteer" &&
-			typeof sponsor.canonicalJson === "string" &&
-			sponsor.canonicalJson.length > 0
-				? sponsor.canonicalJson
-				: null;
+		const commissionId = extractCommissionId(intervention);
 
 		const sdkInput: ScheduledInterventionInput = {
 			areaUID,
@@ -165,23 +146,13 @@ export const scheduleInterventionTask: TaskConfig<{
 			context = await getOpenGardenContext(payload);
 			const result = await context.client.scheduleIntervention(sdkInput);
 
-			const attestationRow = await payload.create({
-				collection: "attestations",
-				data: {
-					uid: result.uid,
-					schemaName: "ScheduledIntervention",
-					signedAttestation: serializeBigInts(result.signedAttestation) as unknown as Record<string, unknown>,
-					timestampTxHash: result.timestampTxHash,
-					onchainTimestamp: Number(result.onchainTimestamp),
-					chainIdSnapshot: context.chainId,
-					attesterWallet: context.attesterWallet,
-					status: "committed",
-					relatedCollection: "interventions",
-					relatedId: interventionId,
-				},
-				overrideAccess: true,
+			const attestationRow = await createInterventionAttestation(
 				req,
-			});
+				context,
+				result,
+				interventionId,
+				"ScheduledIntervention",
+			);
 
 			await payload.update({
 				collection: "interventions",
@@ -202,30 +173,7 @@ export const scheduleInterventionTask: TaskConfig<{
 				},
 			};
 		} catch (err) {
-			const message = err instanceof Error ? err.message : String(err);
-
-			await payload
-				.update({
-					collection: "interventions",
-					id: interventionId,
-					data: {
-						lifecycleStatus: "failed",
-						revocation: {
-							failedFrom: "draft",
-						},
-					},
-					overrideAccess: true,
-					context: { skipLifecycleHooks: true },
-					req,
-				})
-				.catch(() => undefined);
-
-			payload.logger.error({
-				msg: `scheduleIntervention task failed for intervention ${interventionId}`,
-				error: message,
-			});
-
-			throw err;
+			return await failInterventionAndRethrow(req, interventionId, "draft", "scheduleIntervention", err);
 		}
 	},
 };

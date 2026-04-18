@@ -8,6 +8,12 @@ import {
 	getOpenGardenContext,
 	type OpenGardenContext,
 } from "../lib/openGardenClient";
+import {
+	createAttestationRecord,
+	extractCommissionId,
+	failInterventionAndRethrow,
+	requireAreaUID,
+} from "../lib/taskHelpers";
 
 type PublishInterventionInput = {
 	/** Payload document id of the `interventions` row to publish. */
@@ -88,24 +94,7 @@ export const publishInterventionTask: TaskConfig<{
 			);
 		}
 
-		const area = intervention.area;
-		if (typeof area !== "object" || area === null) {
-			throw new Error(
-				`Intervention ${interventionId} → area could not be resolved.`,
-			);
-		}
-		const areaAttestation = (area as { attestation?: unknown }).attestation;
-		const areaUID =
-			typeof areaAttestation === "object" &&
-			areaAttestation !== null &&
-			typeof (areaAttestation as { uid?: unknown }).uid === "string"
-				? (areaAttestation as { uid: string }).uid
-				: null;
-		if (!areaUID) {
-			throw new Error(
-				`Intervention ${interventionId} → area has no on-chain UID.`,
-			);
-		}
+		const areaUID = requireAreaUID(intervention.area, `Intervention ${interventionId} →`);
 
 		// ─── Derive execution values from activities ──────────────────────
 		const activitiesResult = await payload.find({
@@ -179,15 +168,7 @@ export const publishInterventionTask: TaskConfig<{
 			);
 		}
 
-		const sponsor = intervention.commissioning?.sponsor;
-		const commissionId =
-			typeof sponsor === "object" &&
-			sponsor !== null &&
-			sponsor.kind !== "volunteer" &&
-			typeof sponsor.canonicalJson === "string" &&
-			sponsor.canonicalJson.length > 0
-				? sponsor.canonicalJson
-				: null;
+		const commissionId = extractCommissionId(intervention);
 
 		const crew = Array.isArray(intervention.crew) ? intervention.crew : [];
 
@@ -211,21 +192,15 @@ export const publishInterventionTask: TaskConfig<{
 			context = await getOpenGardenContext(payload);
 			const result = await context.client.publishIntervention(sdkInput);
 
-			const attestationRow = await payload.create({
-				collection: "attestations",
-				data: {
-					uid: result.uid,
-					schemaName: "PublishedIntervention",
-					signedAttestation: {} as unknown as Record<string, unknown>,
-					timestampTxHash: result.txHash,
-					chainIdSnapshot: context.chainId,
-					attesterWallet: context.attesterWallet,
-					status: "committed",
-					relatedCollection: "interventions",
-					relatedId: interventionId,
-				},
-				overrideAccess: true,
-				req,
+			const attestationRow = await createAttestationRecord(req, {
+				uid: result.uid,
+				schemaName: "PublishedIntervention",
+				signedAttestation: {} as unknown as Record<string, unknown>,
+				timestampTxHash: result.txHash,
+				chainIdSnapshot: context.chainId,
+				attesterWallet: context.attesterWallet,
+				relatedCollection: "interventions",
+				relatedId: interventionId,
 			});
 
 			await payload.update({
@@ -255,30 +230,7 @@ export const publishInterventionTask: TaskConfig<{
 				output: { chainUID: result.uid, txHash: result.txHash },
 			};
 		} catch (err) {
-			const message = err instanceof Error ? err.message : String(err);
-
-			await payload
-				.update({
-					collection: "interventions",
-					id: interventionId,
-					data: {
-						lifecycleStatus: "failed",
-						revocation: {
-							failedFrom: "validated",
-						},
-					},
-					overrideAccess: true,
-					context: { skipLifecycleHooks: true },
-					req,
-				})
-				.catch(() => undefined);
-
-			payload.logger.error({
-				msg: `publishIntervention task failed for intervention ${interventionId}`,
-				error: message,
-			});
-
-			throw err;
+			return await failInterventionAndRethrow(req, interventionId, "validated", "publishIntervention", err);
 		}
 	},
 };

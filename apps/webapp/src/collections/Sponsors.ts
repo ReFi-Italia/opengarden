@@ -1,6 +1,6 @@
 import type { CollectionConfig } from "payload";
-import { authenticated } from "../access/authenticated";
-import { isManagerOrAdmin } from "../access/isManagerOrAdmin";
+import { registryAccess } from "../access/registryAccess";
+import { displayNameField } from "../fields/displayName";
 import { computeSponsorHash } from "../hooks/computeSponsorHash";
 import { freezeOnFirstUse } from "../hooks/freezeOnFirstUse";
 
@@ -18,12 +18,7 @@ export const Sponsors: CollectionConfig = {
 		group: "Registry",
 		defaultColumns: ["displayName", "kind", "frozen", "archived"],
 	},
-	access: {
-		read: authenticated,
-		create: isManagerOrAdmin,
-		update: isManagerOrAdmin,
-		delete: isManagerOrAdmin,
-	},
+	access: registryAccess,
 	versions: {
 		drafts: false,
 		maxPerDoc: 50,
@@ -35,12 +30,7 @@ export const Sponsors: CollectionConfig = {
 		],
 	},
 	fields: [
-		{
-			name: "displayName",
-			type: "text",
-			required: true,
-			label: "Display name",
-		},
+		displayNameField,
 		{
 			type: "collapsible",
 			label: "Identification",

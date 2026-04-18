@@ -8,6 +8,7 @@ import {
 	getOpenGardenContext,
 	type OpenGardenContext,
 } from "../lib/openGardenClient";
+import { requireAreaUID } from "../lib/taskHelpers";
 
 type BuildBundleInput = {
 	/** Payload document id of the `evidenceBundles` row to build. */
@@ -93,22 +94,7 @@ export const buildBundleTask: TaskConfig<{
 			);
 		}
 
-		const area = intervention.area;
-		const areaAttestation =
-			typeof area === "object" && area !== null
-				? (area as { attestation?: unknown }).attestation
-				: null;
-		const areaUID =
-			typeof areaAttestation === "object" &&
-			areaAttestation !== null &&
-			typeof (areaAttestation as { uid?: unknown }).uid === "string"
-				? (areaAttestation as { uid: string }).uid
-				: null;
-		if (!areaUID) {
-			throw new Error(
-				`Bundle ${bundleId} → intervention.area has no on-chain UID.`,
-			);
-		}
+		const areaUID = requireAreaUID(intervention.area, `Bundle ${bundleId} → intervention.`);
 
 		const schedAtt = (
 			intervention.scheduling as { attestation?: unknown } | undefined

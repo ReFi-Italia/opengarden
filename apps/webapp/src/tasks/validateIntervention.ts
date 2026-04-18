@@ -5,7 +5,10 @@ import {
 	getOpenGardenContext,
 	type OpenGardenContext,
 } from "../lib/openGardenClient";
-import { serializeBigInts } from "../lib/serializeBigInts";
+import {
+	createInterventionAttestation,
+	failInterventionAndRethrow,
+} from "../lib/taskHelpers";
 
 
 type ValidateInterventionInput = {
@@ -135,23 +138,13 @@ export const validateInterventionTask: TaskConfig<{
 			context = await getOpenGardenContext(payload);
 			const result = await context.client.validateIntervention(sdkInput);
 
-			const attestationRow = await payload.create({
-				collection: "attestations",
-				data: {
-					uid: result.uid,
-					schemaName: "AdminValidation",
-					signedAttestation: serializeBigInts(result.signedAttestation) as unknown as Record<string, unknown>,
-					timestampTxHash: result.timestampTxHash,
-					onchainTimestamp: Number(result.onchainTimestamp),
-					chainIdSnapshot: context.chainId,
-					attesterWallet: context.attesterWallet,
-					status: "committed",
-					relatedCollection: "interventions",
-					relatedId: interventionId,
-				},
-				overrideAccess: true,
+			const attestationRow = await createInterventionAttestation(
 				req,
-			});
+				context,
+				result,
+				interventionId,
+				"AdminValidation",
+			);
 
 			await payload.update({
 				collection: "interventions",
@@ -172,30 +165,7 @@ export const validateInterventionTask: TaskConfig<{
 				},
 			};
 		} catch (err) {
-			const message = err instanceof Error ? err.message : String(err);
-
-			await payload
-				.update({
-					collection: "interventions",
-					id: interventionId,
-					data: {
-						lifecycleStatus: "failed",
-						revocation: {
-							failedFrom: "in_progress",
-						},
-					},
-					overrideAccess: true,
-					context: { skipLifecycleHooks: true },
-					req,
-				})
-				.catch(() => undefined);
-
-			payload.logger.error({
-				msg: `validateIntervention task failed for intervention ${interventionId}`,
-				error: message,
-			});
-
-			throw err;
+			return await failInterventionAndRethrow(req, interventionId, "in_progress", "validateIntervention", err);
 		}
 	},
 };
