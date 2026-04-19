@@ -6,7 +6,7 @@
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "pnpm -r build && changeset publish",
-    "knip": "knip",
+    "knip": "knip --directory .",
     "cpd": "jscpd"
   },
   "devDependencies": {

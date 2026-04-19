@@ -2,7 +2,7 @@ import type { CollectionConfig } from "payload";
 import { authenticated } from "../access/authenticated";
 import { isAuthoringOrAbove } from "../access/isAuthoringOrAbove";
 
-export const MEDIA_PURPOSES = [
+const MEDIA_PURPOSES = [
 	"area-metadata",
 	"checkin",
 	"report",

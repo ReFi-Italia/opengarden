@@ -10,7 +10,7 @@ export const EVIDENCE_BUNDLE_STATES = [
 	"failed",
 ] as const;
 
-export type EvidenceBundleState = (typeof EVIDENCE_BUNDLE_STATES)[number];
+type EvidenceBundleState = (typeof EVIDENCE_BUNDLE_STATES)[number];
 
 /**
  * Build state machine table copied verbatim from the plan. All transitions

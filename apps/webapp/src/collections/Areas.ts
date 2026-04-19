@@ -4,7 +4,7 @@ import { APIError } from "payload";
 import { authenticated } from "../access/authenticated";
 import { isAuthoringOrAbove } from "../access/isAuthoringOrAbove";
 
-export const AREA_LIFECYCLE_STATUSES = [
+const AREA_LIFECYCLE_STATUSES = [
 	"draft",
 	"registered",
 	"failed",

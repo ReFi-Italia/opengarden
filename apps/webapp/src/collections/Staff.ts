@@ -4,7 +4,7 @@ import { displayNameField } from "../fields/displayName";
 import { computeStaffHash } from "../hooks/computeStaffHash";
 import { freezeOnFirstUse } from "../hooks/freezeOnFirstUse";
 
-export const STAFF_CAPABILITIES = [
+const STAFF_CAPABILITIES = [
 	"validator",
 	"assessor",
 	"crewLead",

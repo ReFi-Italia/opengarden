@@ -9,7 +9,7 @@ import { scheduleInterventionAction } from "@/actions/scheduleIntervention";
 import { startWorkAction } from "@/actions/startWork";
 import { validateInterventionAction } from "@/actions/validateIntervention";
 
-export type StageFormProps = {
+type StageFormProps = {
 	interventionId: string;
 	status: string;
 	formState: FormState;
@@ -270,4 +270,3 @@ function TriggerOnlyAction({
 	);
 }
 
-export default StageForm;

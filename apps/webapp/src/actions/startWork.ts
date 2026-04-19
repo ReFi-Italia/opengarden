@@ -4,7 +4,7 @@ import configPromise from "@payload-config";
 import { headers as nextHeaders } from "next/headers";
 import { getPayload } from "payload";
 
-export type StartWorkActionResult = { ok: true } | { ok: false; error: string };
+type StartWorkActionResult = { ok: true } | { ok: false; error: string };
 
 /**
  * Direct lifecycle transition `scheduled → in_progress`. No chain call,

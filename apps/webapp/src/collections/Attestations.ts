@@ -1,7 +1,7 @@
 import type { CollectionConfig } from "payload";
 import { authenticated } from "../access/authenticated";
 
-export const ATTESTATION_STATUS = ["committed", "failed"] as const;
+const ATTESTATION_STATUS = ["committed", "failed"] as const;
 
 export const ATTESTATION_SCHEMAS = [
 	"ScheduledIntervention",

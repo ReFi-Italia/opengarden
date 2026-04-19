@@ -4,7 +4,7 @@ import { displayNameField } from "../fields/displayName";
 import { computeSponsorHash } from "../hooks/computeSponsorHash";
 import { freezeOnFirstUse } from "../hooks/freezeOnFirstUse";
 
-export const SPONSOR_KINDS = [
+const SPONSOR_KINDS = [
 	"corporate",
 	"municipal",
 	"grant",

@@ -10,7 +10,7 @@ import { useRouter } from "next/navigation";
 import type { ClientField, FormState } from "payload";
 import { useState, useTransition } from "react";
 
-export type RecordActivityFormProps = {
+type RecordActivityFormProps = {
 	label: string;
 	doneLabel: string;
 	clientFields: ClientField[];
@@ -98,4 +98,3 @@ export function RecordActivityForm({
 	);
 }
 
-export default RecordActivityForm;

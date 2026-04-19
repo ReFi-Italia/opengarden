@@ -10,7 +10,7 @@ import { APIError } from "payload";
  * The `frozen: true` flag is flipped by the schedule-intervention server
  * action (never by this hook). This hook only reads it.
  */
-export interface FreezeOnFirstUseOptions {
+interface FreezeOnFirstUseOptions {
 	/** Fields whose value contributes to the canonical hash. Edits to these are refused when `frozen === true`. */
 	hashInputFields: readonly string[];
 }

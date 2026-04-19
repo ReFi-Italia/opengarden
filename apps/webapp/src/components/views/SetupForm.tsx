@@ -3,7 +3,7 @@
 import { DefaultEditView } from "@payloadcms/ui";
 import type { DocumentSubViewTypes, FormState, ViewTypes } from "payload";
 
-export type SetupFormProps = {
+type SetupFormProps = {
 	documentSubViewType: DocumentSubViewTypes;
 	formState: FormState;
 	viewType: ViewTypes;
@@ -34,4 +34,3 @@ export function SetupForm({
 	);
 }
 
-export default SetupForm;

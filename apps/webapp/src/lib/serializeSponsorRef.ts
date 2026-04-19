@@ -5,7 +5,7 @@ import {
 } from "@refi-italia/opengarden";
 import { keccak256, toUtf8Bytes } from "ethers";
 
-export interface DerivedSponsorHash {
+interface DerivedSponsorHash {
 	canonicalJson: string;
 	hash: string;
 }

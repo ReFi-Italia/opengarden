@@ -3,7 +3,7 @@ import { APIError } from "payload";
 import { authenticated } from "../access/authenticated";
 import { isManagerOrAdmin } from "../access/isManagerOrAdmin";
 
-export const GARDENER_STATUSES = ["onboarding", "active", "inactive"] as const;
+const GARDENER_STATUSES = ["onboarding", "active", "inactive"] as const;
 
 /**
  * Application-level partial unique constraint on `wallet`: wallets must be

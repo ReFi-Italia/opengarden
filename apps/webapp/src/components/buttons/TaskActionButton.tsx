@@ -8,7 +8,7 @@ type ActionResult =
 	| { ok: true; jobId?: number | string }
 	| { ok: false; error: string };
 
-export type TaskAction = (id: string) => Promise<ActionResult>;
+type TaskAction = (id: string) => Promise<ActionResult>;
 
 interface TaskActionButtonProps {
 	label: string;
