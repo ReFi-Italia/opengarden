@@ -17,8 +17,6 @@ export interface PublishedInterventionInput {
 	interventionId: string;
 	interventionType: InterventionType;
 	executionDate: Date | bigint;
-	healthBefore: number;
-	healthAfter: number;
 	/** Plain commissioning identifier, structured `SponsorRef`, or `null` for volunteer/unsponsored work. Hashed internally per spec §9.1; structured refs are canonicalized via `serializeSponsorRef` before hashing. */
 	commissionId: string | SponsorRef | null;
 	evidenceBundleHash: string;
@@ -82,24 +80,12 @@ export interface AdminValidationInput {
 	validatorId: string | null;
 }
 
-export interface CitizenFeedbackInput {
-	areaUID: string;
-	rating: number;
-	comment: string;
-	photoHash: string;
-}
-
 export interface HealthcheckInput {
-	/** EAS UID of the linked ScheduledIntervention. `null` for standalone monitoring (encodes as ZERO_BYTES32). */
-	interventionUID: string | null;
+	areaUID: string;
+	/** 1-10, where 10 is best. */
 	healthScore: number;
 	photoHash: string;
-	/** Plain staff identifier of the assessing staff member; `null` for organizational assessment without individual attribution. Hashed internally per spec §9.1. */
-	assessorId: string | null;
-	/**
-	 * Keccak256 of the off-chain metadata JSON. `null` encodes as ZERO_BYTES32.
-	 * Metadata carries app-level fields: `baseline.score`, `baseline.sourceUID`,
-	 * `assessorNotes`, `interventionNeeded`, etc.
-	 */
-	metadataHash: string | null;
+	notes: string;
+	/** Free-form JSON string for app-specific extras. Empty string for none. */
+	metadata: string;
 }

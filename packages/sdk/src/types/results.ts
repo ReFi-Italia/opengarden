@@ -16,11 +16,6 @@ export interface TimestampedOffChainResult {
 	timestampReceipt: TransactionReceipt;
 }
 
-export interface OffChainAttestationResult {
-	uid: string;
-	signedAttestation: Record<string, unknown>;
-}
-
 export interface SchemaRegistrationResult {
 	name: string;
 	uid: string;
@@ -38,8 +33,7 @@ export type BundleIndexingRole =
 	| "checkin"
 	| "checkout"
 	| "report"
-	| "validation"
-	| "healthcheck";
+	| "validation";
 
 export interface BundleIndexingResult extends IndexerSubmissionResult {
 	uid: string;

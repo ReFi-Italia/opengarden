@@ -17,9 +17,9 @@ export const DEFAULT_TEST_CHAIN: ChainConfig = OPTIMISM_MAINNET;
 // {...} }); tests that don't touch the chain at all get these no-op
 // defaults so construction succeeds without loading eas-sdk.
 // biome-ignore lint/suspicious/noExplicitAny: test stub cast
-export const DEFAULT_EAS_STUB: any = {};
+const DEFAULT_EAS_STUB: any = {};
 // biome-ignore lint/suspicious/noExplicitAny: test stub cast
-export const DEFAULT_REGISTRY_STUB: any = {};
+const DEFAULT_REGISTRY_STUB: any = {};
 
 export function createMockSigner() {
 	const provider = {
@@ -63,7 +63,7 @@ export function createTestClient(
 	return new OpenGardenClient(createTestConfig(overrides));
 }
 
-export interface FakeResultOptions {
+interface FakeResultOptions {
 	time?: bigint;
 	onchainTimestamp?: bigint;
 	attester?: string;

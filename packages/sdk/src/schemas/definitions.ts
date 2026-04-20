@@ -11,7 +11,7 @@ export const SCHEMA_STRINGS: Record<SchemaName, string> = {
 	AreaRegistration:
 		"string areaId, int32 latitude, int32 longitude, uint8 areaType, string name, string municipality, bytes32 metadataHash",
 	PublishedIntervention:
-		"bytes32 areaUID, string interventionId, uint8 interventionType, uint64 executionDate, uint8 healthBefore, uint8 healthAfter, bytes32 commissionRef, bytes32 evidenceBundleHash, uint8 offchainCount, uint8 crewSize",
+		"bytes32 areaUID, string interventionId, uint8 interventionType, uint64 executionDate, bytes32 commissionRef, bytes32 evidenceBundleHash, uint8 offchainCount, uint8 crewSize",
 	GardenerMilestone:
 		"uint8 milestoneLevel, uint16 totalInterventions, uint16 totalValidated, uint8 avgHealthImprovement, string skillTier, uint64 achievedAt, bytes32 evidenceRoot",
 	ScheduledIntervention:
@@ -24,10 +24,8 @@ export const SCHEMA_STRINGS: Record<SchemaName, string> = {
 		"bytes32 interventionUID, bytes32 checkoutUID, string tasksCompleted, uint8 taskCount, bytes32 photosHash, string notes",
 	AdminValidation:
 		"bytes32 scheduleUID, bool approved, uint8 qualityScore, string feedback, bytes32 validatorId",
-	CitizenFeedback:
-		"bytes32 areaUID, uint8 rating, string comment, bytes32 photoHash",
 	Healthcheck:
-		"bytes32 interventionUID, uint8 healthScore, bytes32 photoHash, bytes32 assessorId, bytes32 metadataHash",
+		"bytes32 areaUID, uint8 healthScore, bytes32 photoHash, string notes, string metadata",
 };
 
 export const SCHEMA_DEFINITIONS: Record<SchemaName, SchemaDefinition> = {
@@ -78,12 +76,6 @@ export const SCHEMA_DEFINITIONS: Record<SchemaName, SchemaDefinition> = {
 		revocable: true,
 		onchain: false,
 		timestamped: true,
-	},
-	CitizenFeedback: {
-		schema: SCHEMA_STRINGS.CitizenFeedback,
-		revocable: false,
-		onchain: false,
-		timestamped: false,
 	},
 	Healthcheck: {
 		schema: SCHEMA_STRINGS.Healthcheck,

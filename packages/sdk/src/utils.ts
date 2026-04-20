@@ -24,10 +24,10 @@ export function toUnixSeconds(value: Date | bigint): bigint {
 
 /**
  * Produces a bytes32 hash of an internal identifier (UUID, staff ID, etc.)
- * per spec §9.1. The SDK applies this automatically to the `commissionId`,
- * `validatorId`, and `assessorId` input fields; this helper is exported for
- * callers that need to reproduce the same hash outside the encoding path
- * (e.g. to resolve an on-chain `commissionRef` against a known sponsor ID).
+ * per spec §9.1. The SDK applies this automatically to the `commissionId`
+ * and `validatorId` input fields; this helper is exported for callers that
+ * need to reproduce the same hash outside the encoding path (e.g. to resolve
+ * an on-chain `commissionRef` against a known sponsor ID).
  */
 export function hashIdentifier(id: string): string {
 	if (!id) {

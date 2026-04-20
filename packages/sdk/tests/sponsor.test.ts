@@ -51,8 +51,6 @@ describe("commissionId encoding with SponsorRef", () => {
 		interventionId: "INT-2026-0001",
 		interventionType: InterventionType.RoutineMaintenance,
 		executionDate: 1709251200n,
-		healthBefore: 3,
-		healthAfter: 8,
 		evidenceBundleHash: ZERO_BYTES32,
 		offchainCount: 5,
 		crewSize: 1,

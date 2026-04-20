@@ -23,14 +23,6 @@ export interface EvidenceBundleValidation extends EvidenceBundleAttestation {
 	qualityScore: number;
 }
 
-export interface EvidenceBundleHealthcheck {
-	uid: string;
-	score: number;
-	/** Baseline (pre-intervention) score from off-chain metadata. Absent for standalone site checks. */
-	baselineScore?: number;
-	onchainTimestamp: number;
-}
-
 export interface EvidenceBundle {
 	interventionId: string;
 	areaUID: string;
@@ -40,7 +32,6 @@ export interface EvidenceBundle {
 		checkouts: EvidenceBundleGardenerAttestation[];
 		reports: EvidenceBundleGardenerAttestation[];
 		validation: EvidenceBundleValidation;
-		healthcheck?: EvidenceBundleHealthcheck;
 	};
 	photos: {
 		checkinPhotos?: string[];
@@ -62,10 +53,6 @@ export interface EvidenceBundleBuilderInput {
 	validation: TimestampedOffChainResult & {
 		approved: boolean;
 		qualityScore: number;
-	};
-	healthcheck?: TimestampedOffChainResult & {
-		score: number;
-		baselineScore?: number;
 	};
 	photos?: {
 		checkinPhotos?: string[];

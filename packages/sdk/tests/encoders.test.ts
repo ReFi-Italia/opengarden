@@ -4,14 +4,12 @@ import { ZERO_BYTES32 } from "../src/constants";
 import { SCHEMA_STRINGS } from "../src/schemas/definitions";
 import {
 	decodeAreaRegistration,
-	decodeCitizenFeedback,
 	decodeGardenerMilestone,
 	decodeHealthcheck,
 	decodePublishedIntervention,
 	decodeScheduledIntervention,
 	encodeAdminValidation,
 	encodeAreaRegistration,
-	encodeCitizenFeedback,
 	encodeGardenerCheckin,
 	encodeGardenerCheckout,
 	encodeGardenerMilestone,
@@ -63,8 +61,6 @@ describe("PublishedIntervention encoder", () => {
 		interventionId: "INT-2026-0001",
 		interventionType: InterventionType.RoutineMaintenance,
 		executionDate: 1709251200n,
-		healthBefore: 3,
-		healthAfter: 8,
 		commissionId: "sponsor-acme-001",
 		evidenceBundleHash: ZERO_BYTES32,
 		offchainCount: 8,
@@ -77,15 +73,16 @@ describe("PublishedIntervention encoder", () => {
 		expect(decoded.interventionId).toBe("INT-2026-0001");
 		expect(decoded.interventionType).toBe(InterventionType.RoutineMaintenance);
 		expect(decoded.executionDate).toBe(1709251200n);
-		expect(decoded.healthBefore).toBe(3);
-		expect(decoded.healthAfter).toBe(8);
 		expect(decoded.commissionRef).toBe(hashIdentifier("sponsor-acme-001"));
 		expect(decoded.offchainCount).toBe(8);
 		expect(decoded.crewSize).toBe(2);
 	});
 
 	it("encodes a volunteer intervention with ZERO_BYTES32 commissionRef", () => {
-		const encoded = encodePublishedIntervention({ ...input, commissionId: null });
+		const encoded = encodePublishedIntervention({
+			...input,
+			commissionId: null,
+		});
 		const decoded = decodePublishedIntervention(encoded);
 		expect(decoded.commissionRef).toBe(ZERO_BYTES32);
 	});
@@ -209,104 +206,40 @@ describe("AdminValidation encoder", () => {
 	});
 });
 
-describe("CitizenFeedback encoder", () => {
-	it("encodes and decodes roundtrip", () => {
-		const encoded = encodeCitizenFeedback({
-			areaUID: ZERO_BYTES32,
-			rating: 4,
-			comment: "The park looks much better now!",
-			photoHash: ZERO_BYTES32,
-		});
-		expect(encoded).toBeTruthy();
-		const encoder = new SchemaEncoder(SCHEMA_STRINGS.CitizenFeedback);
-		expect(encoder.isEncodedDataValid(encoded)).toBe(true);
-
-		const decoded = decodeCitizenFeedback(encoded);
-		expect(decoded.rating).toBe(4);
-		expect(decoded.comment).toBe("The park looks much better now!");
-		expect(decoded.photoHash).toBe(ZERO_BYTES32);
-	});
-});
-
 describe("Healthcheck encoder", () => {
-	const ASSESSOR_STAFF_ID = "staff-cafe";
+	const AREA_UID =
+		"0x000000000000000000000000000000000000000000000000000000000000cafe";
 
-	it("encodes a standalone healthcheck using null interventionUID (→ ZERO_BYTES32)", () => {
+	it("encodes and decodes a healthcheck roundtrip", () => {
 		const encoded = encodeHealthcheck({
-			interventionUID: null,
-			healthScore: 7,
-			photoHash: ZERO_BYTES32,
-			assessorId: ASSESSOR_STAFF_ID,
-			metadataHash: null,
-		});
-		expect(encoded).toBeTruthy();
-		const encoder = new SchemaEncoder(SCHEMA_STRINGS.Healthcheck);
-		expect(encoder.isEncodedDataValid(encoded)).toBe(true);
-
-		const decoded = decodeHealthcheck(encoded);
-		expect(decoded.interventionUID).toBe(ZERO_BYTES32);
-	});
-
-	it("standalone healthcheck ZERO_BYTES32 and null interventionUID encode identically", () => {
-		const withNull = encodeHealthcheck({
-			interventionUID: null,
-			healthScore: 7,
-			photoHash: ZERO_BYTES32,
-			assessorId: null,
-			metadataHash: null,
-		});
-		const withZero = encodeHealthcheck({
-			interventionUID: ZERO_BYTES32,
-			healthScore: 7,
-			photoHash: ZERO_BYTES32,
-			assessorId: null,
-			metadataHash: null,
-		});
-		expect(withNull).toBe(withZero);
-	});
-
-	it("encodes and decodes a healthcheck linked to an intervention", () => {
-		const linkedInterventionUID =
-			"0x000000000000000000000000000000000000000000000000000000000000beef";
-		const encoded = encodeHealthcheck({
-			interventionUID: linkedInterventionUID,
+			areaUID: AREA_UID,
 			healthScore: 8,
 			photoHash: ZERO_BYTES32,
-			assessorId: ASSESSOR_STAFF_ID,
-			metadataHash: ZERO_BYTES32, // hashed metadata JSON with baseline + assessorNotes
+			notes: "Hedge trimmed, beds mulched.",
+			metadata: '{"weather":"sunny"}',
 		});
 		expect(encoded).toBeTruthy();
 		const encoder = new SchemaEncoder(SCHEMA_STRINGS.Healthcheck);
 		expect(encoder.isEncodedDataValid(encoded)).toBe(true);
 
 		const decoded = decodeHealthcheck(encoded);
-		expect(decoded.interventionUID).toBe(linkedInterventionUID);
+		expect(decoded.areaUID).toBe(AREA_UID);
 		expect(decoded.healthScore).toBe(8);
-		expect(decoded.assessorId).toBe(hashIdentifier(ASSESSOR_STAFF_ID));
-		expect(decoded.metadataHash).toBe(ZERO_BYTES32);
+		expect(decoded.photoHash).toBe(ZERO_BYTES32);
+		expect(decoded.notes).toBe("Hedge trimmed, beds mulched.");
+		expect(decoded.metadata).toBe('{"weather":"sunny"}');
 	});
 
-	it("encodes ZERO_BYTES32 when assessorId is null", () => {
+	it("accepts empty strings for notes and metadata", () => {
 		const encoded = encodeHealthcheck({
-			interventionUID: ZERO_BYTES32,
-			healthScore: 7,
-			photoHash: ZERO_BYTES32,
-			assessorId: null,
-			metadataHash: null,
-		});
-		const decoded = decodeHealthcheck(encoded);
-		expect(decoded.assessorId).toBe(ZERO_BYTES32);
-	});
-
-	it("encodes ZERO_BYTES32 when metadataHash is null", () => {
-		const encoded = encodeHealthcheck({
-			interventionUID: ZERO_BYTES32,
+			areaUID: AREA_UID,
 			healthScore: 5,
 			photoHash: ZERO_BYTES32,
-			assessorId: null,
-			metadataHash: null,
+			notes: "",
+			metadata: "",
 		});
 		const decoded = decodeHealthcheck(encoded);
-		expect(decoded.metadataHash).toBe(ZERO_BYTES32);
+		expect(decoded.notes).toBe("");
+		expect(decoded.metadata).toBe("");
 	});
 });

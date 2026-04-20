@@ -15,25 +15,13 @@ import { getGraphqlUrl, getStoreUrl, submitToIndexer } from "./indexer";
 import { validateFinalizeInput } from "./preflight";
 import { SCHEMA_DEFINITIONS } from "./schemas/definitions";
 import {
-	type VerificationCheck,
-	verifyBundleCompleteness,
-	verifyBundleExecutionDateBracket,
-	verifyBundleHealthcheckBracket,
-	verifyBundleOnChainTimestamps,
-	verifyBundleTemporalOrder,
-	verifyBundleValidationApproved,
-	verifyBundleVersion,
-} from "./verification";
-import {
 	decodeAreaRegistration,
-	decodeCitizenFeedback,
 	decodeGardenerMilestone,
 	decodeHealthcheck,
 	decodePublishedIntervention,
 	decodeScheduledIntervention,
 	encodeAdminValidation,
 	encodeAreaRegistration,
-	encodeCitizenFeedback,
 	encodeGardenerCheckin,
 	encodeGardenerCheckout,
 	encodeGardenerMilestone,
@@ -45,7 +33,6 @@ import {
 } from "./schemas/encoders";
 import type {
 	Area,
-	CitizenFeedback,
 	EvidenceBundleVerification,
 	Healthcheck,
 	Intervention,
@@ -68,7 +55,6 @@ import type {
 import type {
 	BundleIndexingResult,
 	BundleIndexingRole,
-	OffChainAttestationResult,
 	OnChainAttestationResult,
 	SchemaRegistrationResult,
 	TimestampedOffChainResult,
@@ -76,7 +62,6 @@ import type {
 import type {
 	AdminValidationInput,
 	AreaRegistrationInput,
-	CitizenFeedbackInput,
 	GardenerCheckinInput,
 	GardenerCheckoutInput,
 	GardenerMilestoneInput,
@@ -86,10 +71,19 @@ import type {
 	ScheduledInterventionInput,
 } from "./types/schemas";
 import { toUnixSeconds } from "./utils";
+import {
+	type VerificationCheck,
+	verifyBundleCompleteness,
+	verifyBundleExecutionDateBracket,
+	verifyBundleOnChainTimestamps,
+	verifyBundleTemporalOrder,
+	verifyBundleValidationApproved,
+	verifyBundleVersion,
+} from "./verification";
 
 function resolveChain(chain: OpenGardenConfig["chain"]): ChainConfig {
 	if (typeof chain === "string") {
-		if (!Object.prototype.hasOwnProperty.call(CHAIN_CONFIGS, chain)) {
+		if (!Object.hasOwn(CHAIN_CONFIGS, chain)) {
 			throw new OpenGardenError(
 				OpenGardenErrorCode.INVALID_INPUT,
 				`Unknown chain name "${chain}". Known chains: ${Object.keys(
@@ -232,7 +226,14 @@ export class OpenGardenClient {
 	): Promise<OnChainAttestationResult> {
 		const tx = await this.eas.attest({
 			schema: schemaUID,
-			data: { recipient, data: encodedData, expirationTime: 0n, revocable: false, refUID, value: 0n },
+			data: {
+				recipient,
+				data: encodedData,
+				expirationTime: 0n,
+				revocable: false,
+				refUID,
+				value: 0n,
+			},
 		});
 		const uid = await tx.wait();
 		const receipt = tx.receipt;
@@ -245,7 +246,10 @@ export class OpenGardenClient {
 		return { uid, txHash: receipt.hash, receipt };
 	}
 
-	private async gqlFetch<T>(query: string, variables: Record<string, string>): Promise<T[]> {
+	private async gqlFetch<T>(
+		query: string,
+		variables: Record<string, string>,
+	): Promise<T[]> {
 		const response = await fetch(this.requireGraphqlUrl(), {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
@@ -261,21 +265,36 @@ export class OpenGardenClient {
 		data: AreaRegistrationInput,
 	): Promise<OnChainAttestationResult> {
 		const schemaUID = this.requireSchemaUID("AreaRegistration");
-		return this.attestOnChain(schemaUID, encodeAreaRegistration(data), ZERO_ADDRESS, ZERO_BYTES32);
+		return this.attestOnChain(
+			schemaUID,
+			encodeAreaRegistration(data),
+			ZERO_ADDRESS,
+			ZERO_BYTES32,
+		);
 	}
 
 	async publishIntervention(
 		data: PublishedInterventionInput,
 	): Promise<OnChainAttestationResult> {
 		const schemaUID = this.requireSchemaUID("PublishedIntervention");
-		return this.attestOnChain(schemaUID, encodePublishedIntervention(data), ZERO_ADDRESS, data.areaUID);
+		return this.attestOnChain(
+			schemaUID,
+			encodePublishedIntervention(data),
+			ZERO_ADDRESS,
+			data.areaUID,
+		);
 	}
 
 	async mintMilestone(
 		data: GardenerMilestoneInput,
 	): Promise<OnChainAttestationResult> {
 		const schemaUID = this.requireSchemaUID("GardenerMilestone");
-		return this.attestOnChain(schemaUID, encodeGardenerMilestone(data), data.recipient, ZERO_BYTES32);
+		return this.attestOnChain(
+			schemaUID,
+			encodeGardenerMilestone(data),
+			data.recipient,
+			ZERO_BYTES32,
+		);
 	}
 
 	// --- Timestamped Off-Chain Writes ---
@@ -392,7 +411,6 @@ export class OpenGardenClient {
 	}
 
 	async recordHealthcheck(
-		areaUID: string,
 		data: HealthcheckInput,
 	): Promise<TimestampedOffChainResult> {
 		const encodedData = encodeHealthcheck(data);
@@ -400,7 +418,7 @@ export class OpenGardenClient {
 			"Healthcheck",
 			encodedData,
 			ZERO_ADDRESS,
-			areaUID,
+			data.areaUID,
 			false,
 		);
 	}
@@ -450,13 +468,6 @@ export class OpenGardenClient {
 			sig: input.validation.signedAttestation,
 			role: "validation",
 		});
-		if (input.healthcheck) {
-			entries.push({
-				uid: input.healthcheck.uid,
-				sig: input.healthcheck.signedAttestation,
-				role: "healthcheck",
-			});
-		}
 
 		const storeUrl = this.storeUrl;
 		return Promise.all(
@@ -493,16 +504,13 @@ export class OpenGardenClient {
 		const indexingResults = await this.indexBundleAttestations(input);
 		const indexedCount = indexingResults.filter((r) => r.ok).length;
 
-		let offchainCount = 2 + 3 * input.crew.length;
-		if (input.healthcheck) offchainCount++;
+		const offchainCount = 2 + 3 * input.crew.length;
 
 		const publication = await this.publishIntervention({
 			areaUID: input.areaUID,
 			interventionId: input.interventionId,
 			interventionType: input.interventionType,
 			executionDate,
-			healthBefore: input.healthBefore,
-			healthAfter: input.healthAfter,
 			commissionId: input.commissionId,
 			evidenceBundleHash,
 			offchainCount,
@@ -515,37 +523,6 @@ export class OpenGardenClient {
 			indexedCount,
 			indexingResults,
 			publication,
-		};
-	}
-
-	// --- Non-Timestamped Off-Chain Write ---
-
-	async submitFeedback(
-		data: CitizenFeedbackInput,
-	): Promise<OffChainAttestationResult> {
-		const schemaUID = this.requireSchemaUID("CitizenFeedback");
-		const encodedData = encodeCitizenFeedback(data);
-		const offchain = await this.eas.getOffchain();
-
-		const signedAttestation = await offchain.signOffchainAttestation(
-			{
-				schema: schemaUID,
-				recipient: ZERO_ADDRESS,
-				time: BigInt(Math.floor(Date.now() / 1000)),
-				expirationTime: 0n,
-				revocable: false,
-				refUID: data.areaUID,
-				data: encodedData,
-			},
-			this.signer,
-		);
-
-		return {
-			uid: signedAttestation.uid,
-			signedAttestation: signedAttestation as unknown as Record<
-				string,
-				unknown
-			>,
 		};
 	}
 
@@ -600,10 +577,14 @@ export class OpenGardenClient {
         }
       }
     `;
-		const items = await this.gqlFetch<{ id: string; attester: string; recipient: string; time: string; data: string; refUID: string }>(
-			query,
-			{ schemaId: schemaUID, refUID: areaUID },
-		);
+		const items = await this.gqlFetch<{
+			id: string;
+			attester: string;
+			recipient: string;
+			time: string;
+			data: string;
+			refUID: string;
+		}>(query, { schemaId: schemaUID, refUID: areaUID });
 		return items.map((a) => ({
 			uid: a.id,
 			...decodePublishedIntervention(a.data),
@@ -626,10 +607,13 @@ export class OpenGardenClient {
         }
       }
     `;
-		const items = await this.gqlFetch<{ id: string; attester: string; recipient: string; time: string; data: string }>(
-			query,
-			{ schemaId: schemaUID, recipient: address },
-		);
+		const items = await this.gqlFetch<{
+			id: string;
+			attester: string;
+			recipient: string;
+			time: string;
+			data: string;
+		}>(query, { schemaId: schemaUID, recipient: address });
 		return items.map((a) => ({
 			uid: a.id,
 			...decodeGardenerMilestone(a.data),
@@ -681,10 +665,13 @@ export class OpenGardenClient {
       }
     `;
 
-		const items = await this.gqlFetch<{ id: string; attester: string; recipient: string; time: string; data: string }>(
-			query,
-			variables,
-		);
+		const items = await this.gqlFetch<{
+			id: string;
+			attester: string;
+			recipient: string;
+			time: string;
+			data: string;
+		}>(query, variables);
 		return items.map((a) => ({
 			uid: a.id,
 			...decodeScheduledIntervention(a.data),
@@ -706,37 +693,15 @@ export class OpenGardenClient {
         }
       }
     `;
-		const items = await this.gqlFetch<{ id: string; attester: string; time: string; data: string }>(
-			query,
-			{ schemaId: schemaUID, refUID: areaUID },
-		);
+		const items = await this.gqlFetch<{
+			id: string;
+			attester: string;
+			time: string;
+			data: string;
+		}>(query, { schemaId: schemaUID, refUID: areaUID });
 		return items.map((a) => ({
 			uid: a.id,
 			...decodeHealthcheck(a.data),
-			attester: a.attester,
-			time: BigInt(a.time),
-		}));
-	}
-
-	async getAreaCitizenFeedback(areaUID: string): Promise<CitizenFeedback[]> {
-		const schemaUID = this.requireSchemaUID("CitizenFeedback");
-		const query = `
-      query GetAreaCitizenFeedback($schemaId: String!, $refUID: String!) {
-        attestations(where: { schemaId: { equals: $schemaId }, refUID: { equals: $refUID }, revoked: { equals: false } }, orderBy: [{ time: desc }]) {
-          id
-          attester
-          time
-          data
-        }
-      }
-    `;
-		const items = await this.gqlFetch<{ id: string; attester: string; time: string; data: string }>(
-			query,
-			{ schemaId: schemaUID, refUID: areaUID },
-		);
-		return items.map((a) => ({
-			uid: a.id,
-			...decodeCitizenFeedback(a.data),
 			attester: a.attester,
 			time: BigInt(a.time),
 		}));
@@ -787,7 +752,6 @@ export class OpenGardenClient {
 			intervention.offchainCount,
 		);
 		const temporal = verifyBundleTemporalOrder(bundle);
-		const healthcheckBracket = verifyBundleHealthcheckBracket(bundle);
 		const executionBracket = verifyBundleExecutionDateBracket(
 			bundle,
 			intervention,
@@ -800,7 +764,6 @@ export class OpenGardenClient {
 		const checks: VerificationCheck[] = [
 			completeness,
 			temporal,
-			healthcheckBracket,
 			executionBracket,
 			validation,
 			timestamps,
@@ -813,7 +776,6 @@ export class OpenGardenClient {
 			expectedCount: completeness.expectedCount,
 			temporalOrderValid: temporal.valid,
 			timestampsVerified: timestamps.valid,
-			healthcheckOrderValid: healthcheckBracket.valid,
 			executionDateBracketed: executionBracket.valid,
 			validationApproved: validation.valid,
 			checks,

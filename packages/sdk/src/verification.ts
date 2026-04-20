@@ -5,7 +5,6 @@ export enum VerificationCheckCode {
 	BUNDLE_VERSION = "BUNDLE_VERSION",
 	COMPLETENESS = "COMPLETENESS",
 	TEMPORAL_ORDER = "TEMPORAL_ORDER",
-	HEALTHCHECK_BRACKET = "HEALTHCHECK_BRACKET",
 	EXECUTION_DATE_BRACKET = "EXECUTION_DATE_BRACKET",
 	VALIDATION_APPROVED = "VALIDATION_APPROVED",
 	ON_CHAIN_TIMESTAMPS = "ON_CHAIN_TIMESTAMPS",
@@ -38,18 +37,9 @@ export function verifyBundleCompleteness(
 	bundle: EvidenceBundle,
 	expectedCount: number,
 ): CompletenessCheck {
-	const {
-		checkins,
-		checkouts,
-		reports,
-		healthcheck,
-	} = bundle.attestations;
+	const { checkins, checkouts, reports } = bundle.attestations;
 	const attestationCount =
-		2 +
-		checkins.length +
-		checkouts.length +
-		reports.length +
-		(healthcheck ? 1 : 0);
+		2 + checkins.length + checkouts.length + reports.length;
 	const ok = attestationCount === expectedCount;
 	return {
 		code: VerificationCheckCode.COMPLETENESS,
@@ -116,17 +106,6 @@ export function verifyBundleTemporalOrder(
 	return { code: VerificationCheckCode.TEMPORAL_ORDER, valid: true };
 }
 
-/**
- * Healthcheck is retroactive — recorded at validation time by the admin.
- * No temporal bracket is enforced against crew activity timestamps.
- * Always returns valid. Kept for API compatibility.
- */
-export function verifyBundleHealthcheckBracket(
-	_bundle: EvidenceBundle,
-): VerificationCheck {
-	return { code: VerificationCheckCode.HEALTHCHECK_BRACKET, valid: true };
-}
-
 export function verifyBundleExecutionDateBracket(
 	bundle: EvidenceBundle,
 	intervention: { executionDate: bigint; time: bigint },
@@ -168,14 +147,8 @@ export async function verifyBundleOnChainTimestamps(
 	bundle: EvidenceBundle,
 	fetchTimestamp: TimestampFetcher,
 ): Promise<VerificationCheck> {
-	const {
-		checkins,
-		checkouts,
-		reports,
-		scheduled,
-		validation,
-		healthcheck,
-	} = bundle.attestations;
+	const { checkins, checkouts, reports, scheduled, validation } =
+		bundle.attestations;
 
 	const entries: Array<{ uid: string; onchainTimestamp: number }> = [
 		scheduled,
@@ -184,7 +157,6 @@ export async function verifyBundleOnChainTimestamps(
 		...reports,
 		validation,
 	];
-	if (healthcheck) entries.push(healthcheck);
 
 	const results = await Promise.all(
 		entries.map((e) => fetchTimestamp(e.uid).catch(() => null)),

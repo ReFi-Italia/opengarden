@@ -42,16 +42,15 @@ export {
 	validateFinalizeInput,
 } from "./preflight";
 export type { SchemaDefinition } from "./schemas/definitions";
+// Schema definitions
+export { SCHEMA_DEFINITIONS, SCHEMA_STRINGS } from "./schemas/definitions";
 // Schema encoder runtime (advanced — most consumers should use createOpenGardenClient)
 export { initEncoders } from "./schemas/encoders";
 // Sponsor reference helpers
 export type { SponsorRef } from "./sponsor";
 export { serializeSponsorRef } from "./sponsor";
-// Schema definitions
-export { SCHEMA_DEFINITIONS, SCHEMA_STRINGS } from "./schemas/definitions";
 export type {
 	Area,
-	CitizenFeedback,
 	EvidenceBundleVerification,
 	Healthcheck,
 	Intervention,
@@ -71,7 +70,6 @@ export type {
 	EvidenceBundleAttestation,
 	EvidenceBundleBuilderInput,
 	EvidenceBundleGardenerAttestation,
-	EvidenceBundleHealthcheck,
 	EvidenceBundleValidation,
 	FinalizeInterventionInput,
 	FinalizeInterventionResult,
@@ -80,31 +78,13 @@ export type {
 	BundleIndexingResult,
 	BundleIndexingRole,
 	IndexerSubmissionResult,
-	OffChainAttestationResult,
 	OnChainAttestationResult,
 	SchemaRegistrationResult,
 	TimestampedOffChainResult,
 } from "./types/results";
-// Verification helpers
-export type {
-	CompletenessCheck,
-	TimestampFetcher,
-	VerificationCheck,
-} from "./verification";
-export {
-	VerificationCheckCode,
-	verifyBundleCompleteness,
-	verifyBundleExecutionDateBracket,
-	verifyBundleHealthcheckBracket,
-	verifyBundleOnChainTimestamps,
-	verifyBundleTemporalOrder,
-	verifyBundleValidationApproved,
-	verifyBundleVersion,
-} from "./verification";
 export type {
 	AdminValidationInput,
 	AreaRegistrationInput,
-	CitizenFeedbackInput,
 	GardenerCheckinInput,
 	GardenerCheckoutInput,
 	GardenerMilestoneInput,
@@ -121,3 +101,18 @@ export {
 	toMicrodegrees,
 	toUnixSeconds,
 } from "./utils";
+// Verification helpers
+export type {
+	CompletenessCheck,
+	TimestampFetcher,
+	VerificationCheck,
+} from "./verification";
+export {
+	VerificationCheckCode,
+	verifyBundleCompleteness,
+	verifyBundleExecutionDateBracket,
+	verifyBundleOnChainTimestamps,
+	verifyBundleTemporalOrder,
+	verifyBundleValidationApproved,
+	verifyBundleVersion,
+} from "./verification";

@@ -4,7 +4,6 @@ import { OpenGardenError, OpenGardenErrorCode } from "../src/errors";
 import {
 	encodeAdminValidation,
 	encodeAreaRegistration,
-	encodeCitizenFeedback,
 	encodeGardenerCheckin,
 	encodeGardenerCheckout,
 	encodeGardenerMilestone,
@@ -21,7 +20,9 @@ function expectInvalidInput(fn: () => unknown, fieldName: string) {
 		fn();
 	} catch (err) {
 		expect(err).toBeInstanceOf(OpenGardenError);
-		expect((err as OpenGardenError).code).toBe(OpenGardenErrorCode.INVALID_INPUT);
+		expect((err as OpenGardenError).code).toBe(
+			OpenGardenErrorCode.INVALID_INPUT,
+		);
 		expect((err as OpenGardenError).message).toContain(fieldName);
 		return;
 	}
@@ -43,8 +44,6 @@ const validPublished = {
 	interventionId: "INT-001",
 	interventionType: InterventionType.RoutineMaintenance,
 	executionDate: 1709251200n,
-	healthBefore: 3,
-	healthAfter: 8,
 	commissionId: null,
 	evidenceBundleHash: ZERO_BYTES32,
 	offchainCount: 5,
@@ -105,19 +104,12 @@ const validAdminValidation = {
 	validatorId: null,
 };
 
-const validFeedback = {
-	areaUID: ZERO_BYTES32,
-	rating: 4,
-	comment: "great",
-	photoHash: ZERO_BYTES32,
-};
-
 const validHealthcheck = {
-	interventionUID: null,
+	areaUID: ZERO_BYTES32,
 	healthScore: 6,
 	photoHash: ZERO_BYTES32,
-	assessorId: null,
-	metadataHash: null,
+	notes: "",
+	metadata: "",
 };
 
 describe("AreaRegistration validator", () => {
@@ -155,22 +147,6 @@ describe("PublishedIntervention validator", () => {
 		);
 	});
 
-	it("rejects healthBefore above 10", () => {
-		expectInvalidInput(
-			() =>
-				encodePublishedIntervention({ ...validPublished, healthBefore: 11 }),
-			"healthBefore",
-		);
-	});
-
-	it("rejects healthAfter below 0", () => {
-		expectInvalidInput(
-			() =>
-				encodePublishedIntervention({ ...validPublished, healthAfter: -1 }),
-			"healthAfter",
-		);
-	});
-
 	it("rejects non-integer crewSize", () => {
 		expectInvalidInput(
 			() => encodePublishedIntervention({ ...validPublished, crewSize: 1.5 }),
@@ -184,12 +160,6 @@ describe("PublishedIntervention validator", () => {
 				encodePublishedIntervention({ ...validPublished, offchainCount: 256 }),
 			"offchainCount",
 		);
-	});
-
-	it("accepts healthBefore=0 (unmeasured sentinel)", () => {
-		expect(() =>
-			encodePublishedIntervention({ ...validPublished, healthBefore: 0 }),
-		).not.toThrow();
 	});
 });
 
@@ -278,21 +248,6 @@ describe("AdminValidation validator", () => {
 	it("accepts qualityScore=0 (unscored sentinel)", () => {
 		expect(() =>
 			encodeAdminValidation({ ...validAdminValidation, qualityScore: 0 }),
-		).not.toThrow();
-	});
-});
-
-describe("CitizenFeedback validator", () => {
-	it("rejects rating above 5", () => {
-		expectInvalidInput(
-			() => encodeCitizenFeedback({ ...validFeedback, rating: 6 }),
-			"rating",
-		);
-	});
-
-	it("accepts rating=0 (no rating sentinel)", () => {
-		expect(() =>
-			encodeCitizenFeedback({ ...validFeedback, rating: 0 }),
 		).not.toThrow();
 	});
 });

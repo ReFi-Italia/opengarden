@@ -12,7 +12,7 @@
 import "dotenv/config";
 import { ethers } from "ethers";
 import { beforeAll, describe, expect, it } from "vitest";
-import { OpenGardenClient } from "../src/client";
+import type { OpenGardenClient } from "../src/client";
 import { createOpenGardenClient } from "../src/connect";
 import {
 	BASE_SEPOLIA,
@@ -84,7 +84,6 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 		approved: boolean;
 		qualityScore: number;
 	};
-	let healthcheckResult: TimestampedOffChainResult;
 	let evidenceBundleHash: string;
 	let interventionUID: string;
 
@@ -133,7 +132,6 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 		expect(uids.GardenerCheckout).toBeTruthy();
 		expect(uids.GardenerReport).toBeTruthy();
 		expect(uids.AdminValidation).toBeTruthy();
-		expect(uids.CitizenFeedback).toBeTruthy();
 		expect(uids.Healthcheck).toBeTruthy();
 
 		if (results.length > 0) {
@@ -256,15 +254,15 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 		await delay(STEP_DELAY_MS);
 	}, 60_000);
 
-	// --- Step 9: Healthcheck (retroactive, at validation time) ---
+	// --- Step 9: Periodic healthcheck (independent, area-scoped) ---
 
-	it("records a healthcheck (intervention-linked, with baseline metadata)", async () => {
-		healthcheckResult = await client.recordHealthcheck(areaUID, {
-			interventionUID: scheduleResult.uid,
+	it("records an area healthcheck independently of the intervention", async () => {
+		const healthcheckResult = await client.recordHealthcheck({
+			areaUID,
 			healthScore: 8,
 			photoHash: ZERO_BYTES32,
-			assessorId: "e2e-assessor-001",
-			metadataHash: null, // omit metadata for E2E simplicity
+			notes: "Post-intervention spot check",
+			metadata: "",
 		});
 
 		expect(healthcheckResult.uid).toBeTruthy();
@@ -288,7 +286,6 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 				},
 			],
 			validation: validationResult,
-			healthcheck: { ...healthcheckResult, score: 8, baselineScore: 3 },
 		});
 
 		expect(bundle.bundleVersion).toBe(EVIDENCE_BUNDLE_VERSION);
@@ -310,11 +307,9 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 			interventionId: "E2E-INT-001",
 			interventionType: InterventionType.RoutineMaintenance,
 			executionDate: now(),
-			healthBefore: 3,
-			healthAfter: 8,
 			commissionId: null,
 			evidenceBundleHash,
-			offchainCount: 6, // scheduled + validation + checkin + checkout + report + healthcheck
+			offchainCount: 5, // scheduled + validation + checkin + checkout + report
 			crewSize: 1,
 		});
 
@@ -345,23 +340,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 		await delay(STEP_DELAY_MS);
 	}, 60_000);
 
-	// --- Step 13: Citizen feedback ---
-
-	it("submits citizen feedback (off-chain, no timestamp)", async () => {
-		const result = await client.submitFeedback({
-			areaUID,
-			rating: 5,
-			comment: "E2E test — park looks great!",
-			photoHash: ZERO_BYTES32,
-		});
-
-		expect(result.uid).toBeTruthy();
-		expect(result.signedAttestation).toBeTruthy();
-		console.log(`  Feedback UID: ${result.uid}`);
-		await delay(STEP_DELAY_MS);
-	}, 30_000);
-
-	// --- Step 14: Read back and verify ---
+	// --- Step 13: Read back and verify ---
 
 	it("reads back the area", async () => {
 		const area = await client.getArea(areaUID);
@@ -376,20 +355,18 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 	it("reads back the intervention", async () => {
 		const intervention = await client.getIntervention(interventionUID);
 		expect(intervention.interventionId).toBe("E2E-INT-001");
-		expect(intervention.healthBefore).toBe(3);
-		expect(intervention.healthAfter).toBe(8);
 		expect(intervention.crewSize).toBe(1);
-		expect(intervention.offchainCount).toBe(6);
+		expect(intervention.offchainCount).toBe(5);
 		expect(intervention.recipient).toBe(ZERO_ADDRESS);
 		console.log(
-			`  Intervention read back: ${intervention.interventionId}, health ${intervention.healthBefore} → ${intervention.healthAfter}`,
+			`  Intervention read back: ${intervention.interventionId}, crew=${intervention.crewSize}`,
 		);
 	}, 30_000);
 
 	it("verifies evidence bundle against on-chain timestamps", async () => {
 		const verification = await client.verifyEvidenceBundle(interventionUID);
-		expect(verification.attestationCount).toBe(6); // scheduled + validation + checkin + checkout + report + healthcheck
-		expect(verification.expectedCount).toBe(6);
+		expect(verification.attestationCount).toBe(5); // scheduled + validation + checkin + checkout + report
+		expect(verification.expectedCount).toBe(5);
 		expect(verification.temporalOrderValid).toBe(true);
 		expect(verification.timestampsVerified).toBe(true);
 		expect(verification.valid).toBe(true);

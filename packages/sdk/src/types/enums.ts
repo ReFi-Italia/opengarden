@@ -31,5 +31,4 @@ export type SchemaName =
 	| "GardenerCheckout"
 	| "GardenerReport"
 	| "AdminValidation"
-	| "CitizenFeedback"
 	| "Healthcheck";

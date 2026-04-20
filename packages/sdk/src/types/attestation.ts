@@ -1,5 +1,5 @@
-import type { AreaType, InterventionType, MilestoneLevel } from "./enums";
 import type { VerificationCheck } from "../verification";
+import type { AreaType, InterventionType, MilestoneLevel } from "./enums";
 
 export interface ScheduledIntervention {
 	uid: string;
@@ -20,24 +20,12 @@ export interface ScheduledIntervention {
 
 export interface Healthcheck {
 	uid: string;
-	/** UID of the linked ScheduledIntervention, or ZERO_BYTES32 for standalone monitoring. */
-	interventionUID: string;
+	areaUID: string;
 	healthScore: number;
 	photoHash: string;
-	/** On-chain bytes32 hash of the assessor staff identifier (or ZERO_BYTES32 for organizational attribution). */
-	assessorId: string;
-	/** Keccak256 of off-chain metadata JSON (baseline score, assessorNotes, interventionNeeded). ZERO_BYTES32 if none. */
-	metadataHash: string;
-	attester: string;
-	time: bigint;
-}
-
-export interface CitizenFeedback {
-	uid: string;
-	areaUID: string;
-	rating: number;
-	comment: string;
-	photoHash: string;
+	notes: string;
+	/** Free-form JSON string for app-specific extras. Empty string for none. */
+	metadata: string;
 	attester: string;
 	time: bigint;
 }
@@ -61,8 +49,6 @@ export interface Intervention {
 	interventionId: string;
 	interventionType: InterventionType;
 	executionDate: bigint;
-	healthBefore: number;
-	healthAfter: number;
 	commissionRef: string;
 	evidenceBundleHash: string;
 	offchainCount: number;
@@ -92,7 +78,6 @@ export interface EvidenceBundleVerification {
 	expectedCount: number;
 	temporalOrderValid: boolean;
 	timestampsVerified: boolean;
-	healthcheckOrderValid: boolean;
 	executionDateBracketed: boolean;
 	validationApproved: boolean;
 	/** Flat per-check breakdown, in the order the SDK runs them. Useful for rendering "X of N integrity checks passed" UX. */

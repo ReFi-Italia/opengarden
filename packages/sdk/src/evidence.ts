@@ -57,7 +57,7 @@ function extractGardenerAttestation(
 export function buildEvidenceBundle(
 	input: EvidenceBundleBuilderInput,
 ): EvidenceBundle {
-	const bundle: EvidenceBundle = {
+	return {
 		interventionId: input.interventionId,
 		areaUID: input.areaUID,
 		attestations: {
@@ -84,17 +84,4 @@ export function buildEvidenceBundle(
 		},
 		bundleVersion: EVIDENCE_BUNDLE_VERSION,
 	};
-
-	if (input.healthcheck) {
-		bundle.attestations.healthcheck = {
-			uid: input.healthcheck.uid,
-			score: input.healthcheck.score,
-			...(input.healthcheck.baselineScore !== undefined
-				? { baselineScore: input.healthcheck.baselineScore }
-				: {}),
-			onchainTimestamp: Number(input.healthcheck.onchainTimestamp),
-		};
-	}
-
-	return bundle;
 }

@@ -19,13 +19,6 @@ function mockTimestampedResult(
 	});
 }
 
-function mockHealthcheck(uid: string, score: number, onchainTimestamp: bigint) {
-	return {
-		...mockTimestampedResult(uid, 0, onchainTimestamp),
-		score,
-	};
-}
-
 describe("buildEvidenceBundle", () => {
 	const soloInput: EvidenceBundleBuilderInput = {
 		interventionId: "INT-2026-0001",
@@ -113,38 +106,6 @@ describe("buildEvidenceBundle", () => {
 		expect(bundle.photos.checkinPhotos).toEqual(["ipfs://Qm.../arrival.jpg"]);
 		expect(bundle.photos.reportPhotos).toBe("ipfs://Qm.../work/");
 		expect(bundle.photos.afterPhotos).toBeUndefined();
-	});
-
-	it("omits healthcheck when not provided", () => {
-		const bundle = buildEvidenceBundle(soloInput);
-		expect(bundle.attestations.healthcheck).toBeUndefined();
-	});
-
-	it("includes healthcheck when provided (score only)", () => {
-		const withHealth: EvidenceBundleBuilderInput = {
-			...soloInput,
-			healthcheck: mockHealthcheck("0xhc", 8, 5000n),
-		};
-		const bundle = buildEvidenceBundle(withHealth);
-		expect(bundle.attestations.healthcheck).toEqual({
-			uid: "0xhc",
-			score: 8,
-			onchainTimestamp: 5000,
-		});
-	});
-
-	it("includes healthcheck with baselineScore when provided", () => {
-		const withHealth: EvidenceBundleBuilderInput = {
-			...soloInput,
-			healthcheck: { ...mockHealthcheck("0xhc", 8, 5000n), baselineScore: 3 },
-		};
-		const bundle = buildEvidenceBundle(withHealth);
-		expect(bundle.attestations.healthcheck).toEqual({
-			uid: "0xhc",
-			score: 8,
-			baselineScore: 3,
-			onchainTimestamp: 5000,
-		});
 	});
 
 	it("throws INVALID_INPUT when a gardener attestation has no signer or attester", () => {

@@ -1,13 +1,8 @@
 import { OpenGardenError, OpenGardenErrorCode } from "../errors";
-import {
-	AreaType,
-	InterventionType,
-	MilestoneLevel,
-} from "../types/enums";
+import { AreaType, InterventionType, MilestoneLevel } from "../types/enums";
 import type {
 	AdminValidationInput,
 	AreaRegistrationInput,
-	CitizenFeedbackInput,
 	GardenerCheckinInput,
 	GardenerCheckoutInput,
 	GardenerMilestoneInput,
@@ -95,8 +90,6 @@ export function validatePublishedIntervention(
 	input: PublishedInterventionInput,
 ): void {
 	assertEnum(input.interventionType, INTERVENTION_TYPES, "interventionType");
-	assertRange(input.healthBefore, 0, 10, "healthBefore");
-	assertRange(input.healthAfter, 0, 10, "healthAfter");
 	assertUint8(input.offchainCount, "offchainCount");
 	assertUint8(input.crewSize, "crewSize");
 }
@@ -131,10 +124,6 @@ export function validateGardenerReport(input: GardenerReportInput): void {
 
 export function validateAdminValidation(input: AdminValidationInput): void {
 	assertRange(input.qualityScore, 0, 10, "qualityScore");
-}
-
-export function validateCitizenFeedback(input: CitizenFeedbackInput): void {
-	assertRange(input.rating, 0, 5, "rating");
 }
 
 export function validateHealthcheck(input: HealthcheckInput): void {

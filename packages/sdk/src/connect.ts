@@ -46,7 +46,7 @@ export async function createOpenGardenClient(
 }
 
 function resolveChainByName(name: string) {
-	if (!Object.prototype.hasOwnProperty.call(CHAIN_CONFIGS, name)) {
+	if (!Object.hasOwn(CHAIN_CONFIGS, name)) {
 		throw new OpenGardenError(
 			OpenGardenErrorCode.INVALID_INPUT,
 			`Unknown chain name "${name}". Known chains: ${Object.keys(

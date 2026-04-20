@@ -90,24 +90,15 @@ const validation = await client.validateIntervention({
   ...
 });
 
-// 5. Healthcheck (off-chain + timestamped) — one per intervention, recorded at validation time.
-//    areaUID is the first arg (used as EAS refUID for area indexing, not encoded in the attestation data).
-//    Baseline score (pre-intervention state) is stored in off-chain metadataHash JSON; current score is on-chain.
-const hc = await client.recordHealthcheck(area.uid, {
-  interventionUID: schedule.uid,
-  healthScore: 8,                  // current / post-intervention score
-  metadataHash: hashedMetadataJson, // keccak256({ version:1, baseline:{ score:3, sourceUID:'0x...' } })
-  assessorId: staffUuid,            // plain identifier — hashed internally per spec §9.1 (pass `null` for org attribution)
-  ...
-});
-
-// Standalone site-check (no linked intervention): pass ZERO_BYTES32 as interventionUID, null metadataHash
-const siteCheck = await client.recordHealthcheck(area.uid, {
-  interventionUID: ZERO_BYTES32,
-  healthScore: 6,
-  metadataHash: null,
-  assessorId: null,
-  ...
+// 5. Healthcheck (off-chain + timestamped) — periodic area-condition signal,
+//    independent of any intervention. Anyone can issue; role (org / gardener /
+//    citizen) is inferred off-chain from the attester wallet.
+const hc = await client.recordHealthcheck({
+  areaUID: area.uid,
+  healthScore: 8,
+  photoHash: ZERO_BYTES32,
+  notes: 'Hedge trimmed, beds mulched.',
+  metadata: '',                    // free-form JSON escape hatch, empty for none
 });
 
 // 6. Build evidence bundle — crew is an array of { checkin, checkout, report } tuples
@@ -120,7 +111,6 @@ const bundle = client.buildEvidenceBundle({
     { checkin: bobCheckin,   checkout: bobCheckout,   report: bobReport },
   ],
   validation: { ...validation, approved: true, qualityScore: 8 },
-  healthcheck: { ...hc, score: 8, baselineScore: 3 }, // baselineScore from metadata
 });
 
 // 7. Upload bundle (requires storage adapter)
@@ -131,17 +121,14 @@ const intervention = await client.publishIntervention({
   areaUID: area.uid,
   interventionId: 'INT-2026-0001',
   evidenceBundleHash: bundleHash,
-  // 1 scheduled + 3 per crew member (2) + 1 validation + 1 healthcheck = 9
-  offchainCount: 9,
+  // 1 scheduled + 3 per crew member (2) + 1 validation = 8
+  offchainCount: 8,
   crewSize: 2,
   ...
 });
 
-// 10. Mint milestone (on-chain, soulbound) — per gardener, from their signed report history
+// 9. Mint milestone (on-chain, soulbound) — per gardener, from their signed report history
 await client.mintMilestone({ recipient: crewLeadWallet, milestoneLevel: 1, ... });
-
-// 11. Citizen feedback (off-chain, no timestamp)
-await client.submitFeedback({ areaUID: area.uid, rating: 5, ... });
 ```
 
 ## Reading attestations
@@ -265,13 +252,7 @@ Each method signs an off-chain attestation and timestamps its UID on-chain.
 | `checkout(data)` | `TimestampedOffChainResult` |
 | `submitReport(data)` | `TimestampedOffChainResult` |
 | `validateIntervention(data)` | `TimestampedOffChainResult` |
-| `recordHealthcheck(areaUID, data)` | `TimestampedOffChainResult` |
-
-### Off-chain write (no timestamp)
-
-| Method | Returns |
-|---|---|
-| `submitFeedback(data)` | `OffChainAttestationResult` |
+| `recordHealthcheck(data)` | `TimestampedOffChainResult` |
 
 ### Reads
 
@@ -280,6 +261,7 @@ Each method signs an off-chain attestation and timestamps its UID on-chain.
 | `getArea(uid)` | `Area` |
 | `getIntervention(uid)` | `Intervention` |
 | `getAreaInterventions(areaUID)` | `Intervention[]` (via GraphQL) |
+| `getAreaHealthchecks(areaUID)` | `Healthcheck[]` (via GraphQL) |
 | `getGardenerMilestones(address)` | `Milestone[]` (via GraphQL) |
 
 ### Evidence bundle

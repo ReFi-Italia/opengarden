@@ -109,7 +109,6 @@ export enum FinalizeInputIssueCode {
 	VALIDATION_REFUID_MISMATCH = "VALIDATION_REFUID_MISMATCH",
 	CREW_ATTESTER_MISMATCH = "CREW_ATTESTER_MISMATCH",
 	TEMPORAL_ORDER_VIOLATION = "TEMPORAL_ORDER_VIOLATION",
-	HEALTHCHECK_REFUID_MISMATCH = "HEALTHCHECK_REFUID_MISMATCH",
 	VALIDATION_NOT_APPROVED = "VALIDATION_NOT_APPROVED",
 }
 
@@ -167,7 +166,6 @@ export function validateFinalizeInput(
 	}
 
 	const checkinTimestamps: number[] = [];
-	const checkoutTimestamps: number[] = [];
 	const reportTimestamps: number[] = [];
 
 	for (let i = 0; i < input.crew.length; i++) {
@@ -230,12 +228,10 @@ export function validateFinalizeInput(
 		}
 
 		checkinTimestamps.push(ci.onchainTimestamp);
-		checkoutTimestamps.push(co.onchainTimestamp);
 		reportTimestamps.push(rp.onchainTimestamp);
 	}
 
 	const minCheckin = Math.min(...checkinTimestamps);
-	const maxCheckout = Math.max(...checkoutTimestamps);
 	const maxReport = Math.max(...reportTimestamps);
 
 	if (scheduled.onchainTimestamp >= minCheckin) {
@@ -254,7 +250,10 @@ export function validateFinalizeInput(
 		});
 	}
 
-	if (validation.refUID && !sameBytes32(validation.refUID, input.scheduled.uid)) {
+	if (
+		validation.refUID &&
+		!sameBytes32(validation.refUID, input.scheduled.uid)
+	) {
 		issues.push({
 			code: FinalizeInputIssueCode.VALIDATION_REFUID_MISMATCH,
 			message: `Validation refUID (${validation.refUID}) does not match scheduled UID (${input.scheduled.uid.toLowerCase()})`,
@@ -265,22 +264,10 @@ export function validateFinalizeInput(
 	if (!input.validation.approved) {
 		issues.push({
 			code: FinalizeInputIssueCode.VALIDATION_NOT_APPROVED,
-			message: "Cannot finalize an intervention whose validation is not approved",
+			message:
+				"Cannot finalize an intervention whose validation is not approved",
 			uid: input.validation.uid,
 		});
-	}
-
-	// Healthcheck is retroactive (recorded at validation time) — no temporal
-	// bracket is enforced. Only validate refUID points to the correct area.
-	if (input.healthcheck) {
-		const hc = extractAttestationMetadata(input.healthcheck);
-		if (hc.refUID && !sameBytes32(hc.refUID, input.areaUID)) {
-			issues.push({
-				code: FinalizeInputIssueCode.HEALTHCHECK_REFUID_MISMATCH,
-				message: `Healthcheck refUID (${hc.refUID}) does not match areaUID (${input.areaUID.toLowerCase()})`,
-				uid: input.healthcheck.uid,
-			});
-		}
 	}
 
 	return issues;

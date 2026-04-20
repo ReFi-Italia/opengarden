@@ -10,14 +10,13 @@ import { OpenGardenError, OpenGardenErrorCode } from "../src/errors";
 import {
 	decodePublishedIntervention,
 	encodeAreaRegistration,
-	encodeCitizenFeedback,
 	encodeGardenerMilestone,
 	encodeHealthcheck,
 	encodePublishedIntervention,
 	encodeScheduledIntervention,
 } from "../src/schemas/encoders";
-import { InterventionType } from "../src/types/enums";
 import type { ChainConfig } from "../src/types/config";
+import { InterventionType } from "../src/types/enums";
 import type { EvidenceBundle } from "../src/types/evidence";
 import {
 	createMockSigner,
@@ -120,9 +119,6 @@ describe("OpenGardenClient construction", () => {
 		const uids = client.getSchemaUIDs();
 		expect(uids.AreaRegistration).toBe(
 			"0x948b5dcc84298941bcbbe7c4f94c781b94eb90fb25c8a9ee4176b09603e06070",
-		);
-		expect(uids.Healthcheck).toBe(
-			"0xb5f901113d6db303c6c7857e3b79f7ff9f472694334e282473cbb0c08c8ee2ae",
 		);
 	});
 
@@ -360,13 +356,12 @@ describe("OpenGardenClient schema naming", () => {
 
 		const results = await client.registerAllSchemas();
 
-		// 10 schemas total
-		expect(results).toHaveLength(10);
-		expect(attestCalls).toHaveLength(10);
+		// 9 schemas total
+		expect(results).toHaveLength(9);
+		expect(attestCalls).toHaveLength(9);
 
 		const names = results.map((r) => r.name);
 		expect(names).toContain("AreaRegistration");
-		expect(names).toContain("CitizenFeedback");
 		expect(names).toContain("Healthcheck");
 	});
 
@@ -385,7 +380,6 @@ describe("OpenGardenClient schema naming", () => {
 					GardenerCheckout: "0xexisting6",
 					GardenerReport: "0xexisting7",
 					AdminValidation: "0xexisting8",
-					CitizenFeedback: "0xexisting9",
 				},
 				registry: {
 					register: async () => ({
@@ -627,8 +621,6 @@ describe("OpenGardenClient indexBundleAttestations", () => {
 			interventionId: "INT-001",
 			interventionType: 1,
 			executionDate: 1000000n,
-			healthBefore: 3,
-			healthAfter: 8,
 			commissionId: null,
 			evidenceBundleHash:
 				"0x0000000000000000000000000000000000000000000000000000000000000000",
@@ -693,8 +685,6 @@ describe("OpenGardenClient finalizeIntervention", () => {
 			},
 			interventionType: 1,
 			executionDate: 1000000n,
-			healthBefore: 3,
-			healthAfter: 8,
 			commissionId: null,
 			crewSize: 1,
 		});
@@ -709,7 +699,7 @@ describe("OpenGardenClient finalizeIntervention", () => {
 		vi.unstubAllGlobals();
 	});
 
-	it("computes offchainCount including healthchecks", async () => {
+	it("computes offchainCount from scheduled + validation + crew (2 + 3*n)", async () => {
 		const fetchMock = vi.fn().mockResolvedValue({ ok: true });
 		vi.stubGlobal("fetch", fetchMock);
 
@@ -758,22 +748,15 @@ describe("OpenGardenClient finalizeIntervention", () => {
 				approved: true,
 				qualityScore: 9,
 			},
-			healthcheck: {
-				...makeFakeResult("0xhc", { onchainTimestamp: 450n }),
-				score: 8,
-				baselineScore: 3,
-			},
 			interventionType: 1,
 			executionDate: 1000000n,
-			healthBefore: 3,
-			healthAfter: 8,
 			commissionId: null,
 			crewSize: 2,
 		});
 
 		const attestData = attestCalls[0].data.data;
 		const decoded = decodePublishedIntervention(attestData);
-		expect(decoded.offchainCount).toBe(9); // 2 + 3*2 crew + 1 healthcheck
+		expect(decoded.offchainCount).toBe(8); // 2 + 3*2 crew
 		expect(decoded.crewSize).toBe(2);
 
 		vi.unstubAllGlobals();
@@ -815,8 +798,6 @@ describe("OpenGardenClient finalizeIntervention", () => {
 			},
 			interventionType: 1,
 			executionDate: 1000000n,
-			healthBefore: 3,
-			healthAfter: 8,
 			commissionId: null,
 			crewSize: 1,
 		};
@@ -914,8 +895,6 @@ describe("OpenGardenClient getIntervention", () => {
 			interventionId: "INT-001",
 			interventionType: 1,
 			executionDate: 1000000n,
-			healthBefore: 3,
-			healthAfter: 8,
 			commissionId: null,
 			evidenceBundleHash:
 				"0x0000000000000000000000000000000000000000000000000000000000000002",
@@ -942,8 +921,6 @@ describe("OpenGardenClient getIntervention", () => {
 
 		expect(intervention.uid).toBe(FAKE_INTERVENTION_UID);
 		expect(intervention.interventionId).toBe("INT-001");
-		expect(intervention.healthBefore).toBe(3);
-		expect(intervention.healthAfter).toBe(8);
 		expect(intervention.offchainCount).toBe(8);
 		expect(intervention.crewSize).toBe(2);
 		expect(intervention.recipient).toBe(ZERO_ADDRESS);
@@ -996,8 +973,6 @@ describe("OpenGardenClient getAreaInterventions", () => {
 			interventionId: "INT-001",
 			interventionType: 1,
 			executionDate: 1000000n,
-			healthBefore: 3,
-			healthAfter: 8,
 			commissionId: null,
 			evidenceBundleHash:
 				"0x0000000000000000000000000000000000000000000000000000000000000002",
@@ -1145,8 +1120,6 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 			interventionId: "INT-001",
 			interventionType: 1,
 			executionDate: overrides?.executionDate ?? 200n,
-			healthBefore: 3,
-			healthAfter: 8,
 			commissionId: null,
 			evidenceBundleHash:
 				overrides?.evidenceBundleHash ??
@@ -1274,7 +1247,6 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 		expect(result.expectedCount).toBe(5);
 		expect(result.temporalOrderValid).toBe(true);
 		expect(result.timestampsVerified).toBe(true);
-		expect(result.healthcheckOrderValid).toBe(true);
 		expect(result.executionDateBracketed).toBe(true);
 		expect(result.validationApproved).toBe(true);
 	});
@@ -1454,25 +1426,6 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 
 		expect(result.valid).toBe(false);
 		expect(result.temporalOrderValid).toBe(false);
-	});
-
-	it("healthcheck at any timestamp is valid (retroactive, no bracket enforced)", async () => {
-		const bundle = makeValidBundle({
-			attestations: {
-				...makeValidBundle().attestations,
-				healthcheck: {
-					uid: "0xhc",
-					score: 8,
-					baselineScore: 3,
-					onchainTimestamp: 250, // mid-lifecycle — allowed
-				},
-			},
-		});
-		const { client } = createVerifyClient(bundle, { offchainCount: 6 });
-
-		const result = await client.verifyEvidenceBundle(FAKE_INTERVENTION_UID);
-
-		expect(result.healthcheckOrderValid).toBe(true);
 	});
 
 	it("execution date before schedule fails bracketing", async () => {
@@ -1741,8 +1694,6 @@ describe("OpenGardenClient recordHealthcheck", () => {
 
 	const AREA_UID =
 		"0x000000000000000000000000000000000000000000000000000000000000cafe";
-	const INTERVENTION_UID =
-		"0x000000000000000000000000000000000000000000000000000000000000beef";
 
 	function createRecordClient() {
 		const signCalls: any[] = [];
@@ -1769,49 +1720,19 @@ describe("OpenGardenClient recordHealthcheck", () => {
 		return { client, signCalls };
 	}
 
-	it("passes areaUID as EAS refUID for intervention-linked healthcheck", async () => {
+	it("passes areaUID as EAS refUID", async () => {
 		const { client, signCalls } = createRecordClient();
 
-		await client.recordHealthcheck(AREA_UID, {
-			interventionUID: INTERVENTION_UID,
+		await client.recordHealthcheck({
+			areaUID: AREA_UID,
 			healthScore: 8,
 			photoHash: ZERO_BYTES32,
-			assessorId: null,
-			metadataHash: null,
+			notes: "all good",
+			metadata: "",
 		});
 
 		expect(signCalls).toHaveLength(1);
 		expect(signCalls[0].refUID).toBe(AREA_UID);
-	});
-
-	it("passes areaUID as EAS refUID for standalone healthcheck (null interventionUID)", async () => {
-		const { client, signCalls } = createRecordClient();
-
-		await client.recordHealthcheck(AREA_UID, {
-			interventionUID: null,
-			healthScore: 6,
-			photoHash: ZERO_BYTES32,
-			assessorId: null,
-			metadataHash: null,
-		});
-
-		expect(signCalls).toHaveLength(1);
-		expect(signCalls[0].refUID).toBe(AREA_UID);
-	});
-
-	it("areaUID and interventionUID are independent — different fields, different values", async () => {
-		const { client, signCalls } = createRecordClient();
-
-		await client.recordHealthcheck(AREA_UID, {
-			interventionUID: INTERVENTION_UID,
-			healthScore: 7,
-			photoHash: ZERO_BYTES32,
-			assessorId: null,
-			metadataHash: null,
-		});
-
-		expect(signCalls[0].refUID).toBe(AREA_UID);
-		expect(signCalls[0].refUID).not.toBe(INTERVENTION_UID);
 	});
 });
 
@@ -1829,11 +1750,11 @@ describe("OpenGardenClient getAreaHealthchecks", () => {
 
 	function makeEncodedHealthcheck() {
 		return encodeHealthcheck({
-			interventionUID: ZERO_BYTES32,
+			areaUID: AREA_UID,
 			healthScore: 6,
 			photoHash: ZERO_BYTES32,
-			assessorId: "staff-001",
-			metadataHash: null,
+			notes: "",
+			metadata: "",
 		});
 	}
 
@@ -1874,67 +1795,5 @@ describe("OpenGardenClient getAreaHealthchecks", () => {
 		const client = createClient();
 		const healthchecks = await client.getAreaHealthchecks(AREA_UID);
 		expect(healthchecks).toHaveLength(0);
-	});
-});
-
-describe("OpenGardenClient getAreaCitizenFeedback", () => {
-	afterEach(() => {
-		vi.restoreAllMocks();
-		vi.unstubAllGlobals();
-	});
-
-	const AREA_UID =
-		"0x000000000000000000000000000000000000000000000000000000000000abcd";
-
-	const createClient = () =>
-		createTestClient({ schemaUIDs: { CitizenFeedback: "0xschema" } });
-
-	function makeEncodedFeedback() {
-		return encodeCitizenFeedback({
-			areaUID: AREA_UID,
-			rating: 4,
-			comment: "The park looks better now",
-			photoHash: ZERO_BYTES32,
-		});
-	}
-
-	it("returns decoded feedback from GraphQL response", async () => {
-		const encodedData = makeEncodedFeedback();
-		const fetchMock = vi.fn().mockResolvedValue({
-			json: async () => ({
-				data: {
-					attestations: [
-						{
-							id: "0xfeedback1",
-							attester: MOCK_SIGNER_ADDRESS,
-							time: "1700000000",
-							data: encodedData,
-						},
-					],
-				},
-			}),
-		});
-		vi.stubGlobal("fetch", fetchMock);
-
-		const client = createClient();
-		const feedback = await client.getAreaCitizenFeedback(AREA_UID);
-
-		expect(feedback).toHaveLength(1);
-		expect(feedback[0].uid).toBe("0xfeedback1");
-		expect(feedback[0].rating).toBe(4);
-		expect(feedback[0].comment).toBe("The park looks better now");
-		expect(feedback[0].attester).toBe(MOCK_SIGNER_ADDRESS);
-		expect(feedback[0].time).toBe(1700000000n);
-	});
-
-	it("returns empty array when no attestations found", async () => {
-		const fetchMock = vi.fn().mockResolvedValue({
-			json: async () => ({ data: { attestations: [] } }),
-		});
-		vi.stubGlobal("fetch", fetchMock);
-
-		const client = createClient();
-		const feedback = await client.getAreaCitizenFeedback(AREA_UID);
-		expect(feedback).toHaveLength(0);
 	});
 });

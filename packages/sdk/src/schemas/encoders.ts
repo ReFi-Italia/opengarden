@@ -1,11 +1,14 @@
 import type { SchemaEncoder as SchemaEncoderType } from "@ethereum-attestation-service/eas-sdk";
 import { ZERO_BYTES32 } from "../constants";
 import { type SponsorRef, serializeSponsorRef } from "../sponsor";
-import type { AreaType, InterventionType, MilestoneLevel } from "../types/enums";
+import type {
+	AreaType,
+	InterventionType,
+	MilestoneLevel,
+} from "../types/enums";
 import type {
 	AdminValidationInput,
 	AreaRegistrationInput,
-	CitizenFeedbackInput,
 	GardenerCheckinInput,
 	GardenerCheckoutInput,
 	GardenerMilestoneInput,
@@ -24,7 +27,6 @@ import { SCHEMA_STRINGS } from "./definitions";
 import {
 	validateAdminValidation,
 	validateAreaRegistration,
-	validateCitizenFeedback,
 	validateGardenerCheckin,
 	validateGardenerCheckout,
 	validateGardenerMilestone,
@@ -61,9 +63,7 @@ function hashOrZero(id: string | null): string {
 	return id === null ? ZERO_BYTES32 : hashIdentifier(id);
 }
 
-function hashCommissionIdOrZero(
-	id: string | SponsorRef | null,
-): string {
+function hashCommissionIdOrZero(id: string | SponsorRef | null): string {
 	if (id === null) return ZERO_BYTES32;
 	if (typeof id === "string") return hashIdentifier(id);
 	const serialized = serializeSponsorRef(id);
@@ -108,8 +108,6 @@ export function encodePublishedIntervention(
 			value: toUnixSeconds(input.executionDate),
 			type: "uint64",
 		},
-		{ name: "healthBefore", value: input.healthBefore, type: "uint8" },
-		{ name: "healthAfter", value: input.healthAfter, type: "uint8" },
 		{
 			name: "commissionRef",
 			value: hashCommissionIdOrZero(input.commissionId),
@@ -239,34 +237,15 @@ export function encodeAdminValidation(input: AdminValidationInput): string {
 	]);
 }
 
-export function encodeCitizenFeedback(input: CitizenFeedbackInput): string {
-	validateCitizenFeedback(input);
-	const encoder = newSchemaEncoder(SCHEMA_STRINGS.CitizenFeedback);
-	return encoder.encodeData([
-		{ name: "areaUID", value: input.areaUID, type: "bytes32" },
-		{ name: "rating", value: input.rating, type: "uint8" },
-		{ name: "comment", value: input.comment, type: "string" },
-		{ name: "photoHash", value: input.photoHash, type: "bytes32" },
-	]);
-}
-
 export function encodeHealthcheck(input: HealthcheckInput): string {
 	validateHealthcheck(input);
 	const encoder = newSchemaEncoder(SCHEMA_STRINGS.Healthcheck);
 	return encoder.encodeData([
-		{ name: "interventionUID", value: input.interventionUID ?? ZERO_BYTES32, type: "bytes32" },
+		{ name: "areaUID", value: input.areaUID, type: "bytes32" },
 		{ name: "healthScore", value: input.healthScore, type: "uint8" },
 		{ name: "photoHash", value: input.photoHash, type: "bytes32" },
-		{
-			name: "assessorId",
-			value: hashOrZero(input.assessorId),
-			type: "bytes32",
-		},
-		{
-			name: "metadataHash",
-			value: input.metadataHash ?? ZERO_BYTES32,
-			type: "bytes32",
-		},
+		{ name: "notes", value: input.notes, type: "string" },
+		{ name: "metadata", value: input.metadata, type: "string" },
 	]);
 }
 
@@ -288,7 +267,9 @@ function getFieldValue(decoded: DecodedField[], name: string): unknown {
 }
 
 function decodeSchema(schemaString: string, data: string): DecodedField[] {
-	return newSchemaEncoder(schemaString).decodeData(data) as unknown as DecodedField[];
+	return newSchemaEncoder(schemaString).decodeData(
+		data,
+	) as unknown as DecodedField[];
 }
 
 export function decodeAreaRegistration(data: string) {
@@ -313,8 +294,6 @@ export function decodePublishedIntervention(data: string) {
 			getFieldValue(decoded, "interventionType"),
 		) as InterventionType,
 		executionDate: BigInt(String(getFieldValue(decoded, "executionDate"))),
-		healthBefore: Number(getFieldValue(decoded, "healthBefore")),
-		healthAfter: Number(getFieldValue(decoded, "healthAfter")),
 		commissionRef: String(getFieldValue(decoded, "commissionRef")),
 		evidenceBundleHash: String(getFieldValue(decoded, "evidenceBundleHash")),
 		offchainCount: Number(getFieldValue(decoded, "offchainCount")),
@@ -358,20 +337,10 @@ export function decodeScheduledIntervention(data: string) {
 export function decodeHealthcheck(data: string) {
 	const decoded = decodeSchema(SCHEMA_STRINGS.Healthcheck, data);
 	return {
-		interventionUID: String(getFieldValue(decoded, "interventionUID")),
+		areaUID: String(getFieldValue(decoded, "areaUID")),
 		healthScore: Number(getFieldValue(decoded, "healthScore")),
 		photoHash: String(getFieldValue(decoded, "photoHash")),
-		assessorId: String(getFieldValue(decoded, "assessorId")),
-		metadataHash: String(getFieldValue(decoded, "metadataHash")),
-	};
-}
-
-export function decodeCitizenFeedback(data: string) {
-	const decoded = decodeSchema(SCHEMA_STRINGS.CitizenFeedback, data);
-	return {
-		areaUID: String(getFieldValue(decoded, "areaUID")),
-		rating: Number(getFieldValue(decoded, "rating")),
-		comment: getFieldValue(decoded, "comment") as string,
-		photoHash: String(getFieldValue(decoded, "photoHash")),
+		notes: getFieldValue(decoded, "notes") as string,
+		metadata: getFieldValue(decoded, "metadata") as string,
 	};
 }

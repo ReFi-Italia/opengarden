@@ -7,9 +7,9 @@ import {
 	FinalizeInputIssueCode,
 	validateFinalizeInput,
 } from "../src/preflight";
-import type { FinalizeInterventionInput } from "../src/types/evidence";
 import { InterventionType } from "../src/types/enums";
-import { makeFakeTimestampedResult, MOCK_SIGNER_ADDRESS } from "./_helpers";
+import type { FinalizeInterventionInput } from "../src/types/evidence";
+import { MOCK_SIGNER_ADDRESS, makeFakeTimestampedResult } from "./_helpers";
 
 const SCHEDULE_UID = "0xsched";
 const AREA_UID = "0xarea";
@@ -53,8 +53,6 @@ function buildValidInput(): FinalizeInterventionInput {
 		},
 		interventionType: InterventionType.RoutineMaintenance,
 		executionDate: 1_000_000n,
-		healthBefore: 3,
-		healthAfter: 8,
 		commissionId: null,
 		crewSize: 1,
 	};
@@ -283,20 +281,6 @@ describe("validateFinalizeInput", () => {
 				(i) => i.code === FinalizeInputIssueCode.VALIDATION_REFUID_MISMATCH,
 			),
 		).toBe(true);
-	});
-
-	it("accepts a healthcheck at any timestamp (retroactive, no bracket enforced)", () => {
-		const input = buildValidInput();
-		input.healthcheck = {
-			...makeFakeTimestampedResult("0xhc", {
-				onchainTimestamp: 250n, // mid-lifecycle — allowed
-				refUID: AREA_UID,
-			}),
-			score: 8,
-			baselineScore: 3,
-		};
-		const issues = validateFinalizeInput(input);
-		expect(issues).toHaveLength(0);
 	});
 
 	it("collects multiple issues in a single pass", () => {
