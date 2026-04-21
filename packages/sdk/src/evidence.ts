@@ -71,11 +71,6 @@ export function buildEvidenceBundle(
 			reports: input.crew.map((m, i) =>
 				extractGardenerAttestation(m.report, "report", i),
 			),
-			validation: {
-				...extractAttestation(input.validation),
-				approved: input.validation.approved,
-				qualityScore: input.validation.qualityScore,
-			},
 		},
 		photos: {
 			checkinPhotos: input.photos?.checkinPhotos,

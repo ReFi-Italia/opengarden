@@ -70,7 +70,6 @@ export type {
 	EvidenceBundleAttestation,
 	EvidenceBundleBuilderInput,
 	EvidenceBundleGardenerAttestation,
-	EvidenceBundleValidation,
 	FinalizeInterventionInput,
 	FinalizeInterventionResult,
 } from "./types/evidence";
@@ -83,7 +82,6 @@ export type {
 	TimestampedOffChainResult,
 } from "./types/results";
 export type {
-	AdminValidationInput,
 	AreaRegistrationInput,
 	GardenerCheckinInput,
 	GardenerCheckoutInput,
@@ -103,16 +101,13 @@ export {
 } from "./utils";
 // Verification helpers
 export type {
-	CompletenessCheck,
 	TimestampFetcher,
 	VerificationCheck,
 } from "./verification";
 export {
 	VerificationCheckCode,
-	verifyBundleCompleteness,
 	verifyBundleExecutionDateBracket,
 	verifyBundleOnChainTimestamps,
 	verifyBundleTemporalOrder,
-	verifyBundleValidationApproved,
 	verifyBundleVersion,
 } from "./verification";

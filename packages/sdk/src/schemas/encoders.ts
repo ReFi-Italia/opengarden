@@ -7,7 +7,6 @@ import type {
 	MilestoneLevel,
 } from "../types/enums";
 import type {
-	AdminValidationInput,
 	AreaRegistrationInput,
 	GardenerCheckinInput,
 	GardenerCheckoutInput,
@@ -25,7 +24,6 @@ import {
 } from "../utils";
 import { SCHEMA_STRINGS } from "./definitions";
 import {
-	validateAdminValidation,
 	validateAreaRegistration,
 	validateGardenerCheckin,
 	validateGardenerCheckout,
@@ -57,10 +55,6 @@ export function newSchemaEncoder(schema: string): SchemaEncoderType {
 		);
 	}
 	return new SchemaEncoderCtor(schema);
-}
-
-function hashOrZero(id: string | null): string {
-	return id === null ? ZERO_BYTES32 : hashIdentifier(id);
 }
 
 function hashCommissionIdOrZero(id: string | SponsorRef | null): string {
@@ -100,7 +94,6 @@ export function encodePublishedIntervention(
 	validatePublishedIntervention(input);
 	const encoder = newSchemaEncoder(SCHEMA_STRINGS.PublishedIntervention);
 	return encoder.encodeData([
-		{ name: "areaUID", value: input.areaUID, type: "bytes32" },
 		{ name: "interventionId", value: input.interventionId, type: "string" },
 		{ name: "interventionType", value: input.interventionType, type: "uint8" },
 		{
@@ -109,17 +102,15 @@ export function encodePublishedIntervention(
 			type: "uint64",
 		},
 		{
-			name: "commissionRef",
-			value: hashCommissionIdOrZero(input.commissionId),
-			type: "bytes32",
-		},
-		{
 			name: "evidenceBundleHash",
 			value: input.evidenceBundleHash,
 			type: "bytes32",
 		},
-		{ name: "offchainCount", value: input.offchainCount, type: "uint8" },
-		{ name: "crewSize", value: input.crewSize, type: "uint8" },
+		{
+			name: "commissionRef",
+			value: hashCommissionIdOrZero(input.commissionId),
+			type: "bytes32",
+		},
 	]);
 }
 
@@ -155,7 +146,6 @@ export function encodeScheduledIntervention(
 	validateScheduledIntervention(input);
 	const encoder = newSchemaEncoder(SCHEMA_STRINGS.ScheduledIntervention);
 	return encoder.encodeData([
-		{ name: "areaUID", value: input.areaUID, type: "bytes32" },
 		{ name: "interventionId", value: input.interventionId, type: "string" },
 		{ name: "interventionType", value: input.interventionType, type: "uint8" },
 		{
@@ -178,7 +168,6 @@ export function encodeGardenerCheckin(input: GardenerCheckinInput): string {
 	validateGardenerCheckin(input);
 	const encoder = newSchemaEncoder(SCHEMA_STRINGS.GardenerCheckin);
 	return encoder.encodeData([
-		{ name: "interventionUID", value: input.interventionUID, type: "bytes32" },
 		{ name: "latitude", value: toMicrodegrees(input.latitude), type: "int32" },
 		{
 			name: "longitude",
@@ -198,7 +187,6 @@ export function encodeGardenerCheckout(input: GardenerCheckoutInput): string {
 	validateGardenerCheckout(input);
 	const encoder = newSchemaEncoder(SCHEMA_STRINGS.GardenerCheckout);
 	return encoder.encodeData([
-		{ name: "checkinUID", value: input.checkinUID, type: "bytes32" },
 		{
 			name: "timestamp",
 			value: toUnixSeconds(input.timestamp),
@@ -212,7 +200,6 @@ export function encodeGardenerReport(input: GardenerReportInput): string {
 	validateGardenerReport(input);
 	const encoder = newSchemaEncoder(SCHEMA_STRINGS.GardenerReport);
 	return encoder.encodeData([
-		{ name: "interventionUID", value: input.interventionUID, type: "bytes32" },
 		{ name: "checkoutUID", value: input.checkoutUID, type: "bytes32" },
 		{ name: "tasksCompleted", value: input.tasksCompleted, type: "string" },
 		{ name: "taskCount", value: input.taskCount, type: "uint8" },
@@ -221,27 +208,10 @@ export function encodeGardenerReport(input: GardenerReportInput): string {
 	]);
 }
 
-export function encodeAdminValidation(input: AdminValidationInput): string {
-	validateAdminValidation(input);
-	const encoder = newSchemaEncoder(SCHEMA_STRINGS.AdminValidation);
-	return encoder.encodeData([
-		{ name: "scheduleUID", value: input.scheduleUID, type: "bytes32" },
-		{ name: "approved", value: input.approved, type: "bool" },
-		{ name: "qualityScore", value: input.qualityScore, type: "uint8" },
-		{ name: "feedback", value: input.feedback, type: "string" },
-		{
-			name: "validatorId",
-			value: hashOrZero(input.validatorId),
-			type: "bytes32",
-		},
-	]);
-}
-
 export function encodeHealthcheck(input: HealthcheckInput): string {
 	validateHealthcheck(input);
 	const encoder = newSchemaEncoder(SCHEMA_STRINGS.Healthcheck);
 	return encoder.encodeData([
-		{ name: "areaUID", value: input.areaUID, type: "bytes32" },
 		{ name: "healthScore", value: input.healthScore, type: "uint8" },
 		{ name: "photoHash", value: input.photoHash, type: "bytes32" },
 		{ name: "notes", value: input.notes, type: "string" },
@@ -288,16 +258,13 @@ export function decodeAreaRegistration(data: string) {
 export function decodePublishedIntervention(data: string) {
 	const decoded = decodeSchema(SCHEMA_STRINGS.PublishedIntervention, data);
 	return {
-		areaUID: String(getFieldValue(decoded, "areaUID")),
 		interventionId: getFieldValue(decoded, "interventionId") as string,
 		interventionType: Number(
 			getFieldValue(decoded, "interventionType"),
 		) as InterventionType,
 		executionDate: BigInt(String(getFieldValue(decoded, "executionDate"))),
-		commissionRef: String(getFieldValue(decoded, "commissionRef")),
 		evidenceBundleHash: String(getFieldValue(decoded, "evidenceBundleHash")),
-		offchainCount: Number(getFieldValue(decoded, "offchainCount")),
-		crewSize: Number(getFieldValue(decoded, "crewSize")),
+		commissionRef: String(getFieldValue(decoded, "commissionRef")),
 	};
 }
 
@@ -321,7 +288,6 @@ export function decodeGardenerMilestone(data: string) {
 export function decodeScheduledIntervention(data: string) {
 	const decoded = decodeSchema(SCHEMA_STRINGS.ScheduledIntervention, data);
 	return {
-		areaUID: String(getFieldValue(decoded, "areaUID")),
 		interventionId: getFieldValue(decoded, "interventionId") as string,
 		interventionType: Number(
 			getFieldValue(decoded, "interventionType"),
@@ -337,7 +303,6 @@ export function decodeScheduledIntervention(data: string) {
 export function decodeHealthcheck(data: string) {
 	const decoded = decodeSchema(SCHEMA_STRINGS.Healthcheck, data);
 	return {
-		areaUID: String(getFieldValue(decoded, "areaUID")),
 		healthScore: Number(getFieldValue(decoded, "healthScore")),
 		photoHash: String(getFieldValue(decoded, "photoHash")),
 		notes: getFieldValue(decoded, "notes") as string,

@@ -3,6 +3,7 @@ import type { AreaType, InterventionType, MilestoneLevel } from "./enums";
 
 export interface ScheduledIntervention {
 	uid: string;
+	/** Sourced from the EAS `refUID` slot of the signed attestation, not from schema data. */
 	areaUID: string;
 	interventionId: string;
 	interventionType: InterventionType;
@@ -20,6 +21,7 @@ export interface ScheduledIntervention {
 
 export interface Healthcheck {
 	uid: string;
+	/** Sourced from the EAS `refUID` slot of the signed attestation, not from schema data. */
 	areaUID: string;
 	healthScore: number;
 	photoHash: string;
@@ -45,14 +47,13 @@ export interface Area {
 
 export interface Intervention {
 	uid: string;
+	/** Sourced from the EAS `refUID` slot of the on-chain attestation, not from schema data. */
 	areaUID: string;
 	interventionId: string;
 	interventionType: InterventionType;
 	executionDate: bigint;
 	commissionRef: string;
 	evidenceBundleHash: string;
-	offchainCount: number;
-	crewSize: number;
 	attester: string;
 	recipient: string;
 	time: bigint;
@@ -74,12 +75,9 @@ export interface Milestone {
 
 export interface EvidenceBundleVerification {
 	valid: boolean;
-	attestationCount: number;
-	expectedCount: number;
 	temporalOrderValid: boolean;
 	timestampsVerified: boolean;
 	executionDateBracketed: boolean;
-	validationApproved: boolean;
 	/** Flat per-check breakdown, in the order the SDK runs them. Useful for rendering "X of N integrity checks passed" UX. */
 	checks: VerificationCheck[];
 }

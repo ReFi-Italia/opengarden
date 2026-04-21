@@ -20,7 +20,6 @@ import {
 	decodeHealthcheck,
 	decodePublishedIntervention,
 	decodeScheduledIntervention,
-	encodeAdminValidation,
 	encodeAreaRegistration,
 	encodeGardenerCheckin,
 	encodeGardenerCheckout,
@@ -60,7 +59,6 @@ import type {
 	TimestampedOffChainResult,
 } from "./types/results";
 import type {
-	AdminValidationInput,
 	AreaRegistrationInput,
 	GardenerCheckinInput,
 	GardenerCheckoutInput,
@@ -73,11 +71,9 @@ import type {
 import { toUnixSeconds } from "./utils";
 import {
 	type VerificationCheck,
-	verifyBundleCompleteness,
 	verifyBundleExecutionDateBracket,
 	verifyBundleOnChainTimestamps,
 	verifyBundleTemporalOrder,
-	verifyBundleValidationApproved,
 	verifyBundleVersion,
 } from "./verification";
 
@@ -397,19 +393,6 @@ export class OpenGardenClient {
 		);
 	}
 
-	async validateIntervention(
-		data: AdminValidationInput,
-	): Promise<TimestampedOffChainResult> {
-		const encodedData = encodeAdminValidation(data);
-		return this.signAndTimestamp(
-			"AdminValidation",
-			encodedData,
-			ZERO_ADDRESS,
-			data.scheduleUID,
-			true,
-		);
-	}
-
 	async recordHealthcheck(
 		data: HealthcheckInput,
 	): Promise<TimestampedOffChainResult> {
@@ -463,11 +446,6 @@ export class OpenGardenClient {
 				crewIndex: i,
 			});
 		});
-		entries.push({
-			uid: input.validation.uid,
-			sig: input.validation.signedAttestation,
-			role: "validation",
-		});
 
 		const storeUrl = this.storeUrl;
 		return Promise.all(
@@ -504,8 +482,6 @@ export class OpenGardenClient {
 		const indexingResults = await this.indexBundleAttestations(input);
 		const indexedCount = indexingResults.filter((r) => r.ok).length;
 
-		const offchainCount = 2 + 3 * input.crew.length;
-
 		const publication = await this.publishIntervention({
 			areaUID: input.areaUID,
 			interventionId: input.interventionId,
@@ -513,8 +489,6 @@ export class OpenGardenClient {
 			executionDate,
 			commissionId: input.commissionId,
 			evidenceBundleHash,
-			offchainCount,
-			crewSize: input.crewSize,
 		});
 
 		return {
@@ -556,6 +530,7 @@ export class OpenGardenClient {
 		const decoded = decodePublishedIntervention(attestation.data);
 		return {
 			uid: attestation.uid,
+			areaUID: attestation.refUID,
 			...decoded,
 			attester: attestation.attester,
 			recipient: attestation.recipient,
@@ -587,6 +562,7 @@ export class OpenGardenClient {
 		}>(query, { schemaId: schemaUID, refUID: areaUID });
 		return items.map((a) => ({
 			uid: a.id,
+			areaUID: a.refUID,
 			...decodePublishedIntervention(a.data),
 			attester: a.attester,
 			recipient: a.recipient,
@@ -661,6 +637,7 @@ export class OpenGardenClient {
           recipient
           time
           data
+          refUID
         }
       }
     `;
@@ -671,9 +648,11 @@ export class OpenGardenClient {
 			recipient: string;
 			time: string;
 			data: string;
+			refUID: string;
 		}>(query, variables);
 		return items.map((a) => ({
 			uid: a.id,
+			areaUID: a.refUID,
 			...decodeScheduledIntervention(a.data),
 			attester: a.attester,
 			recipient: a.recipient,
@@ -690,6 +669,7 @@ export class OpenGardenClient {
           attester
           time
           data
+          refUID
         }
       }
     `;
@@ -698,9 +678,11 @@ export class OpenGardenClient {
 			attester: string;
 			time: string;
 			data: string;
+			refUID: string;
 		}>(query, { schemaId: schemaUID, refUID: areaUID });
 		return items.map((a) => ({
 			uid: a.id,
+			areaUID: a.refUID,
 			...decodeHealthcheck(a.data),
 			attester: a.attester,
 			time: BigInt(a.time),
@@ -747,37 +729,27 @@ export class OpenGardenClient {
 			);
 		}
 
-		const completeness = verifyBundleCompleteness(
-			bundle,
-			intervention.offchainCount,
-		);
 		const temporal = verifyBundleTemporalOrder(bundle);
 		const executionBracket = verifyBundleExecutionDateBracket(
 			bundle,
 			intervention,
 		);
-		const validation = verifyBundleValidationApproved(bundle);
 		const timestamps = await verifyBundleOnChainTimestamps(bundle, (u) =>
 			this.eas.getTimestamp(u),
 		);
 
 		const checks: VerificationCheck[] = [
-			completeness,
 			temporal,
 			executionBracket,
-			validation,
 			timestamps,
 		];
 		const valid = checks.every((c) => c.valid);
 
 		return {
 			valid,
-			attestationCount: completeness.attestationCount,
-			expectedCount: completeness.expectedCount,
 			temporalOrderValid: temporal.valid,
 			timestampsVerified: timestamps.valid,
 			executionDateBracketed: executionBracket.valid,
-			validationApproved: validation.valid,
 			checks,
 		};
 	}

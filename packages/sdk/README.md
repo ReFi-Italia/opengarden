@@ -81,16 +81,7 @@ const bobCheckin  = await client.checkin({ interventionUID: schedule.uid, ... })
 const bobCheckout = await client.checkout({ checkinUID: bobCheckin.uid, ... });
 const bobReport   = await client.submitReport({ interventionUID: schedule.uid, checkoutUID: bobCheckout.uid, ... });
 
-// 4. Admin validation (off-chain + timestamped) — one per intervention, anchored on schedule.uid
-const validation = await client.validateIntervention({
-  scheduleUID: schedule.uid,
-  approved: true,
-  qualityScore: 8,
-  validatorId: staffUuid, // plain identifier — hashed internally (pass `null` to omit individual attribution)
-  ...
-});
-
-// 5. Healthcheck (off-chain + timestamped) — periodic area-condition signal,
+// 4. Healthcheck (off-chain + timestamped) — periodic area-condition signal,
 //    independent of any intervention. Anyone can issue; role (org / gardener /
 //    citizen) is inferred off-chain from the attester wallet.
 const hc = await client.recordHealthcheck({
@@ -101,7 +92,7 @@ const hc = await client.recordHealthcheck({
   metadata: '',                    // free-form JSON escape hatch, empty for none
 });
 
-// 6. Build evidence bundle — crew is an array of { checkin, checkout, report } tuples
+// 5. Build evidence bundle — crew is an array of { checkin, checkout, report } tuples
 const bundle = client.buildEvidenceBundle({
   interventionId: 'INT-2026-0001',
   areaUID: area.uid,
@@ -110,24 +101,22 @@ const bundle = client.buildEvidenceBundle({
     { checkin: aliceCheckin, checkout: aliceCheckout, report: aliceReport },
     { checkin: bobCheckin,   checkout: bobCheckout,   report: bobReport },
   ],
-  validation: { ...validation, approved: true, qualityScore: 8 },
 });
 
-// 7. Upload bundle (requires storage adapter)
+// 6. Upload bundle (requires storage adapter)
 const bundleHash = await client.uploadEvidenceBundle(bundle);
 
-// 8. Publish intervention (on-chain) — one record per job, recipient = ZERO_ADDRESS
+// 7. Publish intervention (on-chain) — one record per job, recipient = ZERO_ADDRESS.
+//    Validation is the publisher's act: signing this attestation IS the approval.
+//    Internal QA fields (approved/qualityScore/feedback/validatorId) stay DB-only.
 const intervention = await client.publishIntervention({
-  areaUID: area.uid,
+  areaUID: area.uid,                  // routed to EAS refUID slot, not encoded in schema data
   interventionId: 'INT-2026-0001',
   evidenceBundleHash: bundleHash,
-  // 1 scheduled + 3 per crew member (2) + 1 validation = 8
-  offchainCount: 8,
-  crewSize: 2,
   ...
 });
 
-// 9. Mint milestone (on-chain, soulbound) — per gardener, from their signed report history
+// 8. Mint milestone (on-chain, soulbound) — per gardener, from their signed report history
 await client.mintMilestone({ recipient: crewLeadWallet, milestoneLevel: 1, ... });
 ```
 
@@ -144,8 +133,10 @@ const milestones = await client.getGardenerMilestones(walletAddress);
 
 // Verify evidence bundle integrity
 const result = await client.verifyEvidenceBundle(interventionUID);
-// { valid: true, attestationCount: 7, temporalOrderValid: true, timestampsVerified: true }
+// { valid: true, temporalOrderValid: true, timestampsVerified: true, executionDateBracketed: true }
 ```
+
+`PublishedIntervention`, `ScheduledIntervention`, and `Healthcheck` carry their `areaUID` in the EAS-native `refUID` slot rather than as a schema field. The SDK reads it back transparently — `Intervention.areaUID`, `ScheduledIntervention.areaUID`, and `Healthcheck.areaUID` are populated from `refUID` on every read.
 
 ## Storage adapter
 
@@ -238,7 +229,7 @@ const client = new OpenGardenClient({ signer, chain: OPTIMISM_MAINNET, eas, regi
 | Method | Returns | EAS recipient |
 |---|---|---|
 | `registerArea(data)` | `OnChainAttestationResult` | `ZERO_ADDRESS` |
-| `publishIntervention(data)` | `OnChainAttestationResult` | Gardener address |
+| `publishIntervention(data)` | `OnChainAttestationResult` | `ZERO_ADDRESS` |
 | `mintMilestone(data)` | `OnChainAttestationResult` | Gardener address |
 
 ### Off-chain writes (timestamped)
@@ -251,7 +242,6 @@ Each method signs an off-chain attestation and timestamps its UID on-chain.
 | `checkin(data)` | `TimestampedOffChainResult` |
 | `checkout(data)` | `TimestampedOffChainResult` |
 | `submitReport(data)` | `TimestampedOffChainResult` |
-| `validateIntervention(data)` | `TimestampedOffChainResult` |
 | `recordHealthcheck(data)` | `TimestampedOffChainResult` |
 
 ### Reads

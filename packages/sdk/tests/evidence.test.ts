@@ -31,11 +31,6 @@ describe("buildEvidenceBundle", () => {
 				report: mockTimestampedResult("0xreport", 3100, 3120n, "0xAlice"),
 			},
 		],
-		validation: {
-			...mockTimestampedResult("0xvalidation", 4000, 4025n),
-			approved: true,
-			qualityScore: 8,
-		},
 		photos: {
 			checkinPhotos: ["ipfs://Qm.../arrival.jpg"],
 			reportPhotos: "ipfs://Qm.../work/",
@@ -62,7 +57,6 @@ describe("buildEvidenceBundle", () => {
 		expect(bundle.attestations.checkins[0].uid).toBe("0xcheckin");
 		expect(bundle.attestations.checkouts[0].uid).toBe("0xcheckout");
 		expect(bundle.attestations.reports[0].uid).toBe("0xreport");
-		expect(bundle.attestations.validation.uid).toBe("0xvalidation");
 	});
 
 	it("preserves per-gardener arrays for a crew job", () => {
@@ -93,12 +87,6 @@ describe("buildEvidenceBundle", () => {
 		const bundle = buildEvidenceBundle(soloInput);
 		expect(bundle.attestations.scheduled.onchainTimestamp).toBe(1015);
 		expect(bundle.attestations.checkins[0].onchainTimestamp).toBe(2018);
-	});
-
-	it("includes validation-specific fields", () => {
-		const bundle = buildEvidenceBundle(soloInput);
-		expect(bundle.attestations.validation.approved).toBe(true);
-		expect(bundle.attestations.validation.qualityScore).toBe(8);
 	});
 
 	it("includes photo references", () => {

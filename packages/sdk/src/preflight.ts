@@ -106,10 +106,8 @@ export enum FinalizeInputIssueCode {
 	CHECKIN_REFUID_MISMATCH = "CHECKIN_REFUID_MISMATCH",
 	CHECKOUT_REFUID_MISMATCH = "CHECKOUT_REFUID_MISMATCH",
 	REPORT_REFUID_MISMATCH = "REPORT_REFUID_MISMATCH",
-	VALIDATION_REFUID_MISMATCH = "VALIDATION_REFUID_MISMATCH",
 	CREW_ATTESTER_MISMATCH = "CREW_ATTESTER_MISMATCH",
 	TEMPORAL_ORDER_VIOLATION = "TEMPORAL_ORDER_VIOLATION",
-	VALIDATION_NOT_APPROVED = "VALIDATION_NOT_APPROVED",
 }
 
 export interface FinalizeInputIssue {
@@ -124,8 +122,8 @@ export interface FinalizeInputIssue {
 /**
  * Pure, side-effect-free validator for a `FinalizeInterventionInput`. Runs the
  * full spec §4.2 temporal-integrity check plus wiring checks (refUIDs, same
- * attester per crew member, validation.approved). Returns a flat list of
- * issues — empty means the input is ready to finalize.
+ * attester per crew member). Returns a flat list of issues — empty means the
+ * input is ready to finalize.
  *
  * This is the same check `finalizeIntervention` runs internally, exposed as a
  * standalone function so UIs can preview readiness and surface problems without
@@ -145,7 +143,6 @@ export function validateFinalizeInput(
 	}
 
 	const scheduled = extractAttestationMetadata(input.scheduled);
-	const validation = extractAttestationMetadata(input.validation);
 	const executionDate = toUnixSeconds(input.executionDate);
 	const scheduledTs = BigInt(scheduled.onchainTimestamp);
 
@@ -166,7 +163,6 @@ export function validateFinalizeInput(
 	}
 
 	const checkinTimestamps: number[] = [];
-	const reportTimestamps: number[] = [];
 
 	for (let i = 0; i < input.crew.length; i++) {
 		const member = input.crew[i];
@@ -228,45 +224,15 @@ export function validateFinalizeInput(
 		}
 
 		checkinTimestamps.push(ci.onchainTimestamp);
-		reportTimestamps.push(rp.onchainTimestamp);
 	}
 
 	const minCheckin = Math.min(...checkinTimestamps);
-	const maxReport = Math.max(...reportTimestamps);
 
 	if (scheduled.onchainTimestamp >= minCheckin) {
 		issues.push({
 			code: FinalizeInputIssueCode.TEMPORAL_ORDER_VIOLATION,
 			message: `Scheduled on-chain timestamp (${scheduled.onchainTimestamp}) must precede the earliest checkin (${minCheckin})`,
 			uid: input.scheduled.uid,
-		});
-	}
-
-	if (maxReport >= validation.onchainTimestamp) {
-		issues.push({
-			code: FinalizeInputIssueCode.TEMPORAL_ORDER_VIOLATION,
-			message: `Latest report timestamp (${maxReport}) must precede validation timestamp (${validation.onchainTimestamp})`,
-			uid: input.validation.uid,
-		});
-	}
-
-	if (
-		validation.refUID &&
-		!sameBytes32(validation.refUID, input.scheduled.uid)
-	) {
-		issues.push({
-			code: FinalizeInputIssueCode.VALIDATION_REFUID_MISMATCH,
-			message: `Validation refUID (${validation.refUID}) does not match scheduled UID (${input.scheduled.uid.toLowerCase()})`,
-			uid: input.validation.uid,
-		});
-	}
-
-	if (!input.validation.approved) {
-		issues.push({
-			code: FinalizeInputIssueCode.VALIDATION_NOT_APPROVED,
-			message:
-				"Cannot finalize an intervention whose validation is not approved",
-			uid: input.validation.uid,
 		});
 	}
 

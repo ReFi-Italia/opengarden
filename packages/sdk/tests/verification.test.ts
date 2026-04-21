@@ -3,11 +3,9 @@ import { EVIDENCE_BUNDLE_VERSION } from "../src/constants";
 import type { EvidenceBundle } from "../src/types/evidence";
 import {
 	VerificationCheckCode,
-	verifyBundleCompleteness,
 	verifyBundleExecutionDateBracket,
 	verifyBundleOnChainTimestamps,
 	verifyBundleTemporalOrder,
-	verifyBundleValidationApproved,
 	verifyBundleVersion,
 } from "../src/verification";
 
@@ -15,15 +13,12 @@ function makeBundle(
 	overrides: {
 		crewCount?: number;
 		scheduledTs?: number;
-		validationTs?: number;
 		bundleVersion?: string;
-		approved?: boolean;
 		mismatchCrew?: { checkouts?: number; reports?: number };
 	} = {},
 ): EvidenceBundle {
 	const crewCount = overrides.crewCount ?? 1;
 	const scheduledTs = overrides.scheduledTs ?? 100;
-	const validationTs = overrides.validationTs ?? 500;
 
 	const checkins = Array.from({ length: crewCount }, (_, i) => ({
 		uid: `0xcheckin${i}`,
@@ -66,14 +61,6 @@ function makeBundle(
 			checkins,
 			checkouts,
 			reports,
-			validation: {
-				uid: "0xvalidation",
-				contentHash: "0xvalidation",
-				claimedTimestamp: validationTs,
-				onchainTimestamp: validationTs,
-				approved: overrides.approved ?? true,
-				qualityScore: 8,
-			},
 		},
 		photos: {},
 		bundleVersion: (overrides.bundleVersion ??
@@ -94,24 +81,6 @@ describe("verifyBundleVersion", () => {
 		const result = verifyBundleVersion(makeBundle({ bundleVersion: "99.9.9" }));
 		expect(result.valid).toBe(false);
 		expect(result.message).toContain("99.9.9");
-	});
-});
-
-describe("verifyBundleCompleteness", () => {
-	it("passes when attestation count matches expected", () => {
-		const bundle = makeBundle({ crewCount: 1 });
-		const result = verifyBundleCompleteness(bundle, 5);
-		expect(result.valid).toBe(true);
-		expect(result.attestationCount).toBe(5);
-		expect(result.expectedCount).toBe(5);
-	});
-
-	it("fails when counts disagree", () => {
-		const bundle = makeBundle({ crewCount: 1 });
-		const result = verifyBundleCompleteness(bundle, 7);
-		expect(result.valid).toBe(false);
-		expect(result.attestationCount).toBe(5);
-		expect(result.expectedCount).toBe(7);
 	});
 });
 
@@ -141,13 +110,6 @@ describe("verifyBundleTemporalOrder", () => {
 		const result = verifyBundleTemporalOrder(bundle);
 		expect(result.valid).toBe(false);
 		expect(result.message).toContain("precede the earliest checkin");
-	});
-
-	it("fails when last report is not strictly before validation", () => {
-		const bundle = makeBundle({ validationTs: 400 });
-		const result = verifyBundleTemporalOrder(bundle);
-		expect(result.valid).toBe(false);
-		expect(result.message).toContain("precede validation");
 	});
 
 	it("fails when an individual crew member has out-of-order timestamps", () => {
@@ -185,18 +147,6 @@ describe("verifyBundleExecutionDateBracket", () => {
 	});
 });
 
-describe("verifyBundleValidationApproved", () => {
-	it("passes when validation is approved", () => {
-		expect(verifyBundleValidationApproved(makeBundle()).valid).toBe(true);
-	});
-
-	it("fails when validation is not approved", () => {
-		expect(
-			verifyBundleValidationApproved(makeBundle({ approved: false })).valid,
-		).toBe(false);
-	});
-});
-
 describe("verifyBundleOnChainTimestamps", () => {
 	it("passes when every fetcher result matches the bundle", async () => {
 		const bundle = makeBundle({ crewCount: 1 });
@@ -206,7 +156,6 @@ describe("verifyBundleOnChainTimestamps", () => {
 				...bundle.attestations.checkouts,
 				...bundle.attestations.reports,
 				bundle.attestations.scheduled,
-				bundle.attestations.validation,
 			];
 			const match = all.find((a) => a.uid === _uid);
 			return match ? BigInt(match.onchainTimestamp) : null;
@@ -223,7 +172,6 @@ describe("verifyBundleOnChainTimestamps", () => {
 				...bundle.attestations.checkouts,
 				...bundle.attestations.reports,
 				bundle.attestations.scheduled,
-				bundle.attestations.validation,
 			];
 			const match = all.find((a) => a.uid === uid);
 			return match ? BigInt(match.onchainTimestamp) : null;

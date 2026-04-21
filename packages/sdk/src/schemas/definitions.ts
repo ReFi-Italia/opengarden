@@ -11,21 +11,18 @@ export const SCHEMA_STRINGS: Record<SchemaName, string> = {
 	AreaRegistration:
 		"string areaId, int32 latitude, int32 longitude, uint8 areaType, string name, string municipality, bytes32 metadataHash",
 	PublishedIntervention:
-		"bytes32 areaUID, string interventionId, uint8 interventionType, uint64 executionDate, bytes32 commissionRef, bytes32 evidenceBundleHash, uint8 offchainCount, uint8 crewSize",
+		"string interventionId, uint8 interventionType, uint64 executionDate, bytes32 evidenceBundleHash, bytes32 commissionRef",
 	GardenerMilestone:
 		"uint8 milestoneLevel, uint16 totalInterventions, uint16 totalValidated, uint8 avgHealthImprovement, string skillTier, uint64 achievedAt, bytes32 evidenceRoot",
 	ScheduledIntervention:
-		"bytes32 areaUID, string interventionId, uint8 interventionType, uint64 scheduledDate, uint16 estimatedMinutes, string description, bytes32 commissionRef, uint8 crewSize",
+		"string interventionId, uint8 interventionType, uint64 scheduledDate, uint16 estimatedMinutes, string description, bytes32 commissionRef, uint8 crewSize",
 	GardenerCheckin:
-		"bytes32 interventionUID, int32 latitude, int32 longitude, uint64 timestamp, bytes32 photoHash",
-	GardenerCheckout:
-		"bytes32 checkinUID, uint64 timestamp, uint16 actualMinutes",
+		"int32 latitude, int32 longitude, uint64 timestamp, bytes32 photoHash",
+	GardenerCheckout: "uint64 timestamp, uint16 actualMinutes",
 	GardenerReport:
-		"bytes32 interventionUID, bytes32 checkoutUID, string tasksCompleted, uint8 taskCount, bytes32 photosHash, string notes",
-	AdminValidation:
-		"bytes32 scheduleUID, bool approved, uint8 qualityScore, string feedback, bytes32 validatorId",
+		"bytes32 checkoutUID, string tasksCompleted, uint8 taskCount, bytes32 photosHash, string notes",
 	Healthcheck:
-		"bytes32 areaUID, uint8 healthScore, bytes32 photoHash, string notes, string metadata",
+		"uint8 healthScore, bytes32 photoHash, string notes, string metadata",
 };
 
 export const SCHEMA_DEFINITIONS: Record<SchemaName, SchemaDefinition> = {
@@ -68,12 +65,6 @@ export const SCHEMA_DEFINITIONS: Record<SchemaName, SchemaDefinition> = {
 	GardenerReport: {
 		schema: SCHEMA_STRINGS.GardenerReport,
 		revocable: false,
-		onchain: false,
-		timestamped: true,
-	},
-	AdminValidation: {
-		schema: SCHEMA_STRINGS.AdminValidation,
-		revocable: true,
 		onchain: false,
 		timestamped: true,
 	},

@@ -18,11 +18,6 @@ export interface EvidenceBundleGardenerAttestation
 	attester: string;
 }
 
-export interface EvidenceBundleValidation extends EvidenceBundleAttestation {
-	approved: boolean;
-	qualityScore: number;
-}
-
 export interface EvidenceBundle {
 	interventionId: string;
 	areaUID: string;
@@ -31,7 +26,6 @@ export interface EvidenceBundle {
 		checkins: EvidenceBundleGardenerAttestation[];
 		checkouts: EvidenceBundleGardenerAttestation[];
 		reports: EvidenceBundleGardenerAttestation[];
-		validation: EvidenceBundleValidation;
 	};
 	photos: {
 		checkinPhotos?: string[];
@@ -50,10 +44,6 @@ export interface EvidenceBundleBuilderInput {
 		checkout: TimestampedOffChainResult;
 		report: TimestampedOffChainResult;
 	}>;
-	validation: TimestampedOffChainResult & {
-		approved: boolean;
-		qualityScore: number;
-	};
 	photos?: {
 		checkinPhotos?: string[];
 		reportPhotos?: string;
@@ -64,7 +54,7 @@ export interface EvidenceBundleBuilderInput {
 export type FinalizeInterventionInput = EvidenceBundleBuilderInput &
 	Omit<
 		PublishedInterventionInput,
-		"areaUID" | "interventionId" | "evidenceBundleHash" | "offchainCount"
+		"areaUID" | "interventionId" | "evidenceBundleHash"
 	>;
 
 export interface FinalizeInterventionResult {

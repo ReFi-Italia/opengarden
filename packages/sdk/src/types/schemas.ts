@@ -13,6 +13,7 @@ export interface AreaRegistrationInput {
 }
 
 export interface PublishedInterventionInput {
+	/** UID of the AreaRegistration attestation this intervention belongs to. Carried as the EAS `refUID` slot on the on-chain attestation, not encoded in schema data. */
 	areaUID: string;
 	interventionId: string;
 	interventionType: InterventionType;
@@ -20,8 +21,6 @@ export interface PublishedInterventionInput {
 	/** Plain commissioning identifier, structured `SponsorRef`, or `null` for volunteer/unsponsored work. Hashed internally per spec §9.1; structured refs are canonicalized via `serializeSponsorRef` before hashing. */
 	commissionId: string | SponsorRef | null;
 	evidenceBundleHash: string;
-	offchainCount: number;
-	crewSize: number;
 }
 
 export interface GardenerMilestoneInput {
@@ -36,6 +35,7 @@ export interface GardenerMilestoneInput {
 }
 
 export interface ScheduledInterventionInput {
+	/** UID of the AreaRegistration attestation this schedule belongs to. Carried as the EAS `refUID` slot, not encoded in schema data. */
 	areaUID: string;
 	interventionId: string;
 	interventionType: InterventionType;
@@ -49,6 +49,7 @@ export interface ScheduledInterventionInput {
 }
 
 export interface GardenerCheckinInput {
+	/** UID of the ScheduledIntervention this checkin belongs to. Carried as the EAS `refUID` slot, not encoded in schema data. */
 	interventionUID: string;
 	latitude: number;
 	longitude: number;
@@ -57,13 +58,16 @@ export interface GardenerCheckinInput {
 }
 
 export interface GardenerCheckoutInput {
+	/** UID of the matching GardenerCheckin for this crew member. Carried as the EAS `refUID` slot, not encoded in schema data. */
 	checkinUID: string;
 	timestamp: Date | bigint;
 	actualMinutes: number;
 }
 
 export interface GardenerReportInput {
+	/** UID of the ScheduledIntervention this report belongs to. Carried as the EAS `refUID` slot, not encoded in schema data. */
 	interventionUID: string;
+	/** UID of this crew member's GardenerCheckout. Carried as a schema field since EAS only exposes one `refUID` slot. */
 	checkoutUID: string;
 	tasksCompleted: string;
 	taskCount: number;
@@ -71,16 +75,8 @@ export interface GardenerReportInput {
 	notes: string;
 }
 
-export interface AdminValidationInput {
-	scheduleUID: string;
-	approved: boolean;
-	qualityScore: number;
-	feedback: string;
-	/** Plain staff identifier of the validating admin; `null` for organizational validation without individual attribution. Hashed internally per spec §9.1. */
-	validatorId: string | null;
-}
-
 export interface HealthcheckInput {
+	/** UID of the AreaRegistration attestation this healthcheck belongs to. Carried as the EAS `refUID` slot, not encoded in schema data. */
 	areaUID: string;
 	/** 1-10, where 10 is best. */
 	healthScore: number;

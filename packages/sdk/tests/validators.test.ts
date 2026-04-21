@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { ZERO_BYTES32 } from "../src/constants";
 import { OpenGardenError, OpenGardenErrorCode } from "../src/errors";
 import {
-	encodeAdminValidation,
 	encodeAreaRegistration,
 	encodeGardenerCheckin,
 	encodeGardenerCheckout,
@@ -46,8 +45,6 @@ const validPublished = {
 	executionDate: 1709251200n,
 	commissionId: null,
 	evidenceBundleHash: ZERO_BYTES32,
-	offchainCount: 5,
-	crewSize: 1,
 };
 
 const validScheduled = {
@@ -96,14 +93,6 @@ const validReport = {
 	notes: "done",
 };
 
-const validAdminValidation = {
-	scheduleUID: ZERO_BYTES32,
-	approved: true,
-	qualityScore: 8,
-	feedback: "ok",
-	validatorId: null,
-};
-
 const validHealthcheck = {
 	areaUID: ZERO_BYTES32,
 	healthScore: 6,
@@ -144,21 +133,6 @@ describe("PublishedIntervention validator", () => {
 					interventionType: 99 as InterventionType,
 				}),
 			"interventionType",
-		);
-	});
-
-	it("rejects non-integer crewSize", () => {
-		expectInvalidInput(
-			() => encodePublishedIntervention({ ...validPublished, crewSize: 1.5 }),
-			"crewSize",
-		);
-	});
-
-	it("rejects offchainCount above uint8 max", () => {
-		expectInvalidInput(
-			() =>
-				encodePublishedIntervention({ ...validPublished, offchainCount: 256 }),
-			"offchainCount",
 		);
 	});
 });
@@ -233,22 +207,6 @@ describe("GardenerReport validator", () => {
 			() => encodeGardenerReport({ ...validReport, taskCount: 256 }),
 			"taskCount",
 		);
-	});
-});
-
-describe("AdminValidation validator", () => {
-	it("rejects qualityScore above 10", () => {
-		expectInvalidInput(
-			() =>
-				encodeAdminValidation({ ...validAdminValidation, qualityScore: 11 }),
-			"qualityScore",
-		);
-	});
-
-	it("accepts qualityScore=0 (unscored sentinel)", () => {
-		expect(() =>
-			encodeAdminValidation({ ...validAdminValidation, qualityScore: 0 }),
-		).not.toThrow();
 	});
 });
 

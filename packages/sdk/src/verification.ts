@@ -3,10 +3,8 @@ import type { EvidenceBundle } from "./types/evidence";
 
 export enum VerificationCheckCode {
 	BUNDLE_VERSION = "BUNDLE_VERSION",
-	COMPLETENESS = "COMPLETENESS",
 	TEMPORAL_ORDER = "TEMPORAL_ORDER",
 	EXECUTION_DATE_BRACKET = "EXECUTION_DATE_BRACKET",
-	VALIDATION_APPROVED = "VALIDATION_APPROVED",
 	ON_CHAIN_TIMESTAMPS = "ON_CHAIN_TIMESTAMPS",
 }
 
@@ -14,12 +12,6 @@ export interface VerificationCheck {
 	code: VerificationCheckCode;
 	valid: boolean;
 	message?: string;
-}
-
-export interface CompletenessCheck extends VerificationCheck {
-	code: VerificationCheckCode.COMPLETENESS;
-	attestationCount: number;
-	expectedCount: number;
 }
 
 export function verifyBundleVersion(bundle: EvidenceBundle): VerificationCheck {
@@ -33,30 +25,10 @@ export function verifyBundleVersion(bundle: EvidenceBundle): VerificationCheck {
 	};
 }
 
-export function verifyBundleCompleteness(
-	bundle: EvidenceBundle,
-	expectedCount: number,
-): CompletenessCheck {
-	const { checkins, checkouts, reports } = bundle.attestations;
-	const attestationCount =
-		2 + checkins.length + checkouts.length + reports.length;
-	const ok = attestationCount === expectedCount;
-	return {
-		code: VerificationCheckCode.COMPLETENESS,
-		valid: ok,
-		message: ok
-			? undefined
-			: `Bundle contains ${attestationCount} attestations, expected ${expectedCount}`,
-		attestationCount,
-		expectedCount,
-	};
-}
-
 export function verifyBundleTemporalOrder(
 	bundle: EvidenceBundle,
 ): VerificationCheck {
-	const { checkins, checkouts, reports, scheduled, validation } =
-		bundle.attestations;
+	const { checkins, checkouts, reports, scheduled } = bundle.attestations;
 	const crewCount = checkins.length;
 
 	if (
@@ -72,21 +44,12 @@ export function verifyBundleTemporalOrder(
 	}
 
 	const minCheckin = Math.min(...checkins.map((c) => c.onchainTimestamp));
-	const maxReport = Math.max(...reports.map((r) => r.onchainTimestamp));
 
 	if (!(scheduled.onchainTimestamp < minCheckin)) {
 		return {
 			code: VerificationCheckCode.TEMPORAL_ORDER,
 			valid: false,
 			message: `Scheduled timestamp (${scheduled.onchainTimestamp}) must precede the earliest checkin (${minCheckin})`,
-		};
-	}
-
-	if (!(maxReport < validation.onchainTimestamp)) {
-		return {
-			code: VerificationCheckCode.TEMPORAL_ORDER,
-			valid: false,
-			message: `Latest report timestamp (${maxReport}) must precede validation timestamp (${validation.onchainTimestamp})`,
 		};
 	}
 
@@ -123,17 +86,6 @@ export function verifyBundleExecutionDateBracket(
 	};
 }
 
-export function verifyBundleValidationApproved(
-	bundle: EvidenceBundle,
-): VerificationCheck {
-	const ok = bundle.attestations.validation.approved === true;
-	return {
-		code: VerificationCheckCode.VALIDATION_APPROVED,
-		valid: ok,
-		message: ok ? undefined : "Bundle validation is not approved",
-	};
-}
-
 export type TimestampFetcher = (uid: string) => Promise<bigint | null>;
 
 /**
@@ -147,15 +99,13 @@ export async function verifyBundleOnChainTimestamps(
 	bundle: EvidenceBundle,
 	fetchTimestamp: TimestampFetcher,
 ): Promise<VerificationCheck> {
-	const { checkins, checkouts, reports, scheduled, validation } =
-		bundle.attestations;
+	const { checkins, checkouts, reports, scheduled } = bundle.attestations;
 
 	const entries: Array<{ uid: string; onchainTimestamp: number }> = [
 		scheduled,
 		...checkins,
 		...checkouts,
 		...reports,
-		validation,
 	];
 
 	const results = await Promise.all(

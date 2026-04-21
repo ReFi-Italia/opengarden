@@ -80,10 +80,6 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 	let checkinResult: TimestampedOffChainResult;
 	let checkoutResult: TimestampedOffChainResult;
 	let reportResult: TimestampedOffChainResult;
-	let validationResult: TimestampedOffChainResult & {
-		approved: boolean;
-		qualityScore: number;
-	};
 	let evidenceBundleHash: string;
 	let interventionUID: string;
 
@@ -131,7 +127,6 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 		expect(uids.GardenerCheckin).toBeTruthy();
 		expect(uids.GardenerCheckout).toBeTruthy();
 		expect(uids.GardenerReport).toBeTruthy();
-		expect(uids.AdminValidation).toBeTruthy();
 		expect(uids.Healthcheck).toBeTruthy();
 
 		if (results.length > 0) {
@@ -236,24 +231,6 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 		await delay(STEP_DELAY_MS);
 	}, 60_000);
 
-	// --- Step 8: Admin validates ---
-
-	it("validates the intervention", async () => {
-		const result = await client.validateIntervention({
-			scheduleUID: scheduleResult.uid,
-			approved: true,
-			qualityScore: 8,
-			feedback: "E2E test — approved",
-			validatorId: null,
-		});
-
-		validationResult = { ...result, approved: true, qualityScore: 8 };
-		expect(validationResult.uid).toBeTruthy();
-		expect(validationResult.onchainTimestamp).toBeGreaterThan(0n);
-		console.log(`  Validation UID: ${validationResult.uid}`);
-		await delay(STEP_DELAY_MS);
-	}, 60_000);
-
 	// --- Step 9: Periodic healthcheck (independent, area-scoped) ---
 
 	it("records an area healthcheck independently of the intervention", async () => {
@@ -285,14 +262,12 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 					report: reportResult,
 				},
 			],
-			validation: validationResult,
 		});
 
 		expect(bundle.bundleVersion).toBe(EVIDENCE_BUNDLE_VERSION);
 		expect(bundle.attestations.scheduled.uid).toBe(scheduleResult.uid);
 		expect(bundle.attestations.checkins).toHaveLength(1);
 		expect(bundle.attestations.reports).toHaveLength(1);
-		expect(bundle.attestations.validation.approved).toBe(true);
 
 		evidenceBundleHash = await client.uploadEvidenceBundle(bundle);
 		expect(evidenceBundleHash).toBeTruthy();
@@ -309,8 +284,6 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 			executionDate: now(),
 			commissionId: null,
 			evidenceBundleHash,
-			offchainCount: 5, // scheduled + validation + checkin + checkout + report
-			crewSize: 1,
 		});
 
 		interventionUID = result.uid;
@@ -355,23 +328,20 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 	it("reads back the intervention", async () => {
 		const intervention = await client.getIntervention(interventionUID);
 		expect(intervention.interventionId).toBe("E2E-INT-001");
-		expect(intervention.crewSize).toBe(1);
-		expect(intervention.offchainCount).toBe(5);
+		expect(intervention.areaUID).toBe(areaUID);
 		expect(intervention.recipient).toBe(ZERO_ADDRESS);
 		console.log(
-			`  Intervention read back: ${intervention.interventionId}, crew=${intervention.crewSize}`,
+			`  Intervention read back: ${intervention.interventionId}, area=${intervention.areaUID}`,
 		);
 	}, 30_000);
 
 	it("verifies evidence bundle against on-chain timestamps", async () => {
 		const verification = await client.verifyEvidenceBundle(interventionUID);
-		expect(verification.attestationCount).toBe(5); // scheduled + validation + checkin + checkout + report
-		expect(verification.expectedCount).toBe(5);
 		expect(verification.temporalOrderValid).toBe(true);
 		expect(verification.timestampsVerified).toBe(true);
 		expect(verification.valid).toBe(true);
 		console.log(
-			`  Bundle verified: count=${verification.attestationCount}, temporal=${verification.temporalOrderValid}, timestamps=${verification.timestampsVerified}`,
+			`  Bundle verified: temporal=${verification.temporalOrderValid}, timestamps=${verification.timestampsVerified}`,
 		);
 	}, 60_000);
 });

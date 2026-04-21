@@ -43,18 +43,9 @@ function buildValidInput(): FinalizeInterventionInput {
 				}),
 			},
 		],
-		validation: {
-			...makeFakeTimestampedResult("0xvalidation", {
-				onchainTimestamp: 500n,
-				refUID: SCHEDULE_UID,
-			}),
-			approved: true,
-			qualityScore: 9,
-		},
 		interventionType: InterventionType.RoutineMaintenance,
 		executionDate: 1_000_000n,
 		commissionId: null,
-		crewSize: 1,
 	};
 }
 
@@ -197,7 +188,6 @@ describe("validateFinalizeInput", () => {
 				}),
 			},
 		];
-		input.crewSize = 2;
 		const issues = validateFinalizeInput(input);
 		const attesterIssues = issues.filter(
 			(i) => i.code === FinalizeInputIssueCode.CREW_ATTESTER_MISMATCH,
@@ -254,38 +244,8 @@ describe("validateFinalizeInput", () => {
 		).toBe(true);
 	});
 
-	it("flags a validation that is not approved", () => {
-		const input = buildValidInput();
-		input.validation.approved = false;
-		const issues = validateFinalizeInput(input);
-		expect(
-			issues.some(
-				(i) => i.code === FinalizeInputIssueCode.VALIDATION_NOT_APPROVED,
-			),
-		).toBe(true);
-	});
-
-	it("flags a validation whose refUID does not point at the schedule", () => {
-		const input = buildValidInput();
-		input.validation = {
-			...makeFakeTimestampedResult("0xvalidation", {
-				onchainTimestamp: 500n,
-				refUID: "0xwrong",
-			}),
-			approved: true,
-			qualityScore: 9,
-		};
-		const issues = validateFinalizeInput(input);
-		expect(
-			issues.some(
-				(i) => i.code === FinalizeInputIssueCode.VALIDATION_REFUID_MISMATCH,
-			),
-		).toBe(true);
-	});
-
 	it("collects multiple issues in a single pass", () => {
 		const input = buildValidInput();
-		input.validation.approved = false;
 		input.crew[0].report = makeFakeTimestampedResult("0xreportA", {
 			onchainTimestamp: 250n, // temporal violation
 			attester: ALICE,
@@ -293,7 +253,6 @@ describe("validateFinalizeInput", () => {
 		});
 		const issues = validateFinalizeInput(input);
 		const codes = issues.map((i) => i.code);
-		expect(codes).toContain(FinalizeInputIssueCode.VALIDATION_NOT_APPROVED);
 		expect(codes).toContain(FinalizeInputIssueCode.REPORT_REFUID_MISMATCH);
 		expect(codes).toContain(FinalizeInputIssueCode.TEMPORAL_ORDER_VIOLATION);
 	});

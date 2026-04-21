@@ -8,7 +8,6 @@ import {
 	decodeHealthcheck,
 	decodePublishedIntervention,
 	decodeScheduledIntervention,
-	encodeAdminValidation,
 	encodeAreaRegistration,
 	encodeGardenerCheckin,
 	encodeGardenerCheckout,
@@ -63,8 +62,6 @@ describe("PublishedIntervention encoder", () => {
 		executionDate: 1709251200n,
 		commissionId: "sponsor-acme-001",
 		evidenceBundleHash: ZERO_BYTES32,
-		offchainCount: 8,
-		crewSize: 2,
 	};
 
 	it("encodes and decodes roundtrip", () => {
@@ -74,8 +71,6 @@ describe("PublishedIntervention encoder", () => {
 		expect(decoded.interventionType).toBe(InterventionType.RoutineMaintenance);
 		expect(decoded.executionDate).toBe(1709251200n);
 		expect(decoded.commissionRef).toBe(hashIdentifier("sponsor-acme-001"));
-		expect(decoded.offchainCount).toBe(8);
-		expect(decoded.crewSize).toBe(2);
 	});
 
 	it("encodes a volunteer intervention with ZERO_BYTES32 commissionRef", () => {
@@ -191,21 +186,6 @@ describe("GardenerReport encoder", () => {
 	});
 });
 
-describe("AdminValidation encoder", () => {
-	it("encodes without error", () => {
-		const encoded = encodeAdminValidation({
-			scheduleUID: ZERO_BYTES32,
-			approved: true,
-			qualityScore: 8,
-			feedback: "Good work.",
-			validatorId: null,
-		});
-		expect(encoded).toBeTruthy();
-		const encoder = new SchemaEncoder(SCHEMA_STRINGS.AdminValidation);
-		expect(encoder.isEncodedDataValid(encoded)).toBe(true);
-	});
-});
-
 describe("Healthcheck encoder", () => {
 	const AREA_UID =
 		"0x000000000000000000000000000000000000000000000000000000000000cafe";
@@ -223,7 +203,6 @@ describe("Healthcheck encoder", () => {
 		expect(encoder.isEncodedDataValid(encoded)).toBe(true);
 
 		const decoded = decodeHealthcheck(encoded);
-		expect(decoded.areaUID).toBe(AREA_UID);
 		expect(decoded.healthScore).toBe(8);
 		expect(decoded.photoHash).toBe(ZERO_BYTES32);
 		expect(decoded.notes).toBe("Hedge trimmed, beds mulched.");
