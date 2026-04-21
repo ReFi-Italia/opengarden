@@ -185,15 +185,20 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 	// --- Step 4: Gardener checks in ---
 
 	it("records gardener checkin", async () => {
+		const claimed = now();
 		checkinResult = await client.checkin({
 			interventionUID: scheduleResult.uid,
 			latitude: 41.8902,
 			longitude: 12.4922,
 			photoHash: ZERO_BYTES32,
+			time: claimed,
 		});
 
 		expect(checkinResult.uid).toBeTruthy();
 		expect(checkinResult.onchainTimestamp).toBeGreaterThan(0n);
+		expect(
+			BigInt(String(checkinResult.signedAttestation.message.time)),
+		).toBe(claimed);
 		console.log(`  Checkin UID: ${checkinResult.uid}`);
 		await delay(STEP_DELAY_MS);
 	}, 60_000);
@@ -201,13 +206,18 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 	// --- Step 6: Gardener checks out ---
 
 	it("records gardener checkout", async () => {
+		const claimed = now();
 		checkoutResult = await client.checkout({
 			checkinUID: checkinResult.uid,
 			actualMinutes: 55,
+			time: claimed,
 		});
 
 		expect(checkoutResult.uid).toBeTruthy();
 		expect(checkoutResult.onchainTimestamp).toBeGreaterThan(0n);
+		expect(
+			BigInt(String(checkoutResult.signedAttestation.message.time)),
+		).toBe(claimed);
 		console.log(`  Checkout UID: ${checkoutResult.uid}`);
 		await delay(STEP_DELAY_MS);
 	}, 60_000);

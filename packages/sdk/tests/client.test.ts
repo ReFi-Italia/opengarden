@@ -1666,6 +1666,102 @@ describe("OpenGardenClient recordHealthcheck", () => {
 	});
 });
 
+describe("OpenGardenClient checkin/checkout — message.time override", () => {
+	const INT_UID =
+		"0x000000000000000000000000000000000000000000000000000000000000beef";
+	const CHECKIN_UID =
+		"0x000000000000000000000000000000000000000000000000000000000000feed";
+
+	function createSignSpyClient() {
+		const signCalls: any[] = [];
+		const eas = {
+			getOffchain: async () => ({
+				signOffchainAttestation: async (params: any) => {
+					signCalls.push(params);
+					return {
+						uid: "0xuid",
+						signer: MOCK_SIGNER_ADDRESS,
+						message: params,
+					};
+				},
+			}),
+			timestamp: async () => ({
+				wait: async () => 123n,
+				receipt: FAKE_TX_RECEIPT,
+			}),
+		};
+		const client = createTestClient({
+			eas: eas as any,
+			schemaUIDs: {
+				GardenerCheckin: "0xcheckinschema",
+				GardenerCheckout: "0xcheckoutschema",
+			},
+		});
+		return { client, signCalls };
+	}
+
+	it("checkin uses explicit `time` in message.time", async () => {
+		const { client, signCalls } = createSignSpyClient();
+		const claimed = 1_700_000_000n;
+
+		await client.checkin({
+			interventionUID: INT_UID,
+			latitude: 41.89,
+			longitude: 12.4964,
+			photoHash: ZERO_BYTES32,
+			time: claimed,
+		});
+
+		expect(signCalls[0].time).toBe(claimed);
+	});
+
+	it("checkin accepts a Date for `time`", async () => {
+		const { client, signCalls } = createSignSpyClient();
+		const claimed = new Date("2024-03-01T12:00:00.000Z");
+
+		await client.checkin({
+			interventionUID: INT_UID,
+			latitude: 41.89,
+			longitude: 12.4964,
+			photoHash: ZERO_BYTES32,
+			time: claimed,
+		});
+
+		expect(signCalls[0].time).toBe(
+			BigInt(Math.floor(claimed.getTime() / 1000)),
+		);
+	});
+
+	it("checkout uses explicit `time` in message.time", async () => {
+		const { client, signCalls } = createSignSpyClient();
+		const claimed = 1_700_000_500n;
+
+		await client.checkout({
+			checkinUID: CHECKIN_UID,
+			actualMinutes: 55,
+			time: claimed,
+		});
+
+		expect(signCalls[0].time).toBe(claimed);
+	});
+
+	it("falls back to wall-clock when `time` omitted", async () => {
+		const { client, signCalls } = createSignSpyClient();
+		const before = BigInt(Math.floor(Date.now() / 1000));
+
+		await client.checkin({
+			interventionUID: INT_UID,
+			latitude: 41.89,
+			longitude: 12.4964,
+			photoHash: ZERO_BYTES32,
+		});
+
+		const after = BigInt(Math.floor(Date.now() / 1000));
+		expect(signCalls[0].time).toBeGreaterThanOrEqual(before);
+		expect(signCalls[0].time).toBeLessThanOrEqual(after);
+	});
+});
+
 describe("OpenGardenClient getAreaHealthchecks", () => {
 	afterEach(() => {
 		vi.restoreAllMocks();

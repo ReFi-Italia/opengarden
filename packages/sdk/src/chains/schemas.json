@@ -1,8 +1,12 @@
 {
-	"optimism-sepolia": {
-		"PublishedIntervention": "0xdd878a5f30778556539f95ad707687ad882348add80f264aa613cec830a0a9cc",
-		"ScheduledIntervention": "0x9a9e96bd5646354b07e295daa2cbf55676109dab7891cb0989198b7f0e394250",
-		"Healthcheck": "0xd62a2b1d70b1745e58ea91910d5d645b5dede538279562383ae4ad30ee188e1b",
-		"GardenerReport": "0x9f34f8371f385f9cd38b5a3de4e72adc3507dce120f8b97f5c9b67027f1537db"
-	}
+  "optimism-sepolia": {
+    "PublishedIntervention": "0xdd878a5f30778556539f95ad707687ad882348add80f264aa613cec830a0a9cc",
+    "ScheduledIntervention": "0x9a9e96bd5646354b07e295daa2cbf55676109dab7891cb0989198b7f0e394250",
+    "Healthcheck": "0xd62a2b1d70b1745e58ea91910d5d645b5dede538279562383ae4ad30ee188e1b",
+    "GardenerReport": "0x9f34f8371f385f9cd38b5a3de4e72adc3507dce120f8b97f5c9b67027f1537db",
+    "AreaRegistration": "0x62eb21be69e030fd0649a253ab50ef14027adc83dd59d6b6165704e6f9166cfb",
+    "GardenerMilestone": "0x1e1868f8b8c840c251ad532bdb80cddf8bcf88e047a1d72ccc9589b282d23b8b",
+    "GardenerCheckin": "0xaeb49965bf76de4d9f057cbe170efb6639a86814ec42046306106d9b54e2deab",
+    "GardenerCheckout": "0xd50e9151ac191da9b65afd1004409255fb8c7ace424c37977e658026b24180b7"
+  }
 }

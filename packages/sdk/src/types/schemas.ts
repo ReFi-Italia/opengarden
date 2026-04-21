@@ -64,12 +64,23 @@ export interface GardenerCheckinInput {
 	latitude: number;
 	longitude: number;
 	photoHash: string;
+	/**
+	 * Signer's claim of when the checkin happened (Unix seconds or `Date`).
+	 * Written into the EIP-712 envelope's `message.time`. Omit to use the
+	 * current wall-clock at sign time (only correct when signing happens at
+	 * the moment of checkin; for server-side signing on later upload, pass
+	 * the device-recorded moment here so the envelope reflects the claim,
+	 * not the upload time).
+	 */
+	time?: Date | bigint;
 }
 
 export interface GardenerCheckoutInput {
 	/** UID of the matching GardenerCheckin for this crew member. Carried as the EAS `refUID` slot, not encoded in schema data. */
 	checkinUID: string;
 	actualMinutes: number;
+	/** See `GardenerCheckinInput.time`. */
+	time?: Date | bigint;
 }
 
 export interface GardenerReportInput {

@@ -196,7 +196,7 @@ Created by the gardener (or their device) when arriving at the work site. Establ
 
 > **Time**
 >
-> The moment of check-in is carried by the EIP-712 envelope's `message.time` field and anchored on-chain via `EAS.timestamp(uid)`. No separate schema field restates it.
+> The moment of check-in is carried by the EIP-712 envelope's `message.time` field and anchored on-chain via `EAS.timestamp(uid)`. No separate schema field restates it. Callers that sign at the moment of check-in can let the signing library default `message.time` to wall-clock; callers that sign server-side on later upload MUST pass the device-recorded moment as the envelope `time` so the claim reflects when the work happened, not when it was uploaded.
 
 > **Attestation Metadata**
 >
@@ -221,7 +221,7 @@ Created when the gardener finishes work at the site. Closes the work session. **
 
 > **Time**
 >
-> The moment of checkout is carried by the EIP-712 envelope's `message.time` field and anchored on-chain via `EAS.timestamp(uid)`. No separate schema field restates it.
+> The moment of checkout is carried by the EIP-712 envelope's `message.time` field and anchored on-chain via `EAS.timestamp(uid)`. No separate schema field restates it. Same sign-time-vs-upload-time caveat as GardenerCheckin (§3.2): pass the device-recorded moment when signing server-side on later upload.
 
 > **Attestation Metadata**
 >
@@ -423,7 +423,7 @@ The bundle is the verifiable unit. No separate fetch from an off-chain attestati
 
 > **Bundle Fields**
 >
-> - `claimedTimestamp`: Self-reported Unix seconds from the off-chain attestation data (device time, application time) — what the attester claims.
+> - `claimedTimestamp`: Self-reported Unix seconds sourced from the EIP-712 envelope's `signedAttestation.message.time` — what the attester claims as the moment of the event. Device time or application time, set when signing.
 > - `onchainTimestamp`: Block timestamp from `EAS.timestamp(uid)`. Authoritative, independently verifiable time anchor.
 > - `attester` (per-gardener entries): Top-level identity claim recorded by the publisher. MUST match the signer recovered from `signedAttestation.signature`; the signature check (§5.4 protocol-level step (4)) enforces this.
 > - `signedAttestation`: The full EIP-712 signed attestation, verbatim. Structure is the object EAS-compatible libraries return from their offchain signing primitive — `{version, uid, signer, message{schema, recipient, time, expirationTime, revocable, refUID, data, …}, signature{r, s, v}}`. Some implementations populate `signer` at sign time; others omit it and expect the reader to recover it from `signature`. A complete bundle MUST include `signer` so that readers can cross-check without re-running recovery just to learn the identity.

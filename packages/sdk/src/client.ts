@@ -309,6 +309,7 @@ export class OpenGardenClient {
 		recipient: string,
 		refUID: string,
 		revocable: boolean,
+		time?: Date | bigint,
 	): Promise<TimestampedOffChainResult> {
 		const schemaUID = this.requireSchemaUID(schemaName);
 		const offchain = await this.eas.getOffchain();
@@ -317,7 +318,10 @@ export class OpenGardenClient {
 			{
 				schema: schemaUID,
 				recipient,
-				time: BigInt(Math.floor(Date.now() / 1000)),
+				time:
+					time !== undefined
+						? toUnixSeconds(time)
+						: BigInt(Math.floor(Date.now() / 1000)),
 				expirationTime: 0n,
 				revocable,
 				refUID,
@@ -381,6 +385,7 @@ export class OpenGardenClient {
 			ZERO_ADDRESS,
 			data.interventionUID,
 			false,
+			data.time,
 		);
 	}
 
@@ -394,6 +399,7 @@ export class OpenGardenClient {
 			ZERO_ADDRESS,
 			data.checkinUID,
 			false,
+			data.time,
 		);
 	}
 
