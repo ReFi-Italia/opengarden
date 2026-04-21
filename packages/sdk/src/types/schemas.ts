@@ -8,8 +8,19 @@ export interface AreaRegistrationInput {
 	areaType: AreaType;
 	name: string;
 	municipality: string;
-	/** IPFS CID / storage hash for extended metadata JSON; `null` for none. */
-	metadataHash: string | null;
+	/**
+	 * Content-addressable hash (IPFS CID / storage adapter hash) of a large
+	 * boundary payload — polygon GeoJSON, photo bundle, etc. `null` if the
+	 * organization has no boundary data for this area (encoded as ZERO_BYTES32).
+	 */
+	boundariesHash: string | null;
+	/**
+	 * Small inline JSON escape hatch for app-specific extras (surface area,
+	 * access hours, institutional labels). Empty string for none. SHOULD stay
+	 * under the 512-byte budget documented in spec §9.6; the SDK does not
+	 * enforce it.
+	 */
+	metadata: string;
 }
 
 export interface PublishedInterventionInput {
@@ -29,7 +40,6 @@ export interface GardenerMilestoneInput {
 	totalInterventions: number;
 	totalValidated: number;
 	avgHealthImprovement: number;
-	skillTier: string;
 	achievedAt: Date | bigint;
 	evidenceRoot: string;
 }
@@ -53,14 +63,12 @@ export interface GardenerCheckinInput {
 	interventionUID: string;
 	latitude: number;
 	longitude: number;
-	timestamp: Date | bigint;
 	photoHash: string;
 }
 
 export interface GardenerCheckoutInput {
 	/** UID of the matching GardenerCheckin for this crew member. Carried as the EAS `refUID` slot, not encoded in schema data. */
 	checkinUID: string;
-	timestamp: Date | bigint;
 	actualMinutes: number;
 }
 

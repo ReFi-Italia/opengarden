@@ -29,7 +29,8 @@ describe("AreaRegistration encoder", () => {
 		areaType: AreaType.PublicGreenSpace,
 		name: "Giardino Via Appia 12",
 		municipality: "RM-I",
-		metadataHash: null,
+		boundariesHash: null,
+		metadata: "",
 	};
 
 	it("encodes and decodes roundtrip", () => {
@@ -45,6 +46,24 @@ describe("AreaRegistration encoder", () => {
 		expect(decoded.areaType).toBe(AreaType.PublicGreenSpace);
 		expect(decoded.name).toBe("Giardino Via Appia 12");
 		expect(decoded.municipality).toBe("RM-I");
+		expect(decoded.boundariesHash).toBe(ZERO_BYTES32);
+		expect(decoded.metadata).toBe("");
+	});
+
+	it("encodes boundariesHash and inline metadata roundtrip", () => {
+		const encoded = encodeAreaRegistration({
+			...input,
+			boundariesHash:
+				"0x0000000000000000000000000000000000000000000000000000000000000001",
+			metadata: '{"v":1,"surfaceM2":420,"accessHours":"dawn-dusk"}',
+		});
+		const decoded = decodeAreaRegistration(encoded);
+		expect(decoded.boundariesHash).toBe(
+			"0x0000000000000000000000000000000000000000000000000000000000000001",
+		);
+		expect(decoded.metadata).toBe(
+			'{"v":1,"surfaceM2":420,"accessHours":"dawn-dusk"}',
+		);
 	});
 
 	it("produces valid ABI-encoded data", () => {
@@ -97,7 +116,6 @@ describe("GardenerMilestone encoder", () => {
 		totalInterventions: 15,
 		totalValidated: 14,
 		avgHealthImprovement: 4,
-		skillTier: "Certified Urban Gardener — Level 2",
 		achievedAt: 1709424000n,
 		evidenceRoot: ZERO_BYTES32,
 	};
@@ -109,7 +127,6 @@ describe("GardenerMilestone encoder", () => {
 		expect(decoded.totalInterventions).toBe(15);
 		expect(decoded.totalValidated).toBe(14);
 		expect(decoded.avgHealthImprovement).toBe(4);
-		expect(decoded.skillTier).toBe("Certified Urban Gardener — Level 2");
 		expect(decoded.achievedAt).toBe(1709424000n);
 	});
 });
@@ -148,7 +165,6 @@ describe("GardenerCheckin encoder", () => {
 			interventionUID: ZERO_BYTES32,
 			latitude: 41.89,
 			longitude: 12.4964,
-			timestamp: 1709337600n,
 			photoHash: ZERO_BYTES32,
 		});
 		expect(encoded).toBeTruthy();
@@ -161,7 +177,6 @@ describe("GardenerCheckout encoder", () => {
 	it("encodes without error", () => {
 		const encoded = encodeGardenerCheckout({
 			checkinUID: ZERO_BYTES32,
-			timestamp: 1709344800n,
 			actualMinutes: 90,
 		});
 		expect(encoded).toBeTruthy();

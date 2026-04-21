@@ -51,7 +51,8 @@ const area = await client.registerArea({
   areaType: AreaType.PublicGreenSpace,
   name: 'Giardino Via Appia 12',
   municipality: 'RM-I',
-  metadataHash: null, // or an IPFS CID / storage hash for extended metadata JSON
+  boundariesHash: null, // or an IPFS CID hashing the boundary polygon / photo bundle
+  metadata: '',         // or a small inline JSON string (spec §9.6; 512-byte budget)
 });
 
 console.log('Area UID:', area.uid);
@@ -69,7 +70,8 @@ const area = await client.registerArea({
   areaType: AreaType.PublicGreenSpace,
   name: 'Giardino Via Appia 12',
   municipality: 'RM-I',
-  metadataHash: null,
+  boundariesHash: null,
+  metadata: '',
 });
 
 // Persist area.uid application-side. All subsequent interventions and

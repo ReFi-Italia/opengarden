@@ -150,7 +150,8 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 			areaType: AreaType.PublicGreenSpace,
 			name: "E2E Test Garden",
 			municipality: "RM-TEST",
-			metadataHash: null,
+			boundariesHash: null,
+			metadata: "",
 		});
 
 		areaUID = result.uid;
@@ -188,7 +189,6 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 			interventionUID: scheduleResult.uid,
 			latitude: 41.8902,
 			longitude: 12.4922,
-			timestamp: now(),
 			photoHash: ZERO_BYTES32,
 		});
 
@@ -203,7 +203,6 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 	it("records gardener checkout", async () => {
 		checkoutResult = await client.checkout({
 			checkinUID: checkinResult.uid,
-			timestamp: now(),
 			actualMinutes: 55,
 		});
 
@@ -302,7 +301,6 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 			totalInterventions: 5,
 			totalValidated: 5,
 			avgHealthImprovement: 5,
-			skillTier: "Apprentice Urban Gardener",
 			achievedAt: now(),
 			evidenceRoot: ZERO_BYTES32,
 		});
@@ -385,7 +383,8 @@ describe.skipIf(skip)("E2E: indexBundleAttestations", () => {
 			areaType: AreaType.PublicGreenSpace,
 			name: "E2E Indexer Test Garden",
 			municipality: "RM-TEST",
-			metadataHash: null,
+			boundariesHash: null,
+			metadata: "",
 		});
 
 		areaUID = result.uid;

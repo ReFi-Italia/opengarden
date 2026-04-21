@@ -68,7 +68,8 @@ Registered once per work area. Serves as the canonical geographic anchor that al
 | **areaType** | `uint8` | 0 = unspecified, 1 = public green space, 2 = private garden, 3 = institutional grounds, 4 = roadside/median |
 | **name** | `string` | Human-readable area name (e.g. "Giardino Via Appia 12") |
 | **municipality** | `string` | Municipality or district code for institutional mapping |
-| **metadataHash** | `bytes32` | IPFS CID hash of extended metadata JSON (boundaries, photos, surface area m²). `ZERO_BYTES32` if no extended metadata |
+| **boundariesHash** | `bytes32` | Content-addressable hash (IPFS CID) of the area's boundary payload — polygon GeoJSON, high-res photo bundle, or any other large binary artifact that describes the site's footprint. `ZERO_BYTES32` if the organization has no boundary data for this area |
+| **metadata** | `string` | Small inline JSON escape hatch for app-specific extras (surface area m², access hours, institutional labels). SHOULD remain under the 512-byte budget defined in [§9.6](#96-inline-metadata-vs-hashed-payloads). Empty string if none |
 
 > **Attestation Metadata**
 >
@@ -79,7 +80,7 @@ Registered once per work area. Serves as the canonical geographic anchor that al
 
 > **Gas Optimization**
 >
-> Coordinates use int32 microdegrees instead of string to reduce calldata. The metadataHash offloads variable-length data (boundary polygons, high-res photos, surface area calculations) to IPFS while keeping the on-chain record compact. Extended metadata is not needed for on-chain verification — only for display and audit.
+> Coordinates use int32 microdegrees instead of string to reduce calldata. Large binary payloads (polygons, photo bundles) are offloaded to IPFS via the `boundariesHash` field. Small structured extras ride inline via `metadata` so readers don't need an extra IPFS fetch for a handful of bytes. The split follows the convention formalized in [§9.6](#96-inline-metadata-vs-hashed-payloads).
 
 ### 2.2 PublishedIntervention
 
@@ -129,7 +130,6 @@ A non-transferable credential minted when a gardener crosses a meaningful thresh
 | **totalInterventions** | `uint16` | Cumulative count of GardenerReports signed by this gardener, sourced from the organization's operational store. Covers every completed crew-member chain the gardener participated in |
 | **totalValidated** | `uint16` | Subset of `totalInterventions` whose parent job reached a PublishedIntervention on-chain. Computed by counting the gardener's GardenerReports that appear inside any PublishedIntervention's evidence bundle. The gap `totalInterventions - totalValidated` represents work that stayed off-chain |
 | **avgHealthImprovement** | `uint8` | Average area-health improvement attributable to the gardener's validated interventions, derived off-chain from the area's Healthcheck timeline (pre/post delta around each intervention's executionDate). `0` if no measurable signal |
-| **skillTier** | `string` | Human-readable credential label (e.g. "Certified Urban Gardener — Level 3") |
 | **achievedAt** | `uint64` | Unix timestamp when milestone was reached |
 | **evidenceRoot** | `bytes32` | Merkle root of the PublishedIntervention UIDs the gardener contributed to (one leaf per intervention — matches `totalValidated`, not `totalInterventions`). The organization computes this at mint time by scanning its evidence bundles for GardenerReports signed by the recipient wallet. `ZERO_BYTES32` when no bundle evidence is recorded on-chain |
 
@@ -192,8 +192,11 @@ Created by the gardener (or their device) when arriving at the work site. Establ
 |---|---|---|
 | **latitude** | `int32` | GPS latitude at check-in (microdegrees) |
 | **longitude** | `int32` | GPS longitude at check-in (microdegrees) |
-| **timestamp** | `uint64` | Device timestamp at moment of check-in |
 | **photoHash** | `bytes32` | IPFS CID of arrival photo (visual proof of presence and initial site condition) |
+
+> **Time**
+>
+> The moment of check-in is carried by the EIP-712 envelope's `message.time` field and anchored on-chain via `EAS.timestamp(uid)`. No separate schema field restates it.
 
 > **Attestation Metadata**
 >
@@ -214,8 +217,11 @@ Created when the gardener finishes work at the site. Closes the work session. **
 
 | Field | Type | Description |
 |---|---|---|
-| **timestamp** | `uint64` | Device timestamp at checkout |
 | **actualMinutes** | `uint16` | Actual time spent on site in minutes |
+
+> **Time**
+>
+> The moment of checkout is carried by the EIP-712 envelope's `message.time` field and anchored on-chain via `EAS.timestamp(uid)`. No separate schema field restates it.
 
 > **Attestation Metadata**
 >
@@ -260,7 +266,7 @@ A periodic condition assessment of an area. Independent of any specific interven
 
 > **metadata field**
 >
-> A free-form JSON string for app-specific extras that the protocol does not interpret (weather, assessor wallet annotations, seasonal context, etc.). Consumers that don't recognize the shape ignore it. Empty string means no metadata. The field travels inside the attestation, so there is no separate file to host, fetch, or pin.
+> A free-form JSON string for app-specific extras that the protocol does not interpret (weather, assessor wallet annotations, seasonal context, etc.). Consumers that don't recognize the shape ignore it. Empty string means no metadata. The field travels inside the attestation, so there is no separate file to host, fetch, or pin. SHOULD remain under the 512-byte budget defined in [§9.6](#96-inline-metadata-vs-hashed-payloads); heavier payloads belong on a dedicated `*Hash` field of a future schema version.
 
 > **Attestation Metadata**
 >
@@ -580,7 +586,7 @@ The following are the exact schema strings to register on the EAS SchemaRegistry
 
 **AreaRegistration** (revocable: false)
 ```
-string areaId, int32 latitude, int32 longitude, uint8 areaType, string name, string municipality, bytes32 metadataHash
+string areaId, int32 latitude, int32 longitude, uint8 areaType, string name, string municipality, bytes32 boundariesHash, string metadata
 ```
 
 **PublishedIntervention** (revocable: false)
@@ -590,7 +596,7 @@ string interventionId, uint8 interventionType, uint64 executionDate, bytes32 evi
 
 **GardenerMilestone** (revocable: false)
 ```
-uint8 milestoneLevel, uint16 totalInterventions, uint16 totalValidated, uint8 avgHealthImprovement, string skillTier, uint64 achievedAt, bytes32 evidenceRoot
+uint8 milestoneLevel, uint16 totalInterventions, uint16 totalValidated, uint8 avgHealthImprovement, uint64 achievedAt, bytes32 evidenceRoot
 ```
 
 **ScheduledIntervention** (revocable: true)
@@ -600,12 +606,12 @@ string interventionId, uint8 interventionType, uint64 scheduledDate, uint16 esti
 
 **GardenerCheckin** (revocable: false)
 ```
-int32 latitude, int32 longitude, uint64 timestamp, bytes32 photoHash
+int32 latitude, int32 longitude, bytes32 photoHash
 ```
 
 **GardenerCheckout** (revocable: false)
 ```
-uint64 timestamp, uint16 actualMinutes
+uint16 actualMinutes
 ```
 
 **GardenerReport** (revocable: false)
@@ -654,7 +660,7 @@ SDK helper: `hashIdentifier(id: string): string`
 
 ### 9.2 Photo and Media Bundles
 
-Fields carrying a hash of one or more media references (`photoHash`, `photosHash`, `metadataHash`) MUST be derived as follows.
+Fields carrying a hash of one or more media references (`photoHash`, `photosHash`, `boundariesHash`, `evidenceBundleHash`, and any future `*Hash` field introduced per §9.6) MUST be derived as follows.
 
 **Single item.** When a field references exactly one file (e.g. `GardenerCheckin.photoHash` — one arrival photo), the bytes32 is whatever content-addressed hash the organization's storage adapter returns for that file. The SDK does not constrain the algorithm — it only requires that the value be reproducible by fetching the file and rehashing it with the documented algorithm.
 
@@ -694,3 +700,25 @@ The bundle shape defined in §5.2 is normative. Implementations that produce or 
 4. **`signer` field**. Every `signedAttestation` MUST include a top-level `signer` string carrying the address of the wallet that signed the attestation. If the underlying EAS signing primitive does not populate this field, the implementation MUST inject it (typically by reading the signer wallet's address at sign time). Readers use this to short-circuit identity lookup — they can still recover the signer from `signature + message` and MUST do so for protocol-level check §5.4 (4).
 5. **`bundleVersion` is semver**. Readers MUST reject bundles whose `bundleVersion` they don't understand. Pre-1.0 versions are unstable — breaking changes may land in a 0.x.y bump.
 6. **JSON determinism not required**. The bundle hash is computed over the bytes the publisher uploads; any byte-identical copy of the bundle reproduces the same hash. Canonicalization of JSON (key ordering, whitespace) is NOT required by the protocol — the publisher and auditor coordinate via content-addressed storage (the bundle hash IS the address). Implementations that want reproducible bundle hashes across independent rebuilds SHOULD define and document their own canonicalization, but this is an implementation concern, not a protocol requirement.
+
+### 9.6 Inline metadata vs hashed payloads
+
+Extensibility slots on a schema follow one of two disjoint conventions. This avoids the "same concept, two field shapes" drift that accumulates in long-lived protocols.
+
+**`string metadata` — inline JSON escape hatch.**
+Used for small structured extras the protocol does not interpret. The payload lives inside the signed attestation, so there is no separate file to host, fetch, or pin, and signature coverage extends to every byte.
+
+- MUST be a JSON-parseable string or the empty string (`""` = no metadata).
+- SHOULD remain under **512 bytes** when UTF-8 encoded. The budget is advisory — heavier payloads are not protocol-invalid, but large inline strings waste calldata and signal the field is being misused as a hashed-payload slot. Implementations MAY enforce the budget at the write layer; the protocol does not require rejection.
+- SHOULD carry an app-defined `version` or `v` key so consumers can detect shape changes. Unknown shapes MUST be ignored, not rejected, at the protocol layer.
+- Current consumers: `AreaRegistration.metadata`, `Healthcheck.metadata`.
+
+**`bytes32 *Hash` — content-addressable hash of a large/binary payload.**
+Used when the payload cannot fit inline or is inherently binary (photos, polygon GeoJSON, evidence bundles).
+
+- The `bytes32` value is whatever content-addressed hash the organization's storage adapter returns for the payload (IPFS CID, keccak256 of a canonical manifest, etc.).
+- MUST use a purpose-named field — `photoHash`, `photosHash`, `evidenceBundleHash`, `boundariesHash` — never the generic name `metadataHash`. The field name tells readers what to fetch.
+- `ZERO_BYTES32` MUST be accepted as "no payload of this type for this attestation."
+- Current consumers: `AreaRegistration.boundariesHash`, `GardenerCheckin.photoHash`, `GardenerReport.photosHash`, `Healthcheck.photoHash`, `PublishedIntervention.evidenceBundleHash`.
+
+**Mutually exclusive naming.** No schema field is named `metadataHash`. If both a small inline extension and a large hashed payload are needed on the same schema, they live in two distinct fields — `metadata` + a purpose-named `*Hash` — and readers can tell at a glance which is inline and which requires a fetch.

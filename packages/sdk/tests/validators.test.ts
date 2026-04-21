@@ -35,7 +35,8 @@ const validArea = {
 	areaType: AreaType.PublicGreenSpace,
 	name: "Test",
 	municipality: "RM-I",
-	metadataHash: null,
+	boundariesHash: null,
+	metadata: "",
 };
 
 const validPublished = {
@@ -65,7 +66,6 @@ const validMilestone = {
 	totalInterventions: 5,
 	totalValidated: 5,
 	avgHealthImprovement: 4,
-	skillTier: "Apprentice",
 	achievedAt: 1709424000n,
 	evidenceRoot: ZERO_BYTES32,
 };
@@ -74,13 +74,11 @@ const validCheckin = {
 	interventionUID: ZERO_BYTES32,
 	latitude: 41.89,
 	longitude: 12.4964,
-	timestamp: 1709337600n,
 	photoHash: ZERO_BYTES32,
 };
 
 const validCheckout = {
 	checkinUID: ZERO_BYTES32,
-	timestamp: 1709344800n,
 	actualMinutes: 60,
 };
 

@@ -40,7 +40,10 @@ export interface Area {
 	areaType: AreaType;
 	name: string;
 	municipality: string;
-	metadataHash: string;
+	/** Content-addressable hash of the area's boundary payload (ZERO_BYTES32 if none). */
+	boundariesHash: string;
+	/** Inline JSON escape hatch for small extras (empty string if none). See spec §9.6. */
+	metadata: string;
 	attester: string;
 	time: bigint;
 }
@@ -65,7 +68,6 @@ export interface Milestone {
 	totalInterventions: number;
 	totalValidated: number;
 	avgHealthImprovement: number;
-	skillTier: string;
 	achievedAt: bigint;
 	evidenceRoot: string;
 	recipient: string;

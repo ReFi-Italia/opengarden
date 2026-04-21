@@ -116,8 +116,8 @@ describe("OpenGardenClient construction", () => {
 		);
 
 		const uids = client.getSchemaUIDs();
-		expect(uids.AreaRegistration).toBe(
-			"0x948b5dcc84298941bcbbe7c4f94c781b94eb90fb25c8a9ee4176b09603e06070",
+		expect(uids.PublishedIntervention).toBe(
+			"0xdd878a5f30778556539f95ad707687ad882348add80f264aa613cec830a0a9cc",
 		);
 	});
 
@@ -135,8 +135,8 @@ describe("OpenGardenClient construction", () => {
 		const uids = client.getSchemaUIDs();
 		expect(uids.AreaRegistration).toBe("0xoverridearea");
 		// Unoverridden entries still come from the chain default.
-		expect(uids.GardenerCheckin).toBe(
-			"0x9b356a874444aa34ff0afe4cecc171b328bfec3ff7d4203ff52f395117f4410a",
+		expect(uids.PublishedIntervention).toBe(
+			"0xdd878a5f30778556539f95ad707687ad882348add80f264aa613cec830a0a9cc",
 		);
 	});
 });
@@ -158,8 +158,9 @@ describe("OpenGardenClient schema validation", () => {
 				areaType: 0,
 				name: "Test",
 				municipality: "RM",
-				metadataHash:
+				boundariesHash:
 					"0x0000000000000000000000000000000000000000000000000000000000000000",
+				metadata: "",
 			}),
 		).rejects.toThrow(OpenGardenError);
 
@@ -171,8 +172,9 @@ describe("OpenGardenClient schema validation", () => {
 				areaType: 0,
 				name: "Test",
 				municipality: "RM",
-				metadataHash:
+				boundariesHash:
 					"0x0000000000000000000000000000000000000000000000000000000000000000",
+				metadata: "",
 			});
 		} catch (e) {
 			expect((e as OpenGardenError).code).toBe(
@@ -832,8 +834,9 @@ describe("OpenGardenClient getArea", () => {
 			areaType: 0,
 			name: "Pigneto Park",
 			municipality: "Roma",
-			metadataHash:
+			boundariesHash:
 				"0x0000000000000000000000000000000000000000000000000000000000000001",
+			metadata: "",
 		});
 	}
 
@@ -1053,7 +1056,6 @@ describe("OpenGardenClient getGardenerMilestones", () => {
 			totalInterventions: 50,
 			totalValidated: 48,
 			avgHealthImprovement: 4,
-			skillTier: "expert",
 			achievedAt: 1700000000n,
 			evidenceRoot:
 				"0x0000000000000000000000000000000000000000000000000000000000000001",
@@ -1086,7 +1088,6 @@ describe("OpenGardenClient getGardenerMilestones", () => {
 		expect(milestones[0].uid).toBe("0xmilestone1");
 		expect(milestones[0].milestoneLevel).toBe(3);
 		expect(milestones[0].totalInterventions).toBe(50);
-		expect(milestones[0].skillTier).toBe("expert");
 		expect(milestones[0].time).toBe(1700000000n);
 	});
 

@@ -9,16 +9,15 @@ export interface SchemaDefinition {
 
 export const SCHEMA_STRINGS: Record<SchemaName, string> = {
 	AreaRegistration:
-		"string areaId, int32 latitude, int32 longitude, uint8 areaType, string name, string municipality, bytes32 metadataHash",
+		"string areaId, int32 latitude, int32 longitude, uint8 areaType, string name, string municipality, bytes32 boundariesHash, string metadata",
 	PublishedIntervention:
 		"string interventionId, uint8 interventionType, uint64 executionDate, bytes32 evidenceBundleHash, bytes32 commissionRef",
 	GardenerMilestone:
-		"uint8 milestoneLevel, uint16 totalInterventions, uint16 totalValidated, uint8 avgHealthImprovement, string skillTier, uint64 achievedAt, bytes32 evidenceRoot",
+		"uint8 milestoneLevel, uint16 totalInterventions, uint16 totalValidated, uint8 avgHealthImprovement, uint64 achievedAt, bytes32 evidenceRoot",
 	ScheduledIntervention:
 		"string interventionId, uint8 interventionType, uint64 scheduledDate, uint16 estimatedMinutes, string description, bytes32 commissionRef, uint8 crewSize",
-	GardenerCheckin:
-		"int32 latitude, int32 longitude, uint64 timestamp, bytes32 photoHash",
-	GardenerCheckout: "uint64 timestamp, uint16 actualMinutes",
+	GardenerCheckin: "int32 latitude, int32 longitude, bytes32 photoHash",
+	GardenerCheckout: "uint16 actualMinutes",
 	GardenerReport:
 		"bytes32 checkoutUID, string tasksCompleted, uint8 taskCount, bytes32 photosHash, string notes",
 	Healthcheck:

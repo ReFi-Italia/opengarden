@@ -81,10 +81,11 @@ export function encodeAreaRegistration(input: AreaRegistrationInput): string {
 		{ name: "name", value: input.name, type: "string" },
 		{ name: "municipality", value: input.municipality, type: "string" },
 		{
-			name: "metadataHash",
-			value: input.metadataHash ?? ZERO_BYTES32,
+			name: "boundariesHash",
+			value: input.boundariesHash ?? ZERO_BYTES32,
 			type: "bytes32",
 		},
+		{ name: "metadata", value: input.metadata, type: "string" },
 	]);
 }
 
@@ -130,7 +131,6 @@ export function encodeGardenerMilestone(input: GardenerMilestoneInput): string {
 			value: input.avgHealthImprovement,
 			type: "uint8",
 		},
-		{ name: "skillTier", value: input.skillTier, type: "string" },
 		{
 			name: "achievedAt",
 			value: toUnixSeconds(input.achievedAt),
@@ -174,11 +174,6 @@ export function encodeGardenerCheckin(input: GardenerCheckinInput): string {
 			value: toMicrodegrees(input.longitude),
 			type: "int32",
 		},
-		{
-			name: "timestamp",
-			value: toUnixSeconds(input.timestamp),
-			type: "uint64",
-		},
 		{ name: "photoHash", value: input.photoHash, type: "bytes32" },
 	]);
 }
@@ -187,11 +182,6 @@ export function encodeGardenerCheckout(input: GardenerCheckoutInput): string {
 	validateGardenerCheckout(input);
 	const encoder = newSchemaEncoder(SCHEMA_STRINGS.GardenerCheckout);
 	return encoder.encodeData([
-		{
-			name: "timestamp",
-			value: toUnixSeconds(input.timestamp),
-			type: "uint64",
-		},
 		{ name: "actualMinutes", value: input.actualMinutes, type: "uint16" },
 	]);
 }
@@ -251,7 +241,8 @@ export function decodeAreaRegistration(data: string) {
 		areaType: Number(getFieldValue(decoded, "areaType")) as AreaType,
 		name: getFieldValue(decoded, "name") as string,
 		municipality: getFieldValue(decoded, "municipality") as string,
-		metadataHash: String(getFieldValue(decoded, "metadataHash")),
+		boundariesHash: String(getFieldValue(decoded, "boundariesHash")),
+		metadata: getFieldValue(decoded, "metadata") as string,
 	};
 }
 
@@ -279,7 +270,6 @@ export function decodeGardenerMilestone(data: string) {
 		avgHealthImprovement: Number(
 			getFieldValue(decoded, "avgHealthImprovement"),
 		),
-		skillTier: getFieldValue(decoded, "skillTier") as string,
 		achievedAt: BigInt(String(getFieldValue(decoded, "achievedAt"))),
 		evidenceRoot: String(getFieldValue(decoded, "evidenceRoot")),
 	};
