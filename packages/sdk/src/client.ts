@@ -10,8 +10,14 @@ import {
 	ZERO_BYTES32,
 } from "./constants";
 import { OpenGardenError, OpenGardenErrorCode } from "./errors";
-import { buildEvidenceBundle as buildBundle } from "./evidence";
+import {
+	buildEvidenceBundle as buildBundle,
+	bundleJsonReplacer,
+	restoreBundleBigInts,
+} from "./evidence";
 import { getGraphqlUrl, getStoreUrl, submitToIndexer } from "./indexer";
+import type { FinalizePolicy, VerifyPolicy } from "./policy";
+import { STRICT_FINALIZE_POLICY, STRICT_VERIFY_POLICY } from "./policy";
 import { validateFinalizeInput } from "./preflight";
 import { SCHEMA_DEFINITIONS } from "./schemas/definitions";
 import {
@@ -73,6 +79,8 @@ import {
 	type VerificationCheck,
 	verifyBundleExecutionDateBracket,
 	verifyBundleOnChainTimestamps,
+	verifyBundleRefUIDs,
+	verifyBundleSignatures,
 	verifyBundleTemporalOrder,
 	verifyBundleVersion,
 } from "./verification";
@@ -328,13 +336,22 @@ export class OpenGardenClient {
 			);
 		}
 
+		const attester = await this.signer.getAddress();
+
+		// EAS SDK's `SignedOffchainAttestation` doesn't carry the signer address
+		// as a top-level field — it's only recoverable from the signature. Inject
+		// it so evidence bundles (which embed this object verbatim) are
+		// self-verifying without needing to re-run signature recovery just to
+		// learn who signed.
+		const signedWithSigner = {
+			...(signedAttestation as unknown as Record<string, unknown>),
+			signer: attester,
+		};
+
 		return {
 			uid: signedAttestation.uid,
-			attester: await this.signer.getAddress(),
-			signedAttestation: signedAttestation as unknown as Record<
-				string,
-				unknown
-			>,
+			attester,
+			signedAttestation: signedWithSigner,
 			timestampTxHash: timestampReceipt.hash,
 			onchainTimestamp,
 			timestampReceipt,
@@ -464,15 +481,18 @@ export class OpenGardenClient {
 
 	async finalizeIntervention(
 		input: FinalizeInterventionInput,
+		options?: { policy?: FinalizePolicy },
 	): Promise<FinalizeInterventionResult> {
+		const policy = options?.policy ?? STRICT_FINALIZE_POLICY;
 		const issues = validateFinalizeInput(input);
-		if (issues.length > 0) {
-			const summary = issues
+		const blocking = issues.filter((i) => policy.blocking.has(i.code));
+		if (blocking.length > 0) {
+			const summary = blocking
 				.map((i) => `- [${i.code}] ${i.message}`)
 				.join("\n");
 			throw new OpenGardenError(
 				OpenGardenErrorCode.INVALID_INPUT,
-				`Cannot finalize intervention: ${issues.length} issue${issues.length === 1 ? "" : "s"}:\n${summary}`,
+				`Cannot finalize intervention: ${blocking.length} blocking issue${blocking.length === 1 ? "" : "s"}:\n${summary}`,
 			);
 		}
 
@@ -702,24 +722,30 @@ export class OpenGardenClient {
 				"Storage adapter is required to upload evidence bundles. Pass a StorageAdapter in the config.",
 			);
 		}
-		return this.storage.upload(JSON.stringify(bundle));
+		// Bundle embeds raw EIP-712 signed attestations whose message fields use
+		// `bigint` — JSON.stringify needs a custom replacer to serialize them.
+		return this.storage.upload(JSON.stringify(bundle, bundleJsonReplacer));
 	}
 
-	async verifyEvidenceBundle(uid: string): Promise<EvidenceBundleVerification> {
+	async verifyEvidenceBundle(
+		uid: string,
+		options?: { policy?: VerifyPolicy },
+	): Promise<EvidenceBundleVerification> {
 		if (!this.storage) {
 			throw new OpenGardenError(
 				OpenGardenErrorCode.STORAGE_NOT_CONFIGURED,
 				"Storage adapter is required to verify evidence bundles. Pass a StorageAdapter in the config.",
 			);
 		}
+		const policy = options?.policy ?? STRICT_VERIFY_POLICY;
 
 		const intervention = await this.getIntervention(uid);
 		const bundleBytes = await this.storage.download(
 			intervention.evidenceBundleHash,
 		);
-		const bundle = JSON.parse(
-			new TextDecoder().decode(bundleBytes),
-		) as EvidenceBundle;
+		const bundle = restoreBundleBigInts(
+			JSON.parse(new TextDecoder().decode(bundleBytes)) as EvidenceBundle,
+		);
 
 		const versionCheck = verifyBundleVersion(bundle);
 		if (!versionCheck.valid) {
@@ -729,26 +755,35 @@ export class OpenGardenClient {
 			);
 		}
 
+		const signatures = await verifyBundleSignatures(bundle, this.eas);
+		const timestamps = await verifyBundleOnChainTimestamps(bundle, (u) =>
+			this.eas.getTimestamp(u),
+		);
+		const refUIDs = verifyBundleRefUIDs(bundle);
 		const temporal = verifyBundleTemporalOrder(bundle);
 		const executionBracket = verifyBundleExecutionDateBracket(
 			bundle,
 			intervention,
 		);
-		const timestamps = await verifyBundleOnChainTimestamps(bundle, (u) =>
-			this.eas.getTimestamp(u),
-		);
 
 		const checks: VerificationCheck[] = [
+			signatures,
+			timestamps,
+			refUIDs,
 			temporal,
 			executionBracket,
-			timestamps,
 		];
-		const valid = checks.every((c) => c.valid);
+		// Composite `valid` only considers checks the policy marks as required;
+		// every sub-check still runs and is reported in `checks[]` so callers
+		// can inspect them regardless.
+		const valid = checks.every((c) => !policy.required.has(c.code) || c.valid);
 
 		return {
 			valid,
-			temporalOrderValid: temporal.valid,
+			signaturesValid: signatures.valid,
 			timestampsVerified: timestamps.valid,
+			refUIDsValid: refUIDs.valid,
+			temporalOrderValid: temporal.valid,
 			executionDateBracketed: executionBracket.valid,
 			checks,
 		};

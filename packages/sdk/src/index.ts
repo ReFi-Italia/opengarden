@@ -26,9 +26,24 @@ export {
 // Errors
 export { OpenGardenError, OpenGardenErrorCode } from "./errors";
 // Evidence bundle builder
-export { buildEvidenceBundle } from "./evidence";
+export {
+	buildEvidenceBundle,
+	bundleJsonReplacer,
+	restoreBundleBigInts,
+} from "./evidence";
 // Indexer
 export { getGraphqlUrl, getStoreUrl, submitToIndexer } from "./indexer";
+// Policies — verifier-side decisions as data (see spec §7)
+export type { FinalizePolicy, VerifyPolicy } from "./policy";
+export {
+	finalizePolicy,
+	LENIENT_FINALIZE_POLICY,
+	MINIMAL_FINALIZE_POLICY,
+	PROTOCOL_ONLY_VERIFY_POLICY,
+	STRICT_FINALIZE_POLICY,
+	STRICT_VERIFY_POLICY,
+	verifyPolicy,
+} from "./policy";
 // Preflight validation & inspection helpers
 export type {
 	AttestationMetadata,
@@ -72,6 +87,7 @@ export type {
 	EvidenceBundleGardenerAttestation,
 	FinalizeInterventionInput,
 	FinalizeInterventionResult,
+	SignedOffchainAttestation,
 } from "./types/evidence";
 export type {
 	BundleIndexingResult,
@@ -106,8 +122,13 @@ export type {
 } from "./verification";
 export {
 	VerificationCheckCode,
+	verifyBundleCrewConsistency,
+	verifyBundleCrewDistinctness,
+	verifyBundleCrewSize,
 	verifyBundleExecutionDateBracket,
 	verifyBundleOnChainTimestamps,
+	verifyBundleRefUIDs,
+	verifyBundleSignatures,
 	verifyBundleTemporalOrder,
 	verifyBundleVersion,
 } from "./verification";

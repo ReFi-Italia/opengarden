@@ -18,9 +18,9 @@ function extractAttestation(result: {
 
 	return {
 		uid: result.uid,
-		contentHash: result.uid,
 		claimedTimestamp,
 		onchainTimestamp: Number(result.onchainTimestamp),
+		signedAttestation: result.signedAttestation,
 	};
 }
 
@@ -79,4 +79,51 @@ export function buildEvidenceBundle(
 		},
 		bundleVersion: EVIDENCE_BUNDLE_VERSION,
 	};
+}
+
+/**
+ * JSON.stringify replacer that serializes `bigint` values as decimal strings.
+ * Evidence bundles embed raw signed EIP-712 attestations whose `message.time`
+ * and `message.expirationTime` fields are `bigint`; without this replacer
+ * `JSON.stringify` throws.
+ */
+export function bundleJsonReplacer(_key: string, value: unknown): unknown {
+	return typeof value === "bigint" ? value.toString() : value;
+}
+
+/**
+ * Rehydrate `bigint` fields inside the embedded `signedAttestation` of every
+ * bundle entry. Bundles are serialized with bigints as decimal strings (see
+ * `bundleJsonReplacer`); consumers that want to re-verify EIP-712 signatures
+ * must restore the bigints first so the typed-data hash matches what was
+ * originally signed.
+ *
+ * Mutates the bundle in place **and** returns it for chaining convenience.
+ * Idempotent — fields already of type `bigint` are left alone.
+ */
+export function restoreBundleBigInts(bundle: EvidenceBundle): EvidenceBundle {
+	const entries = [
+		bundle.attestations.scheduled,
+		...bundle.attestations.checkins,
+		...bundle.attestations.checkouts,
+		...bundle.attestations.reports,
+	];
+	for (const entry of entries) {
+		restoreSignedAttestationBigInts(entry.signedAttestation);
+	}
+	return bundle;
+}
+
+function restoreSignedAttestationBigInts(
+	sig: Record<string, unknown>,
+): Record<string, unknown> {
+	const message = sig.message as Record<string, unknown> | undefined;
+	if (!message) return sig;
+	for (const key of ["time", "expirationTime", "nonce"] as const) {
+		const v = message[key];
+		if (typeof v === "string" && /^\d+$/.test(v)) {
+			message[key] = BigInt(v);
+		}
+	}
+	return sig;
 }

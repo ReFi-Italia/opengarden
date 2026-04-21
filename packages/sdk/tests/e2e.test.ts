@@ -337,12 +337,20 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 
 	it("verifies evidence bundle against on-chain timestamps", async () => {
 		const verification = await client.verifyEvidenceBundle(interventionUID);
-		expect(verification.temporalOrderValid).toBe(true);
-		expect(verification.timestampsVerified).toBe(true);
-		expect(verification.valid).toBe(true);
 		console.log(
-			`  Bundle verified: temporal=${verification.temporalOrderValid}, timestamps=${verification.timestampsVerified}`,
+			`  Bundle verified: sigs=${verification.signaturesValid}, timestamps=${verification.timestampsVerified}, refUIDs=${verification.refUIDsValid}, temporal=${verification.temporalOrderValid}, bracket=${verification.executionDateBracketed}`,
 		);
+		for (const check of verification.checks) {
+			if (!check.valid) {
+				console.log(`    FAIL [${check.code}] ${check.message}`);
+			}
+		}
+		expect(verification.signaturesValid).toBe(true);
+		expect(verification.timestampsVerified).toBe(true);
+		expect(verification.refUIDsValid).toBe(true);
+		expect(verification.temporalOrderValid).toBe(true);
+		expect(verification.executionDateBracketed).toBe(true);
+		expect(verification.valid).toBe(true);
 	}, 60_000);
 });
 

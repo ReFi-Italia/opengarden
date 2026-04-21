@@ -75,8 +75,15 @@ export interface Milestone {
 
 export interface EvidenceBundleVerification {
 	valid: boolean;
-	temporalOrderValid: boolean;
+	/** Protocol tier — every signed attestation's EIP-712 signature recovers to its claimed signer. */
+	signaturesValid: boolean;
+	/** Protocol tier — bundle's on-chain timestamps match `EAS.getTimestamp`. */
 	timestampsVerified: boolean;
+	/** Policy tier — every entry's `refUID` points at the expected parent (area / schedule / checkin). */
+	refUIDsValid: boolean;
+	/** Policy tier — strict `T_scheduled < T_checkin < T_checkout < T_report` ordering. */
+	temporalOrderValid: boolean;
+	/** Policy tier — `executionDate` sits between scheduled and publication timestamps. */
 	executionDateBracketed: boolean;
 	/** Flat per-check breakdown, in the order the SDK runs them. Useful for rendering "X of N integrity checks passed" UX. */
 	checks: VerificationCheck[];

@@ -724,6 +724,98 @@ describe("OpenGardenClient finalizeIntervention", () => {
 			);
 		}
 	});
+
+	it("LENIENT_FINALIZE_POLICY publishes despite preflight issues", async () => {
+		const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+		vi.stubGlobal("fetch", fetchMock);
+
+		const storageMock = {
+			upload: vi.fn().mockResolvedValue("0xbundlehash"),
+			download: vi.fn(),
+		};
+
+		const client = new OpenGardenClient(
+			createTestConfig({
+				signer: createMockSigner(),
+				chain: TEST_CHAIN,
+				schemaUIDs: { PublishedIntervention: "0xschema" },
+				storage: storageMock,
+				eas: {
+					attest: async () => ({
+						wait: async () => "0xpublishuid",
+						receipt: FAKE_TX_RECEIPT,
+					}),
+				} as any,
+			}),
+		);
+
+		// Backfilled execution date — STRICT would block, LENIENT allows.
+		const { LENIENT_FINALIZE_POLICY } = await import("../src/policy");
+		const result = await client.finalizeIntervention(
+			{
+				interventionId: "INT-001",
+				areaUID: "0xarea",
+				scheduled: {
+					...makeFakeResult("0xsched"),
+					onchainTimestamp: 2000000n,
+				},
+				crew: [
+					{
+						checkin: makeFakeResult("0xcheckin"),
+						checkout: makeFakeResult("0xcheckout"),
+						report: makeFakeResult("0xreport"),
+					},
+				],
+				interventionType: 1,
+				executionDate: 1000000n,
+				commissionId: null,
+			},
+			{ policy: LENIENT_FINALIZE_POLICY },
+		);
+
+		expect(result.publication.uid).toBe("0xpublishuid");
+		vi.unstubAllGlobals();
+	});
+
+	it("custom policy blocks only selected issue codes", async () => {
+		const { finalizePolicy } = await import("../src/policy");
+		const { FinalizeInputIssueCode } = await import("../src/preflight");
+
+		const storageMock = {
+			upload: vi.fn().mockResolvedValue("0xbundlehash"),
+			download: vi.fn(),
+		};
+
+		const client = new OpenGardenClient(
+			createTestConfig({
+				signer: createMockSigner(),
+				chain: TEST_CHAIN,
+				schemaUIDs: { PublishedIntervention: "0xschema" },
+				storage: storageMock,
+			}),
+		);
+
+		// Policy blocks only EMPTY_CREW. Backfilled date is tolerated.
+		const policy = finalizePolicy({
+			blocking: [FinalizeInputIssueCode.EMPTY_CREW],
+		});
+
+		// Empty crew → blocks.
+		await expect(
+			client.finalizeIntervention(
+				{
+					interventionId: "INT-001",
+					areaUID: "0xarea",
+					scheduled: makeFakeResult("0xsched"),
+					crew: [],
+					interventionType: 1,
+					executionDate: 1000000n,
+					commissionId: null,
+				},
+				{ policy },
+			),
+		).rejects.toThrow(/EMPTY_CREW/);
+	});
 });
 
 // --- Read method tests ---
@@ -1033,46 +1125,59 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 		});
 	}
 
+	function sig(uid: string, signer: string, refUID: string, time: number) {
+		return {
+			version: 1,
+			uid,
+			signer,
+			message: {
+				schema: "0xschema",
+				recipient: ZERO_ADDRESS,
+				time,
+				expirationTime: 0,
+				revocable: false,
+				refUID,
+				data: "0x",
+			},
+			signature: { r: "0x", s: "0x", v: 0 },
+		};
+	}
+
+	function schedEntry(uid: string, ts: number, areaUID = FAKE_AREA_UID) {
+		return {
+			uid,
+			claimedTimestamp: ts,
+			onchainTimestamp: ts,
+			signedAttestation: sig(uid, "0xOrg", areaUID, ts),
+		};
+	}
+
+	function crewEntry(
+		uid: string,
+		attester: string,
+		ts: number,
+		refUID: string,
+	) {
+		return {
+			uid,
+			attester,
+			claimedTimestamp: ts,
+			onchainTimestamp: ts,
+			signedAttestation: sig(uid, attester, refUID, ts),
+		};
+	}
+
 	function makeValidBundle(
 		overrides?: Partial<EvidenceBundle>,
 	): EvidenceBundle {
 		return {
 			interventionId: "INT-001",
-			areaUID: "0xarea",
+			areaUID: FAKE_AREA_UID,
 			attestations: {
-				scheduled: {
-					uid: "0xsched",
-					contentHash: "0xsched",
-					claimedTimestamp: 100,
-					onchainTimestamp: 100,
-				},
-				checkins: [
-					{
-						uid: "0xcheckin",
-						contentHash: "0xcheckin",
-						attester: "0xAlice",
-						claimedTimestamp: 200,
-						onchainTimestamp: 200,
-					},
-				],
-				checkouts: [
-					{
-						uid: "0xcheckout",
-						contentHash: "0xcheckout",
-						attester: "0xAlice",
-						claimedTimestamp: 300,
-						onchainTimestamp: 300,
-					},
-				],
-				reports: [
-					{
-						uid: "0xreport",
-						contentHash: "0xreport",
-						attester: "0xAlice",
-						claimedTimestamp: 400,
-						onchainTimestamp: 400,
-					},
-				],
+				scheduled: schedEntry("0xsched", 100),
+				checkins: [crewEntry("0xcheckin", "0xAlice", 200, "0xsched")],
+				checkouts: [crewEntry("0xcheckout", "0xAlice", 300, "0xcheckin")],
+				reports: [crewEntry("0xreport", "0xAlice", 400, "0xsched")],
 			},
 			photos: {},
 			bundleVersion: EVIDENCE_BUNDLE_VERSION,
@@ -1092,7 +1197,13 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 			upload: vi.fn(),
 			download: vi
 				.fn()
-				.mockResolvedValue(new TextEncoder().encode(JSON.stringify(bundle))),
+				.mockResolvedValue(
+					new TextEncoder().encode(
+						JSON.stringify(bundle, (_key, value) =>
+							typeof value === "bigint" ? value.toString() : value,
+						),
+					),
+				),
 		};
 
 		const tsMap = timestampMap ?? {
@@ -1121,6 +1232,11 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 						time: interventionOverrides?.time ?? 600n,
 					}),
 					getTimestamp: async (uid: string) => BigInt(tsMap[uid] ?? 0),
+					// Stub Offchain so sig verify passes in unit tests. E2E tests
+					// exercise real signature recovery against testnet attestations.
+					getOffchain: async () => ({
+						verifyOffchainAttestationSignature: () => true,
+					}),
 				} as any,
 			}),
 		);
@@ -1143,59 +1259,18 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 	it("valid 2-person crew bundle passes all checks", async () => {
 		const bundle = makeValidBundle({
 			attestations: {
-				scheduled: {
-					uid: "0xsched",
-					contentHash: "0xsched",
-					claimedTimestamp: 100,
-					onchainTimestamp: 100,
-				},
+				scheduled: schedEntry("0xsched", 100),
 				checkins: [
-					{
-						uid: "0xciA",
-						contentHash: "0xciA",
-						attester: "0xAlice",
-						claimedTimestamp: 200,
-						onchainTimestamp: 200,
-					},
-					{
-						uid: "0xciB",
-						contentHash: "0xciB",
-						attester: "0xBob",
-						claimedTimestamp: 210,
-						onchainTimestamp: 210,
-					},
+					crewEntry("0xciA", "0xAlice", 200, "0xsched"),
+					crewEntry("0xciB", "0xBob", 210, "0xsched"),
 				],
 				checkouts: [
-					{
-						uid: "0xcoA",
-						contentHash: "0xcoA",
-						attester: "0xAlice",
-						claimedTimestamp: 300,
-						onchainTimestamp: 300,
-					},
-					{
-						uid: "0xcoB",
-						contentHash: "0xcoB",
-						attester: "0xBob",
-						claimedTimestamp: 320,
-						onchainTimestamp: 320,
-					},
+					crewEntry("0xcoA", "0xAlice", 300, "0xciA"),
+					crewEntry("0xcoB", "0xBob", 320, "0xciB"),
 				],
 				reports: [
-					{
-						uid: "0xrpA",
-						contentHash: "0xrpA",
-						attester: "0xAlice",
-						claimedTimestamp: 400,
-						onchainTimestamp: 400,
-					},
-					{
-						uid: "0xrpB",
-						contentHash: "0xrpB",
-						attester: "0xBob",
-						claimedTimestamp: 420,
-						onchainTimestamp: 420,
-					},
+					crewEntry("0xrpA", "0xAlice", 400, "0xsched"),
+					crewEntry("0xrpB", "0xBob", 420, "0xsched"),
 				],
 			},
 		});
@@ -1219,24 +1294,8 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 		const bundle = makeValidBundle({
 			attestations: {
 				...makeValidBundle().attestations,
-				checkins: [
-					{
-						uid: "0xcheckin",
-						contentHash: "0xcheckin",
-						attester: "0xAlice",
-						claimedTimestamp: 200,
-						onchainTimestamp: 500,
-					},
-				],
-				checkouts: [
-					{
-						uid: "0xcheckout",
-						contentHash: "0xcheckout",
-						attester: "0xAlice",
-						claimedTimestamp: 300,
-						onchainTimestamp: 150,
-					},
-				],
+				checkins: [crewEntry("0xcheckin", "0xAlice", 500, "0xsched")],
+				checkouts: [crewEntry("0xcheckout", "0xAlice", 150, "0xcheckin")],
 			},
 		});
 		const { client } = createVerifyClient(bundle, undefined, {
@@ -1256,24 +1315,8 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 		const bundle = makeValidBundle({
 			attestations: {
 				...makeValidBundle().attestations,
-				checkins: [
-					{
-						uid: "0xcheckin",
-						contentHash: "0xcheckin",
-						attester: "0xAlice",
-						claimedTimestamp: 200,
-						onchainTimestamp: 200,
-					},
-				],
-				checkouts: [
-					{
-						uid: "0xcheckout",
-						contentHash: "0xcheckout",
-						attester: "0xAlice",
-						claimedTimestamp: 200,
-						onchainTimestamp: 200,
-					},
-				],
+				checkins: [crewEntry("0xcheckin", "0xAlice", 200, "0xsched")],
+				checkouts: [crewEntry("0xcheckout", "0xAlice", 200, "0xcheckin")],
 			},
 		});
 		const { client } = createVerifyClient(bundle, undefined, {
@@ -1293,12 +1336,7 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 		const bundle = makeValidBundle({
 			attestations: {
 				...makeValidBundle().attestations,
-				scheduled: {
-					uid: "0xsched",
-					contentHash: "0xsched",
-					claimedTimestamp: 100,
-					onchainTimestamp: 300,
-				},
+				scheduled: schedEntry("0xsched", 300),
 			},
 		});
 		const { client } = createVerifyClient(
@@ -1329,6 +1367,57 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 
 		expect(result.valid).toBe(false);
 		expect(result.executionDateBracketed).toBe(false);
+	});
+
+	it("PROTOCOL_ONLY_VERIFY_POLICY ignores policy-tier failures", async () => {
+		const { PROTOCOL_ONLY_VERIFY_POLICY } = await import("../src/policy");
+		// Bundle with executionDate post-publication — policy-tier check fails,
+		// but PROTOCOL_ONLY doesn't require it.
+		const bundle = makeValidBundle();
+		const { client } = createVerifyClient(bundle, {
+			executionDate: 700n,
+			time: 600n,
+		});
+
+		const result = await client.verifyEvidenceBundle(FAKE_INTERVENTION_UID, {
+			policy: PROTOCOL_ONLY_VERIFY_POLICY,
+		});
+
+		expect(result.executionDateBracketed).toBe(false); // sub-check still ran
+		expect(result.valid).toBe(true); // but policy doesn't require it
+	});
+
+	it("custom verify policy requires only selected checks", async () => {
+		const { verifyPolicy } = await import("../src/policy");
+		const { VerificationCheckCode } = await import("../src/verification");
+
+		const bundle = makeValidBundle({
+			attestations: {
+				...makeValidBundle().attestations,
+				// Break temporal ordering but leave signatures/timestamps intact.
+				checkins: [crewEntry("0xcheckin", "0xAlice", 500, "0xsched")],
+				checkouts: [crewEntry("0xcheckout", "0xAlice", 150, "0xcheckin")],
+			},
+		});
+		const { client } = createVerifyClient(bundle, undefined, {
+			"0xsched": 100,
+			"0xcheckin": 500,
+			"0xcheckout": 150,
+			"0xreport": 400,
+		});
+
+		const policy = verifyPolicy({
+			required: [
+				VerificationCheckCode.BUNDLE_VERSION,
+				VerificationCheckCode.SIGNATURES,
+			],
+		});
+		const result = await client.verifyEvidenceBundle(FAKE_INTERVENTION_UID, {
+			policy,
+		});
+
+		expect(result.temporalOrderValid).toBe(false);
+		expect(result.valid).toBe(true);
 	});
 
 	it("throws STORAGE_NOT_CONFIGURED without storage adapter", async () => {
