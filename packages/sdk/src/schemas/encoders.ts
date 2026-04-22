@@ -2,22 +2,31 @@ import type { SchemaEncoder as SchemaEncoderType } from "@ethereum-attestation-s
 import { ZERO_BYTES32 } from "../constants";
 import { type SponsorRef, serializeSponsorRef } from "../sponsor";
 import type {
-	AreaType,
-	InterventionType,
-	MilestoneLevel,
+	CheckinActivityPayload,
+	CheckoutActivityPayload,
+	HealthcheckActivityPayload,
+	ReportActivityPayload,
+	ScheduleActivityPayload,
+} from "../types/attestation";
+import {
+	ActivityType,
+	type AreaType,
+	type InterventionType,
+	type MilestoneLevel,
 } from "../types/enums";
 import type {
 	AreaRegistrationInput,
-	GardenerCheckinInput,
-	GardenerCheckoutInput,
+	CheckinActivityInput,
+	CheckoutActivityInput,
 	GardenerMilestoneInput,
-	GardenerReportInput,
-	HealthcheckInput,
-	PublishedInterventionInput,
-	ScheduledInterventionInput,
+	HealthcheckActivityInput,
+	InterventionInput,
+	ReportActivityInput,
+	ScheduleActivityInput,
 } from "../types/schemas";
 import {
 	fromMicrodegrees,
+	hashActivityPayload,
 	hashIdentifier,
 	toMicrodegrees,
 	toUnixSeconds,
@@ -25,13 +34,13 @@ import {
 import { SCHEMA_STRINGS } from "./definitions";
 import {
 	validateAreaRegistration,
-	validateGardenerCheckin,
-	validateGardenerCheckout,
+	validateCheckinActivity,
+	validateCheckoutActivity,
 	validateGardenerMilestone,
-	validateGardenerReport,
-	validateHealthcheck,
-	validatePublishedIntervention,
-	validateScheduledIntervention,
+	validateHealthcheckActivity,
+	validateIntervention,
+	validateReportActivity,
+	validateScheduleActivity,
 } from "./validators";
 
 let SchemaEncoderCtor: (new (schema: string) => SchemaEncoderType) | null =
@@ -64,7 +73,7 @@ function hashCommissionIdOrZero(id: string | SponsorRef | null): string {
 	return serialized === null ? ZERO_BYTES32 : hashIdentifier(serialized);
 }
 
-// --- Encoders ---
+// --- On-chain encoders ---
 
 export function encodeAreaRegistration(input: AreaRegistrationInput): string {
 	validateAreaRegistration(input);
@@ -89,11 +98,9 @@ export function encodeAreaRegistration(input: AreaRegistrationInput): string {
 	]);
 }
 
-export function encodePublishedIntervention(
-	input: PublishedInterventionInput,
-): string {
-	validatePublishedIntervention(input);
-	const encoder = newSchemaEncoder(SCHEMA_STRINGS.PublishedIntervention);
+export function encodeIntervention(input: InterventionInput): string {
+	validateIntervention(input);
+	const encoder = newSchemaEncoder(SCHEMA_STRINGS.Intervention);
 	return encoder.encodeData([
 		{ name: "interventionId", value: input.interventionId, type: "string" },
 		{ name: "interventionType", value: input.interventionType, type: "uint8" },
@@ -140,73 +147,96 @@ export function encodeGardenerMilestone(input: GardenerMilestoneInput): string {
 	]);
 }
 
-export function encodeScheduledIntervention(
-	input: ScheduledInterventionInput,
+// --- Activity ABI encoder (schema: `uint8 activityType, bytes32 payloadHash`) ---
+
+export function encodeActivityData(
+	activityType: ActivityType,
+	payloadHash: string,
 ): string {
-	validateScheduledIntervention(input);
-	const encoder = newSchemaEncoder(SCHEMA_STRINGS.ScheduledIntervention);
+	const encoder = newSchemaEncoder(SCHEMA_STRINGS.Activity);
 	return encoder.encodeData([
-		{ name: "interventionId", value: input.interventionId, type: "string" },
-		{ name: "interventionType", value: input.interventionType, type: "uint8" },
-		{
-			name: "scheduledDate",
-			value: toUnixSeconds(input.scheduledDate),
-			type: "uint64",
-		},
-		{ name: "estimatedMinutes", value: input.estimatedMinutes, type: "uint16" },
-		{ name: "description", value: input.description, type: "string" },
-		{
-			name: "commissionRef",
-			value: hashCommissionIdOrZero(input.commissionId),
-			type: "bytes32",
-		},
-		{ name: "crewSize", value: input.crewSize, type: "uint8" },
+		{ name: "activityType", value: activityType, type: "uint8" },
+		{ name: "payloadHash", value: payloadHash, type: "bytes32" },
 	]);
 }
 
-export function encodeGardenerCheckin(input: GardenerCheckinInput): string {
-	validateGardenerCheckin(input);
-	const encoder = newSchemaEncoder(SCHEMA_STRINGS.GardenerCheckin);
-	return encoder.encodeData([
-		{ name: "latitude", value: toMicrodegrees(input.latitude), type: "int32" },
-		{
-			name: "longitude",
-			value: toMicrodegrees(input.longitude),
-			type: "int32",
-		},
-		{ name: "photoHash", value: input.photoHash, type: "bytes32" },
-	]);
+// --- Per-type payload builders (typed Input → canonical Payload) ---
+
+export function buildSchedulePayload(
+	input: ScheduleActivityInput,
+): ScheduleActivityPayload {
+	validateScheduleActivity(input);
+	return {
+		interventionId: input.interventionId,
+		areaUID: input.areaUID,
+		interventionType: input.interventionType,
+		scheduledDate: Number(toUnixSeconds(input.scheduledDate)),
+		estimatedMinutes: input.estimatedMinutes,
+		description: input.description,
+		commissionRef: hashCommissionIdOrZero(input.commissionId),
+		crewSize: input.crewSize,
+	};
 }
 
-export function encodeGardenerCheckout(input: GardenerCheckoutInput): string {
-	validateGardenerCheckout(input);
-	const encoder = newSchemaEncoder(SCHEMA_STRINGS.GardenerCheckout);
-	return encoder.encodeData([
-		{ name: "actualMinutes", value: input.actualMinutes, type: "uint16" },
-	]);
+export function buildCheckinPayload(
+	input: CheckinActivityInput,
+): CheckinActivityPayload {
+	validateCheckinActivity(input);
+	return {
+		latitude: toMicrodegrees(input.latitude),
+		longitude: toMicrodegrees(input.longitude),
+		photoCID: input.photoCID,
+	};
 }
 
-export function encodeGardenerReport(input: GardenerReportInput): string {
-	validateGardenerReport(input);
-	const encoder = newSchemaEncoder(SCHEMA_STRINGS.GardenerReport);
-	return encoder.encodeData([
-		{ name: "checkoutUID", value: input.checkoutUID, type: "bytes32" },
-		{ name: "tasksCompleted", value: input.tasksCompleted, type: "string" },
-		{ name: "taskCount", value: input.taskCount, type: "uint8" },
-		{ name: "photosHash", value: input.photosHash, type: "bytes32" },
-		{ name: "notes", value: input.notes, type: "string" },
-	]);
+export function buildCheckoutPayload(
+	input: CheckoutActivityInput,
+): CheckoutActivityPayload {
+	validateCheckoutActivity(input);
+	return { actualMinutes: input.actualMinutes };
 }
 
-export function encodeHealthcheck(input: HealthcheckInput): string {
-	validateHealthcheck(input);
-	const encoder = newSchemaEncoder(SCHEMA_STRINGS.Healthcheck);
-	return encoder.encodeData([
-		{ name: "healthScore", value: input.healthScore, type: "uint8" },
-		{ name: "photoHash", value: input.photoHash, type: "bytes32" },
-		{ name: "notes", value: input.notes, type: "string" },
-		{ name: "metadata", value: input.metadata, type: "string" },
-	]);
+export function buildReportPayload(
+	input: ReportActivityInput,
+): ReportActivityPayload {
+	validateReportActivity(input);
+	return {
+		tasksCompleted: input.tasksCompleted,
+		photosCID: input.photosCID,
+		notes: input.notes,
+	};
+}
+
+export function buildHealthcheckPayload(
+	input: HealthcheckActivityInput,
+): HealthcheckActivityPayload {
+	validateHealthcheckActivity(input);
+	const payload: HealthcheckActivityPayload = {
+		healthScore: input.healthScore,
+		photoCID: input.photoCID,
+		notes: input.notes,
+	};
+	if (input.metadata !== undefined && input.metadata !== null) {
+		payload.metadata = input.metadata;
+	}
+	return payload;
+}
+
+/**
+ * Convenience: build a payload and compute its `payloadHash` in one call. The
+ * hash is taken over the canonical-JSON serialization of the payload per
+ * spec §9.8 (`hashActivityPayload` in `utils.ts`).
+ *
+ * Accepts `unknown` so callers can pass typed payload interfaces (e.g.
+ * `ScheduleActivityPayload`) without an intermediate cast.
+ */
+export function encodeActivityFromPayload(
+	type: ActivityType,
+	payload: unknown,
+): { data: string; payloadHash: string } {
+	const payloadHash = hashActivityPayload(payload);
+	const data = encodeActivityData(type, payloadHash);
+	return { data, payloadHash };
 }
 
 // --- Decoders ---
@@ -246,8 +276,8 @@ export function decodeAreaRegistration(data: string) {
 	};
 }
 
-export function decodePublishedIntervention(data: string) {
-	const decoded = decodeSchema(SCHEMA_STRINGS.PublishedIntervention, data);
+export function decodeIntervention(data: string) {
+	const decoded = decodeSchema(SCHEMA_STRINGS.Intervention, data);
 	return {
 		interventionId: getFieldValue(decoded, "interventionId") as string,
 		interventionType: Number(
@@ -275,27 +305,57 @@ export function decodeGardenerMilestone(data: string) {
 	};
 }
 
-export function decodeScheduledIntervention(data: string) {
-	const decoded = decodeSchema(SCHEMA_STRINGS.ScheduledIntervention, data);
+export function decodeActivityData(data: string): {
+	activityType: ActivityType;
+	payloadHash: string;
+} {
+	const decoded = decodeSchema(SCHEMA_STRINGS.Activity, data);
 	return {
-		interventionId: getFieldValue(decoded, "interventionId") as string,
-		interventionType: Number(
-			getFieldValue(decoded, "interventionType"),
-		) as InterventionType,
-		scheduledDate: BigInt(String(getFieldValue(decoded, "scheduledDate"))),
-		estimatedMinutes: Number(getFieldValue(decoded, "estimatedMinutes")),
-		description: getFieldValue(decoded, "description") as string,
-		commissionRef: String(getFieldValue(decoded, "commissionRef")),
-		crewSize: Number(getFieldValue(decoded, "crewSize")),
+		activityType: Number(
+			getFieldValue(decoded, "activityType"),
+		) as ActivityType,
+		payloadHash: String(getFieldValue(decoded, "payloadHash")),
 	};
 }
 
-export function decodeHealthcheck(data: string) {
-	const decoded = decodeSchema(SCHEMA_STRINGS.Healthcheck, data);
+/**
+ * Parse easscan's `decodedDataJson` field (available on both on-chain and
+ * off-chain attestations in the `attestations` GraphQL query) into the
+ * Activity schema's typed fields.
+ *
+ * easscan emits `decodedDataJson` as a JSON string shaped like:
+ * ```
+ * [
+ *   { "name": "activityType", "type": "uint8",
+ *     "value": { "name": "activityType", "type": "uint8", "value": "1" } },
+ *   { "name": "payloadHash", "type": "bytes32",
+ *     "value": { "name": "payloadHash", "type": "bytes32", "value": "0x…" } },
+ * ]
+ * ```
+ *
+ * Using this over raw `data` lets the SDK treat on-chain and off-chain
+ * activities uniformly: on-chain `data` is hex ABI bytes, while off-chain
+ * `data` is the full offchain envelope JSON. `decodedDataJson` is always the
+ * decoded ABI regardless of origin.
+ */
+export function parseActivityDecodedDataJson(decodedDataJson: string): {
+	activityType: ActivityType;
+	payloadHash: string;
+} {
+	const entries = JSON.parse(decodedDataJson) as Array<{
+		name: string;
+		value: { value: unknown };
+	}>;
+	const byName = new Map(entries.map((e) => [e.name, e.value.value]));
+	const rawType = byName.get("activityType");
+	const rawHash = byName.get("payloadHash");
+	if (rawType === undefined || rawHash === undefined) {
+		throw new Error(
+			"decodedDataJson does not carry activityType + payloadHash",
+		);
+	}
 	return {
-		healthScore: Number(getFieldValue(decoded, "healthScore")),
-		photoHash: String(getFieldValue(decoded, "photoHash")),
-		notes: getFieldValue(decoded, "notes") as string,
-		metadata: getFieldValue(decoded, "metadata") as string,
+		activityType: Number(rawType) as ActivityType,
+		payloadHash: String(rawHash),
 	};
 }

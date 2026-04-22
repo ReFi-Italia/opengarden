@@ -1,5 +1,16 @@
 import type { SponsorRef } from "../sponsor";
-import type { AreaType, InterventionType, MilestoneLevel } from "./enums";
+import type {
+	CheckinActivityPayload,
+	CheckoutActivityPayload,
+	HealthcheckActivityPayload,
+	ReportActivityPayload,
+	ScheduleActivityPayload,
+} from "./attestation";
+import type {
+	AreaType,
+	InterventionType,
+	MilestoneLevel,
+} from "./enums";
 
 export interface AreaRegistrationInput {
 	areaId: string;
@@ -23,7 +34,7 @@ export interface AreaRegistrationInput {
 	metadata: string;
 }
 
-export interface PublishedInterventionInput {
+export interface InterventionInput {
 	/** UID of the AreaRegistration attestation this intervention belongs to. Carried as the EAS `refUID` slot on the on-chain attestation, not encoded in schema data. */
 	areaUID: string;
 	interventionId: string;
@@ -44,63 +55,74 @@ export interface GardenerMilestoneInput {
 	evidenceRoot: string;
 }
 
-export interface ScheduledInterventionInput {
-	/** UID of the AreaRegistration attestation this schedule belongs to. Carried as the EAS `refUID` slot, not encoded in schema data. */
+// --- Activity inputs (per-type convenience wrappers) ---
+
+/**
+ * Common EIP-712 envelope overrides applicable to every Activity input.
+ * Callers signing at the moment of the event may omit `time`; callers
+ * signing server-side on later upload MUST pass the device-recorded moment
+ * so the envelope reflects the claim, not the upload time.
+ */
+export interface ActivityEnvelopeOverrides {
+	/** Signer's claim of when the event happened (Unix seconds or `Date`). Written into the EIP-712 envelope's `message.time`. */
+	time?: Date | bigint;
+}
+
+export interface ScheduleActivityInput extends ActivityEnvelopeOverrides {
+	/** UID of the AreaRegistration. Included in the Activity's payload to preserve area linkage (the refUID slot holds the intervention scope hash). */
 	areaUID: string;
 	interventionId: string;
 	interventionType: InterventionType;
+	/** Crew lead wallet — becomes the EIP-712 envelope's `recipient`. Use `ZERO_ADDRESS` for unassigned schedules. */
 	crewLead: string;
 	crewSize: number;
 	scheduledDate: Date | bigint;
 	estimatedMinutes: number;
 	description: string;
-	/** Plain commissioning identifier, structured `SponsorRef`, or `null` for volunteer/unsponsored work. Must match the PublishedIntervention for the same job. Hashed internally per spec §9.1; structured refs are canonicalized via `serializeSponsorRef` before hashing. */
+	/** Plain commissioning identifier, structured `SponsorRef`, or `null` for volunteer/unsponsored work. Hashed internally per spec §9.1 and stored in the schedule payload's `commissionRef`. */
 	commissionId: string | SponsorRef | null;
 }
 
-export interface GardenerCheckinInput {
-	/** UID of the ScheduledIntervention this checkin belongs to. Carried as the EAS `refUID` slot, not encoded in schema data. */
-	interventionUID: string;
+export interface CheckinActivityInput extends ActivityEnvelopeOverrides {
+	interventionId: string;
 	latitude: number;
 	longitude: number;
-	photoHash: string;
-	/**
-	 * Signer's claim of when the checkin happened (Unix seconds or `Date`).
-	 * Written into the EIP-712 envelope's `message.time`. Omit to use the
-	 * current wall-clock at sign time (only correct when signing happens at
-	 * the moment of checkin; for server-side signing on later upload, pass
-	 * the device-recorded moment here so the envelope reflects the claim,
-	 * not the upload time).
-	 */
-	time?: Date | bigint;
+	photoCID: string;
 }
 
-export interface GardenerCheckoutInput {
-	/** UID of the matching GardenerCheckin for this crew member. Carried as the EAS `refUID` slot, not encoded in schema data. */
-	checkinUID: string;
+export interface CheckoutActivityInput extends ActivityEnvelopeOverrides {
+	interventionId: string;
 	actualMinutes: number;
-	/** See `GardenerCheckinInput.time`. */
-	time?: Date | bigint;
 }
 
-export interface GardenerReportInput {
-	/** UID of the ScheduledIntervention this report belongs to. Carried as the EAS `refUID` slot, not encoded in schema data. */
-	interventionUID: string;
-	/** UID of this crew member's GardenerCheckout. Carried as a schema field since EAS only exposes one `refUID` slot. */
-	checkoutUID: string;
-	tasksCompleted: string;
-	taskCount: number;
-	photosHash: string;
+export interface ReportActivityInput extends ActivityEnvelopeOverrides {
+	interventionId: string;
+	tasksCompleted: string[];
+	photosCID: string;
 	notes: string;
 }
 
-export interface HealthcheckInput {
-	/** UID of the AreaRegistration attestation this healthcheck belongs to. Carried as the EAS `refUID` slot, not encoded in schema data. */
+export interface HealthcheckActivityInput extends ActivityEnvelopeOverrides {
+	/** UID of the AreaRegistration. Healthchecks are area-scoped — the refUID slot holds this directly. */
 	areaUID: string;
 	/** 1-10, where 10 is best. */
 	healthScore: number;
-	photoHash: string;
+	photoCID: string;
 	notes: string;
-	/** Free-form JSON string for app-specific extras. Empty string for none. */
-	metadata: string;
+	/** App-specific extras. Omit for none. */
+	metadata?: Record<string, unknown> | null;
 }
+
+// --- Low-level per-type payload-only inputs (for advanced callers) ---
+
+/**
+ * Low-level discriminated union for callers that want to sign an Activity
+ * of any type through a single `signActivity` primitive. Most callers should
+ * use the typed per-type wrappers above.
+ */
+export type ActivityPayloadInput =
+	| { type: "schedule"; payload: ScheduleActivityPayload }
+	| { type: "checkin"; payload: CheckinActivityPayload }
+	| { type: "checkout"; payload: CheckoutActivityPayload }
+	| { type: "report"; payload: ReportActivityPayload }
+	| { type: "healthcheck"; payload: HealthcheckActivityPayload };

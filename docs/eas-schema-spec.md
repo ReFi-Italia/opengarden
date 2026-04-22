@@ -24,15 +24,11 @@ The system anchors three record types on-chain and keeps all operational lifecyc
 | Schema | Layer | Attester | Purpose |
 |---|---|---|---|
 | **AreaRegistration** | On-chain | Organization | Geographic anchor |
-| **PublishedIntervention** | On-chain | Organization | Verified completion record |
+| **Intervention** | On-chain | Organization | Verified completion record |
 | **GardenerMilestone** | On-chain (SBT) | Organization | Portable credential |
-| **ScheduledIntervention** | Off-chain + timestamped | Organization | Task planning |
-| **GardenerCheckin** | Off-chain + timestamped | Gardener* | Presence proof |
-| **GardenerCheckout** | Off-chain + timestamped | Gardener* | Session closure |
-| **GardenerReport** | Off-chain + timestamped | Gardener* | Work evidence |
-| **Healthcheck** | Off-chain + timestamped | Any wallet | Periodic area-condition signal |
+| **Activity** | Off-chain + timestamped | Organization / Gardener\* / Any wallet | Polymorphic lifecycle record — one of `schedule`, `checkin`, `checkout`, `report`, `healthcheck` |
 
-_\*Implementation deferred until the release of the Gardeners' app_
+_\*Gardener-signed activities (checkin, checkout, report) are deferred until the release of the Gardeners' app; organizations sign them in the interim._
 
 > **Design Principle**
 >
@@ -82,23 +78,23 @@ Registered once per work area. Serves as the canonical geographic anchor that al
 >
 > Coordinates use int32 microdegrees instead of string to reduce calldata. Large binary payloads (polygons, photo bundles) are offloaded to IPFS via the `boundariesHash` field. Small structured extras ride inline via `metadata` so readers don't need an extra IPFS fetch for a handful of bytes. The split follows the convention formalized in [§9.6](#96-inline-metadata-vs-hashed-payloads).
 
-### 2.2 PublishedIntervention
+### 2.2 Intervention
 
-Created when an intervention is fully executed and the organization signs off on it. This is the canonical **job record** — one per intervention, regardless of crew size. It bundles all off-chain operational attestations (per-gardener checkins, checkouts, and reports) by referencing their content hashes.
+Created when an intervention is fully executed and the organization signs off on it. This is the canonical **job record** — one per intervention, regardless of crew size. It bundles all off-chain lifecycle activities (schedule, per-gardener checkins, checkouts, and reports) by referencing their content hashes via the evidence bundle.
 
 > **ON-CHAIN** · Revocable: No
 
 | Field | Type | Description |
 |---|---|---|
-| **interventionId** | `string` | Internal intervention identifier (e.g. "INT-2026-0187") |
+| **interventionId** | `string` | Internal intervention identifier (e.g. "INT-2026-0187"). Also the input to the intervention scope hash (§9.7) that anchors every lifecycle activity |
 | **interventionType** | `uint8` | 0 = unspecified, 1 = routine maintenance, 2 = restoration, 3 = emergency, 4 = seasonal, 5 = new planting |
 | **executionDate** | `uint64` | Unix timestamp of when work was completed |
-| **evidenceBundleHash** | `bytes32` | IPFS CID hash of the evidence bundle JSON containing all off-chain attestation UIDs, their content hashes, and their on-chain timestamps |
+| **evidenceBundleHash** | `bytes32` | IPFS CID hash of the evidence bundle JSON containing every lifecycle Activity's UID, signed envelope, and on-chain timestamp |
 | **commissionRef** | `bytes32` | Keccak256 hash of commissioning entity identifier (corporate sponsor ID, municipal contract number, or grant ID). `ZERO_BYTES32` for volunteer / unsponsored work |
 
 > **Attestation Metadata**
 >
-> Recipient: ZERO_ADDRESS. A PublishedIntervention is a public job record, not a credential addressed to any individual. Per-gardener credentialing flows through GardenerMilestone SBTs (Section 2.3) whose evidence is the set of GardenerReports bundled inside the PublishedIntervention's evidence bundle.
+> Recipient: ZERO_ADDRESS. An Intervention is a public job record, not a credential addressed to any individual. Per-gardener credentialing flows through GardenerMilestone SBTs (Section 2.3) whose evidence is the set of report Activities bundled inside the Intervention's evidence bundle.
 > Attester: Organization wallet. The attester is simultaneously the reviewer — publication is the quality sign-off.
 > Revocable: No. A published intervention is a historical fact.
 > RefUID: AreaRegistration UID. Area linkage is carried by the EAS-native `refUID` slot — indexers filter by area natively and the schema data stays minimal.
@@ -113,9 +109,9 @@ Created when an intervention is fully executed and the organization signs off on
 
 > **Crew Interventions**
 >
-> A crew job produces a single PublishedIntervention. Each crew member independently signs their own GardenerCheckin, GardenerCheckout, and GardenerReport attestations — these are cryptographically tied to their wallet via EAS off-chain signatures and all reference the same `interventionUID`. The evidence bundle collects every crew member's signed chain alongside the one-per-job ScheduledIntervention. Crew headcount is carried on the ScheduledIntervention.
+> A crew job produces a single Intervention. Each crew member independently signs their own checkin, checkout, and report Activities — these are cryptographically tied to the crew member's wallet via EAS off-chain signatures. Every lifecycle Activity (schedule plus all crew-member activities) carries the same `refUID = keccak256(interventionId)` (see §9.7), so a single EAS GraphQL query returns the full activity set. Crew headcount is carried on the schedule Activity's payload.
 >
-> **To prove an individual gardener contributed to a specific intervention**, a verifier reads the PublishedIntervention, fetches the evidence bundle, and checks for a GardenerReport whose attester is that gardener's wallet. The gardener's aggregated credential (career history, level) is the GardenerMilestone SBT, which is directly addressed to their wallet.
+> **To prove an individual gardener contributed to a specific intervention**, a verifier reads the Intervention, fetches the evidence bundle, and checks for a `report` Activity whose signer is that gardener's wallet. The gardener's aggregated credential (career history, level) is the GardenerMilestone SBT, which is directly addressed to their wallet.
 
 ### 2.3 GardenerMilestone (Soulbound)
 
@@ -127,11 +123,11 @@ A non-transferable credential minted when a gardener crosses a meaningful thresh
 | Field | Type | Description |
 |---|---|---|
 | **milestoneLevel** | `uint8` | Progressive level keyed off `totalValidated`: 1 = Apprentice (5 validated), 2 = Gardener (15), 3 = Senior (40), 4 = Master (100) |
-| **totalInterventions** | `uint16` | Cumulative count of GardenerReports signed by this gardener, sourced from the organization's operational store. Covers every completed crew-member chain the gardener participated in |
-| **totalValidated** | `uint16` | Subset of `totalInterventions` whose parent job reached a PublishedIntervention on-chain. Computed by counting the gardener's GardenerReports that appear inside any PublishedIntervention's evidence bundle. The gap `totalInterventions - totalValidated` represents work that stayed off-chain |
-| **avgHealthImprovement** | `uint8` | Average area-health improvement attributable to the gardener's validated interventions, derived off-chain from the area's Healthcheck timeline (pre/post delta around each intervention's executionDate). `0` if no measurable signal |
+| **totalInterventions** | `uint16` | Cumulative count of `report` Activities signed by this gardener, sourced from the organization's operational store. Covers every completed crew-member chain the gardener participated in |
+| **totalValidated** | `uint16` | Subset of `totalInterventions` whose parent job reached an Intervention on-chain. Computed by counting the gardener's `report` Activities that appear inside any Intervention's evidence bundle. The gap `totalInterventions - totalValidated` represents work that stayed off-chain |
+| **avgHealthImprovement** | `uint8` | Average area-health improvement attributable to the gardener's validated interventions, derived off-chain from the area's `healthcheck` Activity timeline (pre/post delta around each intervention's executionDate). `0` if no measurable signal |
 | **achievedAt** | `uint64` | Unix timestamp when milestone was reached |
-| **evidenceRoot** | `bytes32` | Merkle root of the PublishedIntervention UIDs the gardener contributed to (one leaf per intervention — matches `totalValidated`, not `totalInterventions`). The organization computes this at mint time by scanning its evidence bundles for GardenerReports signed by the recipient wallet. `ZERO_BYTES32` when no bundle evidence is recorded on-chain |
+| **evidenceRoot** | `bytes32` | Merkle root of the Intervention UIDs the gardener contributed to (one leaf per intervention — matches `totalValidated`, not `totalInterventions`). The organization computes this at mint time by scanning its evidence bundles for `report` Activities signed by the recipient wallet. `ZERO_BYTES32` when no bundle evidence is recorded on-chain |
 
 > **Attestation Metadata**
 >
@@ -147,141 +143,189 @@ A non-transferable credential minted when a gardener crosses a meaningful thresh
 
 ---
 
-## 3. Off-Chain Schemas
+## 3. Off-Chain Schema
 
-These schemas produce signed, timestamped attestations stored off-chain (IPFS or organization infrastructure). They are never published individually on-chain. Instead, their content hashes are bundled into the PublishedIntervention attestation upon completion.
+All operational lifecycle data shares a single polymorphic schema: **Activity**. Activities are signed off-chain with EAS EIP-712 typed signatures, then **timestamped on-chain** via `EAS.timestamp()` immediately after creation. They are never published individually on-chain. Instead, their signed envelopes are collected into the evidence bundle referenced by the Intervention's `evidenceBundleHash`.
 
-All off-chain attestations use EAS off-chain signing (EIP-712 typed signatures) for cryptographic integrity without gas costs.
+See [Section 4: Temporal Integrity](#4-temporal-integrity) for ordering rules that apply to every lifecycle Activity.
 
-All off-chain attestations in the intervention lifecycle (ScheduledIntervention plus each crew member's GardenerCheckin, GardenerCheckout, and GardenerReport) are **timestamped on-chain** via `EAS.timestamp()` immediately after creation. See [Section 4: Temporal Integrity](#4-temporal-integrity) for the protocol rules.
+### 3.1 Activity
 
-### 3.1 ScheduledIntervention
-
-Created when the organization plans a new intervention. One ScheduledIntervention per job, regardless of crew size. It may never reach on-chain if the intervention is cancelled or rescheduled.
+An Activity is a typed, signed, timestamped statement that **something happened** — planning a job, arriving on site, leaving, reporting work, or rating area condition. One schema covers every lifecycle event; the `activityType` field and an opaque payload JSON carry the per-type semantics.
 
 > **OFF-CHAIN** · Revocable: Yes · **Timestamped on-chain: Required**
 
 | Field | Type | Description |
 |---|---|---|
-| **interventionId** | `string` | Internal ID, will carry through to PublishedIntervention if completed |
-| **interventionType** | `uint8` | Same enum as PublishedIntervention (0–5) |
-| **scheduledDate** | `uint64` | Planned execution date as Unix timestamp |
-| **estimatedMinutes** | `uint16` | Expected duration in minutes (`0` = unspecified) |
-| **description** | `string` | Free-text description of required work |
-| **commissionRef** | `bytes32` | Hash of commissioning entity (matches PublishedIntervention field). `ZERO_BYTES32` for volunteer / unsponsored work |
-| **crewSize** | `uint8` | Total number of gardeners assigned (1 for solo jobs) |
+| **activityType** | `uint8` | Activity discriminator. See [§3.1.1](#311-activitytype-reservation) for the reservation table |
+| **payloadHash** | `bytes32` | Keccak256 of the canonical JSON payload (§9.8). The payload itself travels alongside the signed envelope in the evidence bundle — `payloadHash` is the only cryptographic anchor for the payload's content |
 
-> **Attestation Metadata**
->
-> Recipient: Crew lead wallet (so the lead receives the assignment notification and is operationally responsible for the crew). `ZERO_ADDRESS` is permitted for unassigned schedules that will be reassigned via revoke-and-re-create.
-> Attester: Organization wallet.
-> Revocable: Yes. If an intervention is cancelled or rescheduled, the original attestation is revoked and a new one created. This maintains a clean audit trail of planning decisions.
-> RefUID: AreaRegistration UID. Area linkage is carried by the EAS-native `refUID` slot.
+#### 3.1.1 activityType reservation
 
-> **Temporal Anchoring**
->
-> This is the most critical attestation to timestamp on-chain. The on-chain timestamp of the ScheduledIntervention proves that planning preceded execution. A PublishedIntervention whose `executionDate` predates its schedule's on-chain timestamp is provably backfilled. See [Section 4.2](#42-ordering-rules).
+The `activityType` byte is partitioned into three ranges so third-party extensions can add new types without colliding with the protocol's core vocabulary:
 
-### 3.2 GardenerCheckin
-
-Created by the gardener (or their device) when arriving at the work site. Establishes presence and start time. **One per crew member per intervention.** Each crew member independently signs their own checkin; all of them reference the same ScheduledIntervention via the EAS `refUID` slot.
-
-> **OFF-CHAIN** · Revocable: No · **Timestamped on-chain: Required**
-
-| Field | Type | Description |
+| Range | Meaning | Verifier behavior on unknown values |
 |---|---|---|
-| **latitude** | `int32` | GPS latitude at check-in (microdegrees) |
-| **longitude** | `int32` | GPS longitude at check-in (microdegrees) |
-| **photoHash** | `bytes32` | IPFS CID of arrival photo (visual proof of presence and initial site condition) |
+| `0` | Unspecified / reserved | MUST reject — not a valid signed activity |
+| `1–5` | Core protocol types (`schedule`, `checkin`, `checkout`, `report`, `healthcheck`) | MUST understand all five |
+| `6–127` | Reserved for future protocol versions | MUST reject until this document allocates the value |
+| `128–255` | Application-specific types | MUST ignore (not reject) — unknown application types do not invalidate a bundle, but readers also do not count them as protocol-recognized activities |
 
-> **Time**
+The current core assignments are:
+
+| Value | Name |
+|---|---|
+| `1` | `schedule` |
+| `2` | `checkin` |
+| `3` | `checkout` |
+| `4` | `report` |
+| `5` | `healthcheck` |
+
+Applications that need additional activity types (pre-inspection, material delivery, safety audit, etc.) SHOULD allocate a value in the `128–255` range and document it in their own application layer. The protocol does not maintain a central registry — signer identity is the disambiguator when two applications coincidentally use the same application-range value.
+
+> **Why a single schema**
 >
-> The moment of check-in is carried by the EIP-712 envelope's `message.time` field and anchored on-chain via `EAS.timestamp(uid)`. No separate schema field restates it. Callers that sign at the moment of check-in can let the signing library default `message.time` to wall-clock; callers that sign server-side on later upload MUST pass the device-recorded moment as the envelope `time` so the claim reflects when the work happened, not when it was uploaded.
+> Activities carry the same three protocol guarantees regardless of type — who signed, what they signed, when they were anchored. Collapsing the five lifecycle events into one schema means new Activity types can be introduced (pre-inspection, material delivery, safety audit, …) by adding a payload shape in the SDK layer and reserving a new `activityType` value. No on-chain schema redeploy is required.
 
-> **Attestation Metadata**
+> **Payload envelope, not payload field**
 >
-> Recipient: ZERO_ADDRESS (self-attestation of presence).
-> Attester: Gardener wallet.
-> Revocable: No. A check-in is a factual record of arrival.
-> RefUID: ScheduledIntervention UID. The intervention linkage is carried by the EAS-native `refUID` slot.
+> The opaque `payloadHash` keeps the on-chain-timestamped signed bytes compact (33 bytes) while preserving full cryptographic integrity over the payload's content. Readers fetch the payload from the evidence bundle (or the organization's attestation store for in-flight activities) and confirm `keccak256(canonicalJSON(payload)) === payloadHash` — see [§5.4](#54-verification-flow) protocol-level check (5). Divergent canonicalization breaks this check, so the hashing rule is normative (§9.8).
 
-> **Verification**
+> **Attestation Metadata (per type)**
 >
-> GPS proximity to the registered area coordinates can be verified programmatically.
+> | type | Attester | Recipient | RefUID | Revoked in practice |
+> |---|---|---|---|---|
+> | `schedule` | Organization wallet | Crew lead wallet (or `ZERO_ADDRESS` if unassigned) | `keccak256(interventionId)` — see §9.7 | Yes — cancel/reschedule flow |
+> | `checkin` | Gardener wallet | ZERO_ADDRESS | `keccak256(interventionId)` | No |
+> | `checkout` | Gardener wallet | ZERO_ADDRESS | `keccak256(interventionId)` | No |
+> | `report` | Gardener wallet | ZERO_ADDRESS | `keccak256(interventionId)` | No |
+> | `healthcheck` | Any wallet (org / gardener / citizen) | ZERO_ADDRESS | AreaRegistration UID | No |
+>
+> The Activity schema itself is registered `revocable: true` because `schedule` Activities need revocation for the cancel/reschedule flow. `checkin`, `checkout`, `report`, and `healthcheck` are never revoked in practice — a verifier policy MAY reject bundles containing revoked entries of those types.
 
-### 3.3 GardenerCheckout
+> **Intervention scope hash**
+>
+> Every lifecycle Activity (schedule, checkin, checkout, report) carries `refUID = keccak256(interventionId)`. The `keccak256` over the interventionId string — not over a prior attestation's UID — is computable from the human-readable interventionId alone, so crew devices don't need the schedule Activity's UID to sign their own checkins. Defined in [§9.7](#97-intervention-scope-hash). A single EAS GraphQL query on that refUID returns every lifecycle Activity for the intervention.
+>
+> `healthcheck` Activities are intervention-independent and use the AreaRegistration UID directly as their refUID.
 
-Created when the gardener finishes work at the site. Closes the work session. **One per crew member per intervention**, each paired to the same crew member's GardenerCheckin via the EAS `refUID` slot.
+### 3.2 Activity Payloads
 
-> **OFF-CHAIN** · Revocable: No · **Timestamped on-chain: Required**
+Each Activity type defines its own payload shape. Payloads are application-layer JSON — the protocol does not interpret them beyond the `payloadHash` integrity check. The SDK provides typed encoders/decoders per type so callers don't hand-assemble payloads.
 
-| Field | Type | Description |
+Unknown keys in a payload MUST be ignored by verifiers (extensibility). Reserved keys (those the protocol defines below) MUST carry the specified shape.
+
+#### 3.2.1 `schedule` payload
+
+Emitted when the organization plans a new intervention. One per job, regardless of crew size. The schedule Activity's on-chain timestamp is the earliest temporal anchor for the intervention lifecycle.
+
+```json
+{
+  "interventionId": "INT-2026-0187",
+  "areaUID": "0xabc…def",
+  "interventionType": 1,
+  "scheduledDate": 1709251200,
+  "estimatedMinutes": 180,
+  "description": "Trim hedges, mulch beds, clear leaves on north side.",
+  "commissionRef": "0x0000…0000",
+  "crewSize": 2
+}
+```
+
+| Key | Type | Description |
 |---|---|---|
-| **actualMinutes** | `uint16` | Actual time spent on site in minutes |
+| `interventionId` | string | Internal ID — MUST match the `interventionId` on the eventual Intervention attestation. Also the input to the refUID hash (§9.7) |
+| `areaUID` | string (bytes32 hex) | AreaRegistration UID — carries the area linkage at the payload layer since the refUID slot holds the intervention scope hash |
+| `interventionType` | number (uint8) | Same enum as Intervention (0–5) |
+| `scheduledDate` | number (Unix seconds) | Planned execution date |
+| `estimatedMinutes` | number (uint16) | Expected duration. `0` = unspecified |
+| `description` | string | Free-text description of required work |
+| `commissionRef` | string (bytes32 hex) | Hash of commissioning entity (`hashIdentifier` from §9.1). `ZERO_BYTES32` = volunteer / unsponsored |
+| `crewSize` | number (uint8) | Total gardeners assigned. `1` for solo jobs |
 
-> **Time**
->
-> The moment of checkout is carried by the EIP-712 envelope's `message.time` field and anchored on-chain via `EAS.timestamp(uid)`. No separate schema field restates it. Same sign-time-vs-upload-time caveat as GardenerCheckin (§3.2): pass the device-recorded moment when signing server-side on later upload.
+#### 3.2.2 `checkin` payload
 
-> **Attestation Metadata**
->
-> Recipient: ZERO_ADDRESS.
-> Attester: Gardener wallet.
-> Revocable: No. A checkout is a factual record of session closure.
-> RefUID: GardenerCheckin UID. The checkin linkage is carried by the EAS-native `refUID` slot.
+Signed by the gardener (or their device) when arriving at the work site. **One per crew member per intervention.**
 
-### 3.4 GardenerReport
+```json
+{
+  "latitude": 41890200,
+  "longitude": 12492200,
+  "photoCID": "ipfs://Qm…/arrival.jpg"
+}
+```
 
-The gardener's own account of the work performed. This is the primary evidence document and the foundation of the gardener's verifiable work history. **One per crew member per intervention.** For crew jobs, each crew member writes their own report — the set of reports is the cryptographic roster of who actually worked.
-
-> **OFF-CHAIN** · Revocable: No · **Timestamped on-chain: Required**
-
-| Field | Type | Description |
+| Key | Type | Description |
 |---|---|---|
-| **checkoutUID** | `bytes32` | Off-chain UID of the GardenerCheckout attestation. Carried as a schema field because the EAS `refUID` slot holds the ScheduledIntervention parent linkage. |
-| **tasksCompleted** | `string` | Comma-separated list of completed task codes (e.g. "PRUNE,CLEAN,WATER,PLANT") |
-| **taskCount** | `uint8` | Number of discrete tasks completed |
-| **photosHash** | `bytes32` | IPFS CID of photo bundle (after-work documentation) |
-| **notes** | `string` | Free-text field for gardener observations, issues encountered, materials used |
+| `latitude` | number (int32 microdegrees) | GPS latitude at check-in |
+| `longitude` | number (int32 microdegrees) | GPS longitude at check-in |
+| `photoCID` | string | IPFS CID of arrival photo (visual proof of presence) |
 
-> **Attestation Metadata**
+> **Time**: carried by the EIP-712 envelope's `message.time` field, anchored on-chain via `EAS.timestamp(uid)`. No separate payload field restates it. Callers signing at the moment of check-in may let the signing library default `message.time` to wall-clock; callers signing server-side on later upload MUST pass the device-recorded moment as the envelope `time`.
 >
-> Recipient: ZERO_ADDRESS.
-> Attester: Gardener wallet. The report is the gardener's signed testimony; the organization's sign-off happens when it publishes the intervention on-chain.
-> Revocable: No. A submitted report is a permanent record.
-> RefUID: ScheduledIntervention UID. The primary intervention linkage is carried by the EAS-native `refUID` slot; the secondary linkage to the crew member's checkout lives in the `checkoutUID` data field.
+> **Verification**: GPS proximity to the registered area coordinates can be verified programmatically.
 
-### 3.5 Healthcheck
+#### 3.2.3 `checkout` payload
 
-A periodic condition assessment of an area. Independent of any specific intervention — it is raw signal about the area's current state at a point in time. Healthchecks accumulate into an area-scoped timeline that consumers aggregate to compute trend, derive pre/post-intervention deltas, or flag areas needing attention.
+Signed by the gardener when finishing work. Closes the work session. **One per crew member per intervention.** Paired to the same crew member's `checkin` via shared `refUID` (intervention scope hash) plus matching signer.
 
-> **OFF-CHAIN** · Revocable: No · **Timestamped on-chain: Required**
+```json
+{ "actualMinutes": 135 }
+```
 
-| Field | Type | Description |
+| Key | Type | Description |
 |---|---|---|
-| **healthScore** | `uint8` | Condition score (1–10 scale, 10 is best) |
-| **photoHash** | `bytes32` | IPFS CID of condition documentation photo (`ZERO_BYTES32` if none) |
-| **notes** | `string` | Free-text observations (empty string if none) |
-| **metadata** | `string` | App-specific JSON escape hatch (empty string for none). See below. |
+| `actualMinutes` | number (uint16) | Actual time spent on site |
 
-> **metadata field**
+> **Time**: same rules as `checkin` — EIP-712 envelope `time`, anchored on-chain.
 >
-> A free-form JSON string for app-specific extras that the protocol does not interpret (weather, assessor wallet annotations, seasonal context, etc.). Consumers that don't recognize the shape ignore it. Empty string means no metadata. The field travels inside the attestation, so there is no separate file to host, fetch, or pin. SHOULD remain under the 512-byte budget defined in [§9.6](#96-inline-metadata-vs-hashed-payloads); heavier payloads belong on a dedicated `*Hash` field of a future schema version.
+> **Pairing**: a verifier pairs this checkout to the same signer's checkin within the same interventionId scope. No explicit `checkinUID` field — the (signer, intervention scope, type) triple is the pairing key.
 
-> **Attestation Metadata**
->
-> Recipient: ZERO_ADDRESS.
-> Attester: Any wallet — organization, gardener, or citizen. Role is inferred **off-chain** from the issuer wallet: match against the AreaRegistration attester (organization) or the app-maintained gardener roster, otherwise treat as citizen signal.
-> Revocable: No. A health assessment is a factual measurement record at a given time.
-> RefUID: AreaRegistration UID. Area linkage is carried by the EAS-native `refUID` slot — healthchecks are indexed by area in the EAS graph natively.
+#### 3.2.4 `report` payload
 
-> **Area-scoped, intervention-independent**
->
-> Healthchecks reference the area, not a specific intervention. An area's timeline contains both Healthcheck and PublishedIntervention streams — readers merge them by timestamp to reconstruct condition changes around each intervention.
+The gardener's signed account of the work performed. Primary evidence document and foundation of the gardener's verifiable work history. **One per crew member per intervention.** For crew jobs, each crew member writes their own report — the set of reports is the cryptographic roster of who actually worked.
 
-> **Trust & aggregation**
+```json
+{
+  "tasksCompleted": ["PRUNE", "CLEAN", "WATER", "PLANT"],
+  "photosCID": "ipfs://Qm…/work-evidence/",
+  "notes": "Bed 3 has drainage issue, flagged for follow-up."
+}
+```
+
+| Key | Type | Description |
+|---|---|---|
+| `tasksCompleted` | string[] | Completed task codes (e.g. `"PRUNE"`, `"CLEAN"`, `"WATER"`, `"PLANT"`). Empty array if none |
+| `photosCID` | string | IPFS CID of after-work photo bundle. Use §9.2 hashPhotoBundle manifest when multiple files. Empty string if none |
+| `notes` | string | Free-text field for observations, issues, materials used. Empty string if none |
+
+> **Pairing**: a verifier pairs this report to the same signer's checkout within the same interventionId scope. No explicit `checkoutUID` field.
+
+#### 3.2.5 `healthcheck` payload
+
+A periodic condition assessment of an area. Independent of any specific intervention — raw signal about the area's state at a point in time. Healthchecks accumulate into an area-scoped timeline that consumers aggregate to compute trend, derive pre/post-intervention deltas, or flag areas needing attention.
+
+```json
+{
+  "healthScore": 8,
+  "photoCID": "ipfs://Qm…/condition.jpg",
+  "notes": "Hedge trimmed, beds mulched.",
+  "metadata": { "v": 1, "weather": "sunny" }
+}
+```
+
+| Key | Type | Description |
+|---|---|---|
+| `healthScore` | number (uint8) | Condition score (1–10 scale, 10 is best) |
+| `photoCID` | string | IPFS CID of condition documentation photo. Empty string if none |
+| `notes` | string | Free-text observations. Empty string if none |
+| `metadata` | object | App-specific extras (weather, assessor annotations, seasonal context). Omitted or `null` for none. SHOULD carry a `v` key for shape versioning; unknown shapes MUST be ignored |
+
+> **Area-scoped, intervention-independent**: healthcheck Activities use AreaRegistration UID as their refUID. An area's timeline contains both healthcheck Activities and Interventions — readers merge them by on-chain timestamp to reconstruct condition changes around each intervention.
 >
-> A single Healthcheck is raw signal. Aggregation, weighting by issuer role, and thresholding ("does this area need an intervention?") are **verifier policy** decisions — see [§7.4](#74-example-policy--healthcheck-weighting) for example policies. The SDK only surfaces the raw timeline via `getAreaHealthchecks(areaUID)`; composing it into a trust judgement is the reader's job.
+> **Attester**: any wallet — organization, gardener, or citizen. Role is inferred **off-chain** from the signer wallet: match against the AreaRegistration attester (organization) or the app-maintained gardener roster, otherwise treat as citizen signal.
+>
+> **Trust & aggregation**: a single healthcheck is raw signal. Aggregation, weighting by issuer role, and thresholding ("does this area need an intervention?") are **verifier policy** decisions — see [§7.4](#74-example-policy--healthcheck-weighting).
 
 ---
 
@@ -302,7 +346,7 @@ These record an off-chain attestation UID alongside the current **block timestam
 
 ### 4.2 Ordering Rules
 
-Every off-chain attestation in the intervention lifecycle MUST be timestamped on-chain immediately after creation. For a crew of size N, each crew member `i ∈ {1..N}` independently produces `(checkin_i, checkout_i, report_i)`. The on-chain timestamps MUST satisfy:
+Every lifecycle Activity MUST be timestamped on-chain immediately after creation. For a crew of size N, each crew member `i ∈ {1..N}` independently produces `(checkin_i, checkout_i, report_i)`. The on-chain timestamps MUST satisfy:
 
 ```
 T_schedule < min(T_checkin[*])
@@ -312,43 +356,43 @@ max(T_report[*]) < T_publication
 
 Put plainly: scheduling precedes every crew member's arrival, each crew member checks out after checking in and reports after checking out, and publication happens after every crew member's report is recorded. There is no ordering constraint *between* crew members — Alice can finish her shift before Bob even arrives.
 
-The claimed `executionDate` in PublishedIntervention MUST fall within the bracket:
+The claimed `executionDate` in Intervention MUST fall within the bracket:
 
 ```
 T_schedule ≤ executionDate ≤ T_publication
 ```
 
-Healthchecks are an independent periodic stream outside the intervention lifecycle. Their on-chain timestamps are the authoritative time anchor for aggregation; no bracket rule ties them to scheduled/checkin/checkout/report timestamps.
+`healthcheck` Activities are an independent periodic stream outside the intervention lifecycle. Their on-chain timestamps are the authoritative time anchor for aggregation; no bracket rule ties them to schedule/checkin/checkout/report timestamps.
 
-A PublishedIntervention whose `executionDate` predates `T_schedule` is provably backfilled.
+An Intervention whose `executionDate` predates `T_schedule` is provably backfilled.
 
 ### 4.3 Timestamping Protocol
 
-Each off-chain attestation is timestamped individually via `EAS.timestamp(uid)`. Steps that are logically simultaneous (e.g., a single gardener's checkout and report) MAY be batched via `multiTimestamp()`. Steps that must demonstrate elapsed time (e.g., checkin and checkout for the same gardener) MUST NOT be batched. All N crew members' checkins across a single crew job MAY be batched together if they genuinely arrive at the same moment, since the relative ordering between crew members is unconstrained.
+Each Activity is timestamped individually via `EAS.timestamp(uid)`. Steps that are logically simultaneous (e.g., a single gardener's checkout and report) MAY be batched via `multiTimestamp()`. Steps that must demonstrate elapsed time (e.g., checkin and checkout for the same gardener) MUST NOT be batched. All N crew members' checkins across a single crew job MAY be batched together if they genuinely arrive at the same moment, since the relative ordering between crew members is unconstrained.
 
-Total cost per intervention lifecycle: `1 + 3N` timestamps (scheduled + per-crew-member checkin/checkout/report). A solo job is `4` timestamps at **~$0.0004**. A 4-person crew is `13` timestamps at **~$0.0013**. At 1,000 interventions/month with an average crew of 2, this is well under $1/month. Healthchecks are timestamped independently outside the intervention lifecycle.
+Total cost per intervention lifecycle: `1 + 3N` timestamps (schedule + per-crew-member checkin/checkout/report). A solo job is `4` timestamps at **~$0.0004**. A 4-person crew is `13` timestamps at **~$0.0013**. At 1,000 interventions/month with an average crew of 2, this is well under $1/month. `healthcheck` Activities are timestamped independently outside the intervention lifecycle.
 
 ### 4.4 MVP Minimum
 
-At minimum, **timestamp the ScheduledIntervention on-chain**. Combined with the inherent block timestamp of the on-chain PublishedIntervention, this brackets the intervention: `T_schedule < work < T_publication`. This alone defeats the bulk-backfill attack. The intermediate timestamps (per-crew-member checkin/checkout/report) SHOULD be implemented from launch given the negligible cost.
+At minimum, **timestamp the schedule Activity on-chain**. Combined with the inherent block timestamp of the on-chain Intervention, this brackets the intervention: `T_schedule < work < T_publication`. This alone defeats the bulk-backfill attack. The intermediate timestamps (per-crew-member checkin/checkout/report) SHOULD be implemented from launch given the negligible cost.
 
 ---
 
 ## 5. Evidence Bundle Structure
 
-The evidenceBundleHash field in PublishedIntervention points to a JSON document on IPFS that links all off-chain attestations for a given intervention. This is the bridge between the off-chain operational layer and the on-chain settlement layer.
+The `evidenceBundleHash` field on Intervention points to a JSON document on IPFS that collects every lifecycle Activity for the intervention. This is the bridge between the off-chain operational layer and the on-chain settlement layer.
 
-The `scheduled` entry is always single (one per job). The `checkins`, `checkouts`, and `reports` entries are **always arrays** — length 1 for solo jobs, length N for a crew of N. Consumers treat solo and crew jobs uniformly by iterating the arrays; there is no separate code path.
+The bundle is a **flat array of Activities** sorted by `onchainTimestamp`. Solo and crew jobs use the same shape — verifiers filter by `type` and group by signer to reconstruct per-gardener chains.
 
 ### 5.1 Self-Verifying Bundles
 
-Each bundle entry embeds the **full EIP-712 signed attestation** (`uid`, `message`, `signature`, `signer`) verbatim. A reader holding the bundle file can therefore:
+Each bundle entry embeds the **full EIP-712 signed attestation** (`uid`, `message`, `signature`, `signer`) verbatim, plus the plaintext payload that hashes to the `payloadHash` committed in the signed data. A reader holding the bundle file can therefore:
 
 - Recover the signer from every signature locally (no network).
-- Re-verify every `refUID` wiring decision locally.
-- Verify the bundle's stated `onchainTimestamp` against the chain with a single `EAS.getTimestamp(uid)` call per entry.
+- Confirm every payload's content against its signed `payloadHash` locally.
+- Verify each entry's stated `onchainTimestamp` against the chain with a single `EAS.getTimestamp(uid)` call per entry.
 
-The bundle is the verifiable unit. No separate fetch from an off-chain attestation store (e.g. easscan) is required for signature or parent-linkage checks.
+The bundle is the verifiable unit. No separate fetch from an off-chain attestation store (e.g. easscan) is required for signature, payload, or parent-linkage checks.
 
 ### 5.2 Bundle JSON
 
@@ -358,81 +402,78 @@ The bundle is the verifiable unit. No separate fetch from an off-chain attestati
 {
   "interventionId": "INT-2026-0187",
   "areaUID": "0xabc…def",
-  "attestations": {
-    "scheduled": {
+  "activities": [
+    {
+      "type": "schedule",
       "uid": "0x123…789",
+      "signer": "0xOrg…",
       "claimedTimestamp": 1709251200,
       "onchainTimestamp": 1709251215,
+      "payload": {
+        "interventionId": "INT-2026-0187",
+        "areaUID": "0xabc…def",
+        "interventionType": 1,
+        "scheduledDate": 1709251200,
+        "estimatedMinutes": 180,
+        "description": "Trim hedges, mulch beds, clear leaves on north side.",
+        "commissionRef": "0x0000…0000",
+        "crewSize": 2
+      },
       "signedAttestation": {
         "version": 1,
         "uid": "0x123…789",
         "signer": "0xOrg…",
         "message": {
-          "schema": "0xSchedSchemaUID",
+          "schema": "0xActivitySchemaUID",
           "recipient": "0xCrewLead…",
           "time": "1709251200",
           "expirationTime": "0",
           "revocable": true,
-          "refUID": "0xabc…def",
-          "data": "0x…encoded…"
+          "refUID": "0xInterventionScopeHash…",
+          "data": "0x…encoded(uint8,bytes32)…"
         },
         "signature": { "r": "0x…", "s": "0x…", "v": 27 }
       }
     },
-    "checkins": [
-      {
-        "uid": "0x456…012",
-        "attester": "0xAlice…",
-        "claimedTimestamp": 1709337600,
-        "onchainTimestamp": 1709337618,
-        "signedAttestation": {
-          "version": 1,
-          "uid": "0x456…012",
-          "signer": "0xAlice…",
-          "message": {
-            "schema": "0xCheckinSchemaUID",
-            "recipient": "0x0000…0000",
-            "time": "1709337600",
-            "expirationTime": "0",
-            "revocable": false,
-            "refUID": "0x123…789",
-            "data": "0x…encoded…"
-          },
-          "signature": { "r": "0x…", "s": "0x…", "v": 27 }
-        }
+    {
+      "type": "checkin",
+      "uid": "0x456…012",
+      "signer": "0xAlice…",
+      "claimedTimestamp": 1709337600,
+      "onchainTimestamp": 1709337618,
+      "payload": {
+        "latitude": 41890200,
+        "longitude": 12492200,
+        "photoCID": "ipfs://Qm…/alice-arrival.jpg"
       },
-      { "uid": "0x457…013", "attester": "0xBob…",   "signedAttestation": { "…": "…" }, "claimedTimestamp": 1709337650, "onchainTimestamp": 1709337670 }
-    ],
-    "checkouts": [
-      { "uid": "0x789…345", "attester": "0xAlice…", "signedAttestation": { "…": "…" }, "claimedTimestamp": 1709344800, "onchainTimestamp": 1709344812 },
-      { "uid": "0x790…346", "attester": "0xBob…",   "signedAttestation": { "…": "…" }, "claimedTimestamp": 1709344900, "onchainTimestamp": 1709344920 }
-    ],
-    "reports": [
-      { "uid": "0xdef…901", "attester": "0xAlice…", "signedAttestation": { "…": "…" }, "claimedTimestamp": 1709345100, "onchainTimestamp": 1709345120 },
-      { "uid": "0xdf0…902", "attester": "0xBob…",   "signedAttestation": { "…": "…" }, "claimedTimestamp": 1709345200, "onchainTimestamp": 1709345220 }
-    ]
-  },
-  "photos": {
-    "checkinPhotos": ["ipfs://Qm…/alice-arrival.jpg", "ipfs://Qm…/bob-arrival.jpg"],
-    "reportPhotos": "ipfs://Qm…/work-evidence/",
-    "afterPhotos": "ipfs://Qm…/completion/"
-  },
+      "signedAttestation": { "…": "…" }
+    },
+    { "type": "checkin",  "uid": "0x457…013", "signer": "0xBob…",   "payload": { "…": "…" }, "signedAttestation": { "…": "…" }, "claimedTimestamp": 1709337650, "onchainTimestamp": 1709337670 },
+    { "type": "checkout", "uid": "0x789…345", "signer": "0xAlice…", "payload": { "actualMinutes": 135 }, "signedAttestation": { "…": "…" }, "claimedTimestamp": 1709344800, "onchainTimestamp": 1709344812 },
+    { "type": "checkout", "uid": "0x790…346", "signer": "0xBob…",   "payload": { "actualMinutes": 140 }, "signedAttestation": { "…": "…" }, "claimedTimestamp": 1709344900, "onchainTimestamp": 1709344920 },
+    { "type": "report",   "uid": "0xdef…901", "signer": "0xAlice…", "payload": { "…": "…" }, "signedAttestation": { "…": "…" }, "claimedTimestamp": 1709345100, "onchainTimestamp": 1709345120 },
+    { "type": "report",   "uid": "0xdf0…902", "signer": "0xBob…",   "payload": { "…": "…" }, "signedAttestation": { "…": "…" }, "claimedTimestamp": 1709345200, "onchainTimestamp": 1709345220 }
+  ],
   "bundleVersion": "0.1.0"
 }
 ```
 
 > **Bundle Fields**
 >
+> - `type`: Activity discriminator — one of `schedule`, `checkin`, `checkout`, `report`. (`healthcheck` Activities are area-scoped and do NOT appear in intervention bundles.) MUST match the `activityType` decoded from `signedAttestation.message.data`.
+> - `signer`: Address of the wallet that signed the Activity. MUST match the signer recovered from `signedAttestation.signature`; the signature check (§5.4 protocol-level step (4)) enforces this.
 > - `claimedTimestamp`: Self-reported Unix seconds sourced from the EIP-712 envelope's `signedAttestation.message.time` — what the attester claims as the moment of the event. Device time or application time, set when signing.
 > - `onchainTimestamp`: Block timestamp from `EAS.timestamp(uid)`. Authoritative, independently verifiable time anchor.
-> - `attester` (per-gardener entries): Top-level identity claim recorded by the publisher. MUST match the signer recovered from `signedAttestation.signature`; the signature check (§5.4 protocol-level step (4)) enforces this.
-> - `signedAttestation`: The full EIP-712 signed attestation, verbatim. Structure is the object EAS-compatible libraries return from their offchain signing primitive — `{version, uid, signer, message{schema, recipient, time, expirationTime, revocable, refUID, data, …}, signature{r, s, v}}`. Some implementations populate `signer` at sign time; others omit it and expect the reader to recover it from `signature`. A complete bundle MUST include `signer` so that readers can cross-check without re-running recovery just to learn the identity.
+> - `payload`: Plaintext per-type payload object (§3.2). MUST hash via §9.8 canonicalization to the `payloadHash` decoded from `signedAttestation.message.data`.
+> - `signedAttestation`: The full EIP-712 signed attestation, verbatim. Structure is the object EAS-compatible libraries return from their offchain signing primitive — `{version, uid, signer, message{schema, recipient, time, expirationTime, revocable, refUID, data, …}, signature{r, s, v}}`. A complete bundle MUST include the top-level `signer` inside this object so readers can cross-check without re-running signature recovery just to learn identity.
+>
+> Activities MUST be sorted ascending by `onchainTimestamp`. Ordering ties MAY exist (same-block timestamps) and do NOT violate the schema — they are handled by the verifier's temporal-strictness policy (§5.4).
 >
 > The `onchainTimestamp` fields are technically redundant — readers can rebuild them by querying `EAS.getTimestamp(uid)`. Including them in the bundle enables offline inspection and makes drift between bundle and chain trivially detectable.
 
-> **Attester vs signer**
+> **Payload vs payloadHash**
 >
-> The bundle carries two identity fields per gardener entry: a top-level `attester` and an embedded `signedAttestation.signer`. The **authoritative** identity is the signer recovered from the EIP-712 signature. The top-level `attester` is a convenience claim the publisher wrote when assembling the bundle; a sig-verify policy (see §5.4) rejects the bundle if the two disagree. Verifiers that skip sig verification take the top-level `attester` at face value.
+> The protocol's cryptographic anchor for payload content is the `payloadHash` decoded from the signed ABI data — that value is signed, the payload object itself is not. A reader confirms integrity by canonicalizing the bundle's `payload` (§9.8) and comparing the resulting keccak256 to the decoded `payloadHash`. Implementations MUST use the §9.8 rules; divergent canonicalization produces hash mismatches and invalidates the bundle.
 
 ### 5.3 JSON Serialization — BigInt fields
 
@@ -444,7 +485,7 @@ The `signedAttestation.message.time`, `signedAttestation.message.expirationTime`
 
 Verifiers re-running EIP-712 typed-data hashing MUST parse these back to integers before recomputing the digest; otherwise the recomputed hash will not match the signature.
 
-Integer fields outside `signedAttestation.message` (`claimedTimestamp`, `onchainTimestamp`) are serialized as JSON numbers because they always fit in a 53-bit mantissa for any plausible Unix timestamp.
+Integer fields outside `signedAttestation.message` (`claimedTimestamp`, `onchainTimestamp`, payload-level numbers like `actualMinutes`) are serialized as JSON numbers because they always fit in a 53-bit mantissa for any plausible Unix timestamp or Activity payload value.
 
 > **Bundle Version**
 >
@@ -456,49 +497,59 @@ Verification splits into two tiers. The first tier is **protocol-level** — the
 
 **Protocol-level (non-negotiable — skip any of these and you no longer have a valid OpenGarden attestation):**
 
-(1) Read the `evidenceBundleHash` from the on-chain PublishedIntervention attestation.
+(1) Read the `evidenceBundleHash` from the on-chain Intervention attestation.
 (2) Fetch the bundle JSON from IPFS (or the organization's storage) and confirm its content hashes to the on-chain `evidenceBundleHash`.
 (3) Verify the `bundleVersion` is understood (reject unknown versions).
-(4) For each bundle entry: recover the EIP-712 signer from `signedAttestation.signature` and `signedAttestation.message`; confirm it matches both `signedAttestation.signer` and the top-level `attester` (when present). This is a **local** operation — the bundle carries the full signed payload, so no network query is required. Remember to parse string-encoded bigint fields (§5.3) back to integers before recomputing the typed-data digest.
-(5) For each bundle entry: query `EAS.getTimestamp(uid)` on chain and confirm it matches the `onchainTimestamp` recorded in the bundle.
+(4) For each bundle entry: recover the EIP-712 signer from `signedAttestation.signature` and `signedAttestation.message`; confirm it matches both `signedAttestation.signer` and the top-level `signer`. This is a **local** operation — the bundle carries the full signed payload, so no network query is required. Remember to parse string-encoded bigint fields (§5.3) back to integers before recomputing the typed-data digest.
+(5) For each bundle entry: canonicalize `payload` per §9.8 and confirm `keccak256(canonicalJSON(payload))` matches the `payloadHash` decoded from `signedAttestation.message.data`. Also confirm the decoded `activityType` matches the bundle entry's `type`.
+(6) For each bundle entry: query `EAS.getTimestamp(uid)` on chain and confirm it matches the `onchainTimestamp` recorded in the bundle.
 
 **Policy-level (verifier's call — pick the subset that matches your trust model):**
 
 - **Attester-role filtering.** Resolve the signer of each bundle entry against your roster of known organizations, gardener wallets, etc. Reject, weight, or flag based on role — see §7.3 and §7.4 for example policies.
-- **Crew completeness.** Cross-reference `bundle.attestations.checkins.length` against the ScheduledIntervention's `crewSize` field. Decide whether a missing crew member invalidates the intervention.
-- **Crew consistency.** Confirm each crew member's `(checkin, checkout, report)` triple is signed by the same wallet. Decide whether mixing signers across a single crew member's chain invalidates the evidence.
-- **Crew distinctness.** Confirm every crew member's signer is distinct from every other. Decide whether multiple attestations from the same wallet collapse into one crew member.
-- **RefUID wiring.** Confirm each entry's `signedAttestation.message.refUID` points at the expected parent (area UID for the scheduled attestation; scheduled UID for checkins and reports; the same member's checkin UID for checkouts). Decide whether a mis-wired bundle invalidates the evidence or just earns a warning.
-- **Temporal ordering strictness.** Confirm the ordering rules from §4.2 hold on the on-chain timestamps. Decide whether same-block timestamps (`<=` vs `<`) are acceptable.
+- **Schedule uniqueness.** Exactly one entry with `type === "schedule"` appears in the bundle. (Multiple schedule Activities may exist on chain — e.g. after a reschedule — but the bundle commits to the authoritative one.)
+- **Intervention scope consistency.** Every entry's `signedAttestation.message.refUID` equals `keccak256(intervention.interventionId)` (see §9.7). Decide whether a mis-scoped entry invalidates the bundle.
+- **Crew completeness.** Count entries with `type === "checkin"` and compare against the schedule entry's `payload.crewSize`. Decide whether a missing crew member invalidates the intervention.
+- **Crew consistency.** Filter entries whose `type` is one of `checkin`, `checkout`, `report`, then group by `signer`. Each group is expected to contain exactly one entry of each of the three types. Decide whether incomplete groups invalidate the evidence. (Filtering by type — not by "not the schedule signer" — is important: a small organization may have the same wallet sign the schedule AND participate as a crew member; that wallet's crew chain is still valid crew evidence.)
+- **Crew distinctness.** Confirm every crew signer is distinct from every other. Decide whether multiple activity chains from the same wallet collapse into one crew member.
+- **Schedule area linkage.** Confirm `bundle.activities[schedule].payload.areaUID` equals the Intervention's on-chain `refUID` (Area). A mismatch means the bundle schedule belongs to a different area than the on-chain record claims.
+- **Temporal ordering strictness.** Confirm the ordering rules from §4.2 hold on the on-chain timestamps, per-signer. Decide whether same-block timestamps (`<=` vs `<`) are acceptable.
 
-**Individual gardener participation.** To prove a specific gardener contributed to an intervention, find the entry in `bundle.attestations.reports` whose signer matches the gardener's wallet and verify its EIP-712 signature (step (4)). This is the canonical proof for milestone claims and CV-style gardener credentials.
->
+**Individual gardener participation.** To prove a specific gardener contributed to an intervention, find the entry with `type === "report"` whose signer matches the gardener's wallet and verify its EIP-712 signature (step (4)). This is the canonical proof for milestone claims and CV-style gardener credentials.
+
 > The protocol-level tier gives you full content and temporal integrity without putting operational data on-chain. The policy-level tier is where consumers differentiate — same data, different trust envelopes.
 
 ---
 
 ## 6. Attestation Reference Graph
 
-EAS attestations can reference each other via the refUID field, creating a directed graph. The following describes the reference relationships in this system.
+EAS attestations can reference each other via the `refUID` field, creating a directed graph. Lifecycle Activities additionally anchor to the **intervention scope hash** (`keccak256(interventionId)` — see §9.7), a deterministic bytes32 value that is not itself an attestation UID but serves as the shared anchor for every Activity belonging to a given intervention.
 
 | From | | To | Relationship |
 |---|---|---|---|
-| PublishedIntervention | → | AreaRegistration | refUID (EAS native) |
-| PublishedIntervention | → | Evidence Bundle | evidenceBundleHash |
-| ScheduledIntervention | → | AreaRegistration | refUID (EAS native) |
-| GardenerCheckin | → | ScheduledIntervention | refUID (EAS native) |
-| GardenerCheckout | → | GardenerCheckin | refUID (EAS native) |
-| GardenerReport | → | ScheduledIntervention | refUID (EAS native) |
-| GardenerReport | → | GardenerCheckout | checkoutUID field (secondary ref) |
-| Healthcheck | → | AreaRegistration | refUID (EAS native) |
-| GardenerMilestone | → | (standalone) | evidenceRoot field |
+| Intervention | → | AreaRegistration | `refUID` (EAS native) |
+| Intervention | → | Evidence Bundle | `evidenceBundleHash` (data field) |
+| Activity (type=`schedule`) | → | Intervention Scope (§9.7) | `refUID` (EAS native, = `keccak256(interventionId)`) |
+| Activity (type=`checkin`) | → | Intervention Scope (§9.7) | `refUID` (EAS native, = `keccak256(interventionId)`) |
+| Activity (type=`checkout`) | → | Intervention Scope (§9.7) | `refUID` (EAS native, = `keccak256(interventionId)`) |
+| Activity (type=`report`) | → | Intervention Scope (§9.7) | `refUID` (EAS native, = `keccak256(interventionId)`) |
+| Activity (type=`healthcheck`) | → | AreaRegistration | `refUID` (EAS native) |
+| GardenerMilestone | → | (standalone) | `evidenceRoot` field (Merkle root of Intervention UIDs) |
+
+> **Why the scope hash, not a schedule Activity UID?**
+>
+> `keccak256(interventionId)` is computable from the human-readable intervention identifier alone. Every crew device can derive the same refUID for their checkin without knowing the schedule Activity's UID. Rescheduling (revoke + re-issue schedule) does not break child Activities — they all still point at the same scope. A single EAS GraphQL query `where refUID = keccak256(interventionId)` returns every lifecycle Activity for the intervention in one round-trip.
+>
+> The on-chain Intervention carries `interventionId` as a readable string; any reader can compute the scope hash and query the activity set. Per-crew-member chains (checkin → checkout → report) are reconstructed by grouping the returned activities by `signer`.
 
 > **Graph Traversal**
 >
-> Starting from any PublishedIntervention, an auditor can traverse the full evidence chain:
-> On-chain attestation → evidence bundle on IPFS → individual off-chain attestations → photos and documents → on-chain timestamps for each step.
+> Starting from any Intervention, an auditor can traverse the full evidence chain:
+> On-chain attestation → evidence bundle on IPFS → every lifecycle Activity's signed envelope + payload + on-chain timestamp.
 >
-> Starting from any AreaRegistration, a dashboard can aggregate all interventions and healthchecks for that location, then merge them by timestamp to render a condition timeline.
+> Starting from any AreaRegistration, a dashboard can aggregate all Interventions (via `refUID`) and `healthcheck` Activities (via `refUID`) for that location, then merge them by on-chain timestamp to render a condition timeline.
+>
+> Starting from an `interventionId` string, a reader computes the scope hash and queries EAS for all Activities sharing that refUID — useful for dashboards that track schedules before publication.
 
 ---
 
@@ -519,10 +570,10 @@ The protocol guarantees three things and three things only:
 Everything else is **verifier policy**. Examples of decisions the protocol does NOT make for you:
 
 - Whether the attester's wallet should be trusted (organization / gardener / citizen / unknown)
-- Whether `bundle.checkins.length === ScheduledIntervention.crewSize` is required
-- Whether a PublishedIntervention with only the crew lead's attestations (and no solo-gardener attestations) is acceptable evidence that the job happened
-- Whether all attesters in a bundle must be distinct wallets
-- Whether a Healthcheck signed by a citizen wallet counts equally with one signed by the organization
+- Whether the count of `checkin` Activities in the bundle must equal the schedule Activity's `payload.crewSize`
+- Whether an Intervention with only the crew lead's Activities (and no additional crew-member chains) is acceptable evidence that the job happened
+- Whether all signers in a bundle must be distinct wallets
+- Whether a `healthcheck` Activity signed by a citizen wallet counts equally with one signed by the organization
 - Whether temporal ordering must be strict (`<`) or may be same-block (`<=`)
 
 Two consumers reading the same on-chain data can legitimately reach different conclusions about the same intervention. Both readings are consistent with the protocol.
@@ -531,24 +582,26 @@ Implementations typically expose policies as **composable data** — named prese
 
 ### 7.2 Attester Identity — The Primary Trust Primitive
 
-The attester wallet on every attestation is the **entry point** for any trust policy. Policies are built by resolving the attester wallet to some application-layer identity (role, reputation score, registry membership) and applying weighting or filtering rules.
+The signer wallet on every attestation is the **entry point** for any trust policy. Policies are built by resolving the signer wallet to some application-layer identity (role, reputation score, registry membership) and applying weighting or filtering rules.
 
-Each organization adopting the OpenGarden Protocol publishes its attester address on its website and in the schema metadata on IPFS. Readers who want to scope queries to a specific organization filter on-chain attestations by that attester address. Off-chain attestations carry their signer in the EIP-712 envelope; it is also surfaced at the bundle-entry level (§5.2) so policies can inspect it without re-running signature recovery.
+Each organization adopting the OpenGarden Protocol publishes its wallet address on its website and in the schema metadata on IPFS. Readers who want to scope queries to a specific organization filter on-chain attestations by that attester address. Off-chain Activities carry their signer in the EIP-712 envelope; it is also surfaced at the bundle-entry level (§5.2) so policies can inspect it without re-running signature recovery.
 
 ### 7.3 Example Policy — Conservative Organizational Auditor
 
 > **This is one example policy, not the protocol's policy.**
 
-A conservative auditor reviewing a PublishedIntervention for a sponsor's impact report might require:
+A conservative auditor reviewing an Intervention for a sponsor's impact report might require:
 
 | Check | Rationale |
 |---|---|
 | On-chain attester ∈ known-organization registry | Filter out attestations from unrelated wallets |
 | `evidenceBundleHash` resolves, bundle content hashes to this value | Bundle integrity |
-| `bundle.checkins.length === ScheduledIntervention.crewSize` | Every assigned gardener actually attested |
-| All crew attesters are distinct wallets | No single person producing multiple "crew member" chains |
-| Each crew member's `(checkin, checkout, report)` share the same attester | Bundle wasn't stitched from unrelated attestations |
-| Temporal ordering strict (`T_checkin < T_checkout < T_report`) per crew member | No backfilling |
+| Every Activity's `payload` canonicalizes to the signed `payloadHash` | Payload integrity |
+| Every lifecycle Activity's `refUID === keccak256(intervention.interventionId)` | Scope integrity — no stitched-from-other-intervention activities |
+| Count of `checkin` Activities == `schedule.payload.crewSize` | Every assigned gardener actually attested |
+| All crew signers are distinct wallets | No single person producing multiple "crew member" chains |
+| Each crew member's `(checkin, checkout, report)` share the same signer | Bundle wasn't stitched from unrelated signers |
+| Temporal ordering strict (`T_checkin < T_checkout < T_report`) per crew signer | No backfilling |
 | On-chain timestamps in bundle match `EAS.getTimestamp(uid)` | No timestamp tampering in bundle JSON |
 
 A permissive dashboard rendering volunteer cleanup days might only require:
@@ -556,16 +609,16 @@ A permissive dashboard rendering volunteer cleanup days might only require:
 | Check | Rationale |
 |---|---|
 | `evidenceBundleHash` resolves, bundle content hashes to this value | Minimum integrity |
-| At least one GardenerReport in the bundle | Someone attested work happened |
+| At least one `report` Activity in the bundle | Someone attested work happened |
 
 Both are valid policies. The protocol exposes the primitives; the verifier picks the subset that matches their risk appetite.
 
 ### 7.4 Example Policy — Healthcheck Weighting
 
-Healthchecks can be signed by any wallet. A reader aggregating Healthcheck signals into an area condition timeline must decide how to weight each observation. Example policies:
+`healthcheck` Activities can be signed by any wallet. A reader aggregating them into an area condition timeline must decide how to weight each observation. Example policies:
 
-- **Organization-only**: filter to Healthchecks whose attester matches the AreaRegistration attester. Ignore all others. Simplest, matches traditional closed-system QA.
-- **Weighted by role**: resolve each attester against an app-layer roster. Organization = 1.0, registered gardener = 0.7, unregistered citizen = 0.3. Weighted moving average across the timeline.
+- **Organization-only**: filter to `healthcheck` Activities whose signer matches the AreaRegistration attester. Ignore all others. Simplest, matches traditional closed-system QA.
+- **Weighted by role**: resolve each signer against an app-layer roster. Organization = 1.0, registered gardener = 0.7, unregistered citizen = 0.3. Weighted moving average across the timeline.
 - **Divergence signal**: treat mismatch between organization score and citizen scores on the same area as an alert ("organization claims 9/10, citizens average 4/10 — investigate").
 
 All three aggregate the same on-chain data; none is the protocol's call.
@@ -589,7 +642,7 @@ The following are the exact schema strings to register on the EAS SchemaRegistry
 string areaId, int32 latitude, int32 longitude, uint8 areaType, string name, string municipality, bytes32 boundariesHash, string metadata
 ```
 
-**PublishedIntervention** (revocable: false)
+**Intervention** (revocable: false)
 ```
 string interventionId, uint8 interventionType, uint64 executionDate, bytes32 evidenceBundleHash, bytes32 commissionRef
 ```
@@ -599,39 +652,33 @@ string interventionId, uint8 interventionType, uint64 executionDate, bytes32 evi
 uint8 milestoneLevel, uint16 totalInterventions, uint16 totalValidated, uint8 avgHealthImprovement, uint64 achievedAt, bytes32 evidenceRoot
 ```
 
-**ScheduledIntervention** (revocable: true)
+**Activity** (revocable: true)
 ```
-string interventionId, uint8 interventionType, uint64 scheduledDate, uint16 estimatedMinutes, string description, bytes32 commissionRef, uint8 crewSize
-```
-
-**GardenerCheckin** (revocable: false)
-```
-int32 latitude, int32 longitude, bytes32 photoHash
+uint8 activityType, bytes32 payloadHash
 ```
 
-**GardenerCheckout** (revocable: false)
-```
-uint16 actualMinutes
-```
-
-**GardenerReport** (revocable: false)
-```
-bytes32 checkoutUID, string tasksCompleted, uint8 taskCount, bytes32 photosHash, string notes
-```
-
-**Healthcheck** (revocable: false)
-```
-uint8 healthScore, bytes32 photoHash, string notes, string metadata
-```
+> **Activity revocability**
+>
+> The Activity schema is registered `revocable: true` so `schedule` Activities can be revoked during the cancel/reschedule flow. `checkin`, `checkout`, `report`, and `healthcheck` Activities are never revoked in practice — a verifier policy MAY reject bundles containing revoked entries of those types. Enforcement is policy-level, not schema-level, because EAS registers revocability per-schema and the protocol collapses all off-chain activity types into a single schema.
 
 > **Parent Linkage Convention**
 >
 > Every schema with a single dominant parent carries that parent as the EAS-native `refUID` slot rather than as a schema data field:
-> - PublishedIntervention, ScheduledIntervention, Healthcheck → AreaRegistration UID
-> - GardenerCheckin, GardenerReport → ScheduledIntervention UID
-> - GardenerCheckout → GardenerCheckin UID
 >
-> GardenerReport carries a secondary reference to the crew member's GardenerCheckout in the `checkoutUID` data field because the `refUID` slot is reserved for the intervention parent. Consumers reading decoded schema data MUST read `refUID` from the EAS attestation envelope to resolve parent linkage.
+> | Schema / Activity type | `refUID` points at |
+> |---|---|
+> | Intervention | AreaRegistration UID |
+> | Activity (type=`schedule`) | `keccak256(interventionId)` — intervention scope (§9.7) |
+> | Activity (type=`checkin`) | `keccak256(interventionId)` — intervention scope (§9.7) |
+> | Activity (type=`checkout`) | `keccak256(interventionId)` — intervention scope (§9.7) |
+> | Activity (type=`report`) | `keccak256(interventionId)` — intervention scope (§9.7) |
+> | Activity (type=`healthcheck`) | AreaRegistration UID |
+> | AreaRegistration | `ZERO_BYTES32` (root) |
+> | GardenerMilestone | `ZERO_BYTES32` (standalone; `evidenceRoot` data field is the Merkle anchor) |
+>
+> Consumers reading decoded schema data MUST read `refUID` from the EAS attestation envelope to resolve parent linkage. The intervention scope hash is a bytes32 value that does not itself resolve to an attestation UID — it is a shared anchor computed from the `interventionId` string per §9.7.
+>
+> No secondary linkage field exists on Activity. Pairing between a crew member's `checkin`, `checkout`, and `report` is established by matching the triple `(signer, refUID, type)` within the intervention scope — not by a secondary ref.
 
 ---
 
@@ -653,8 +700,8 @@ Applies to:
 
 | Schema | Field | Input |
 |---|---|---|
-| PublishedIntervention | `commissionRef` | Commissioning entity identifier (sponsor ID, municipal contract number, grant ID) |
-| ScheduledIntervention | `commissionRef` | Same as PublishedIntervention (must match for the same intervention) |
+| Intervention | `commissionRef` | Commissioning entity identifier (sponsor ID, municipal contract number, grant ID) |
+| Activity (type=`schedule`) | `payload.commissionRef` | Same as Intervention (must match for the same intervention) |
 
 SDK helper: `hashIdentifier(id: string): string`
 
@@ -662,9 +709,9 @@ SDK helper: `hashIdentifier(id: string): string`
 
 Fields carrying a hash of one or more media references (`photoHash`, `photosHash`, `boundariesHash`, `evidenceBundleHash`, and any future `*Hash` field introduced per §9.6) MUST be derived as follows.
 
-**Single item.** When a field references exactly one file (e.g. `GardenerCheckin.photoHash` — one arrival photo), the bytes32 is whatever content-addressed hash the organization's storage adapter returns for that file. The SDK does not constrain the algorithm — it only requires that the value be reproducible by fetching the file and rehashing it with the documented algorithm.
+**Single item.** When a field references exactly one file (e.g. a `checkin` Activity payload's `photoCID` — one arrival photo), the value is whatever content-addressed hash or CID the organization's storage adapter returns for that file. The SDK does not constrain the algorithm — it only requires that the value be reproducible by fetching the file and rehashing it with the documented algorithm.
 
-**Multiple items.** When a field references N > 1 files (e.g. `GardenerReport.photosHash` — after-work photo bundle), the bytes32 MUST be the keccak256 of a canonical manifest:
+**Multiple items.** When a payload references N > 1 files (e.g. the `photosCID` field of a `report` Activity payload pointing at an after-work photo bundle), the bytes32 MUST be the keccak256 of a canonical manifest:
 
 ```
 manifest = {"v":1,"items":[<item>, <item>, ...]}
@@ -680,7 +727,7 @@ Canonicalization rules:
 
 SDK helper: `hashPhotoBundle(items: string[]): string`
 
-Applies to any media-bundle field that references multiple items. Fields that always reference a single item (`GardenerCheckin.photoHash`, `Healthcheck.photoHash`) use the single-item rule above.
+Applies to any media-bundle field that references multiple items. Payload fields that always reference a single item (e.g. `checkin.payload.photoCID`, `healthcheck.payload.photoCID`) use the single-item rule above.
 
 ### 9.3 Coordinate Encoding
 
@@ -694,12 +741,14 @@ Off-chain attestation `timestamp` fields are Unix seconds (`uint64`), matching t
 
 The bundle shape defined in §5.2 is normative. Implementations that produce or consume bundles MUST follow these rules so that bundles are interoperable across organizations.
 
-1. **Schema**. Every bundle has exactly the keys defined in §5.2: `interventionId`, `areaUID`, `attestations` (with `scheduled`, `checkins`, `checkouts`, `reports`), `photos` (optional; absent or present as an object), `bundleVersion`.
-2. **Arrays over objects**. `checkins`, `checkouts`, `reports` are always arrays, even for solo jobs (length 1). Readers MUST iterate; there is no separate solo code path.
-3. **BigInt fields as strings**. Inside `signedAttestation.message`, the fields `time`, `expirationTime`, and `nonce` (when present) MUST be serialized as decimal-digit strings — see §5.3. Other `uint*` fields on the message (e.g. the encoded `data` payload, which is a hex string) follow their natural string encoding.
-4. **`signer` field**. Every `signedAttestation` MUST include a top-level `signer` string carrying the address of the wallet that signed the attestation. If the underlying EAS signing primitive does not populate this field, the implementation MUST inject it (typically by reading the signer wallet's address at sign time). Readers use this to short-circuit identity lookup — they can still recover the signer from `signature + message` and MUST do so for protocol-level check §5.4 (4).
-5. **`bundleVersion` is semver**. Readers MUST reject bundles whose `bundleVersion` they don't understand. Pre-1.0 versions are unstable — breaking changes may land in a 0.x.y bump.
-6. **JSON determinism not required**. The bundle hash is computed over the bytes the publisher uploads; any byte-identical copy of the bundle reproduces the same hash. Canonicalization of JSON (key ordering, whitespace) is NOT required by the protocol — the publisher and auditor coordinate via content-addressed storage (the bundle hash IS the address). Implementations that want reproducible bundle hashes across independent rebuilds SHOULD define and document their own canonicalization, but this is an implementation concern, not a protocol requirement.
+1. **Schema**. Every bundle has exactly the keys defined in §5.2: `interventionId`, `areaUID`, `activities` (flat array), `bundleVersion`.
+2. **Flat activities array**. `activities` is a single array covering every lifecycle Activity for the intervention (schedule + per-crew-member checkin/checkout/report). Solo and crew jobs use the same shape — verifiers filter by `type` and group by `signer`. There is no separate code path for solo jobs.
+3. **Sort order**. `activities` MUST be sorted ascending by `onchainTimestamp`. Same-block ties are permitted and do not violate the schema.
+4. **BigInt fields as strings**. Inside `signedAttestation.message`, the fields `time`, `expirationTime`, and `nonce` (when present) MUST be serialized as decimal-digit strings — see §5.3. Other `uint*` fields on the message (e.g. the encoded `data` payload, which is a hex string) follow their natural string encoding.
+5. **`signer` field**. Every bundle entry carries a top-level `signer` string plus a nested `signedAttestation.signer` string — both MUST equal the address of the wallet that signed the Activity. If the underlying EAS signing primitive does not populate the nested field, the implementation MUST inject it (typically by reading the signer wallet's address at sign time). Readers use these to short-circuit identity lookup — they can still recover the signer from `signature + message` and MUST do so for protocol-level check §5.4 (4).
+6. **Payload canonicalization**. Activity `payload` objects MUST hash via §9.8 canonical JSON rules to the `payloadHash` decoded from `signedAttestation.message.data`. Divergent canonicalization produces hash mismatches and invalidates the bundle.
+7. **`bundleVersion` is semver**. Readers MUST reject bundles whose `bundleVersion` they don't understand. Pre-1.0 versions are unstable — breaking changes may land in a 0.x.y bump.
+8. **JSON determinism not required for bundle envelope**. The bundle hash is computed over the bytes the publisher uploads; any byte-identical copy of the bundle reproduces the same hash. Canonicalization of the outer bundle JSON (key ordering, whitespace) is NOT required by the protocol — the publisher and auditor coordinate via content-addressed storage (the bundle hash IS the address). Implementations that want reproducible bundle hashes across independent rebuilds SHOULD define and document their own canonicalization, but this is an implementation concern, not a protocol requirement. This exemption does NOT apply to individual Activity `payload` objects, which MUST follow §9.8.
 
 ### 9.6 Inline metadata vs hashed payloads
 
@@ -711,14 +760,72 @@ Used for small structured extras the protocol does not interpret. The payload li
 - MUST be a JSON-parseable string or the empty string (`""` = no metadata).
 - SHOULD remain under **512 bytes** when UTF-8 encoded. The budget is advisory — heavier payloads are not protocol-invalid, but large inline strings waste calldata and signal the field is being misused as a hashed-payload slot. Implementations MAY enforce the budget at the write layer; the protocol does not require rejection.
 - SHOULD carry an app-defined `version` or `v` key so consumers can detect shape changes. Unknown shapes MUST be ignored, not rejected, at the protocol layer.
-- Current consumers: `AreaRegistration.metadata`, `Healthcheck.metadata`.
+- Current consumers: `AreaRegistration.metadata`, `healthcheck` Activity payload `metadata` key.
 
 **`bytes32 *Hash` — content-addressable hash of a large/binary payload.**
 Used when the payload cannot fit inline or is inherently binary (photos, polygon GeoJSON, evidence bundles).
 
 - The `bytes32` value is whatever content-addressed hash the organization's storage adapter returns for the payload (IPFS CID, keccak256 of a canonical manifest, etc.).
-- MUST use a purpose-named field — `photoHash`, `photosHash`, `evidenceBundleHash`, `boundariesHash` — never the generic name `metadataHash`. The field name tells readers what to fetch.
-- `ZERO_BYTES32` MUST be accepted as "no payload of this type for this attestation."
-- Current consumers: `AreaRegistration.boundariesHash`, `GardenerCheckin.photoHash`, `GardenerReport.photosHash`, `Healthcheck.photoHash`, `PublishedIntervention.evidenceBundleHash`.
+- MUST use a purpose-named field — `photoHash`, `photosHash`, `evidenceBundleHash`, `boundariesHash`, `payloadHash` — never the generic name `metadataHash`. The field name tells readers what to fetch (or how to interpret the hash).
+- `ZERO_BYTES32` MUST be accepted as "no payload of this type for this attestation," except where a payload is structurally required (e.g. `Activity.payloadHash` — every Activity carries a payload, even if empty, so the hash reflects that payload and is not `ZERO_BYTES32`).
+- Current consumers: `AreaRegistration.boundariesHash`, `Intervention.evidenceBundleHash`, `Activity.payloadHash`.
 
 **Mutually exclusive naming.** No schema field is named `metadataHash`. If both a small inline extension and a large hashed payload are needed on the same schema, they live in two distinct fields — `metadata` + a purpose-named `*Hash` — and readers can tell at a glance which is inline and which requires a fetch.
+
+### 9.7 Intervention Scope Hash
+
+Every lifecycle Activity (`schedule`, `checkin`, `checkout`, `report`) sets its EAS `refUID` slot to a deterministic hash of the intervention's human-readable identifier:
+
+```
+interventionScopeHash = keccak256(utf8Bytes(interventionId))
+```
+
+The input is the raw UTF-8 string with no normalization, trimming, casing change, or prefix. This matches the convention used by §9.1.
+
+Properties:
+
+- **Deterministic from the ID string alone.** No crew device needs the schedule Activity's UID to sign a checkin — it just needs the `interventionId`. This simplifies the client-side flow and keeps coordination ergonomics minimal.
+- **Not a pointer to an attestation.** The bytes32 value does not resolve to any attestation UID on chain. It is a shared anchor that EAS-compatible tooling happens to index because the protocol stores it in the `refUID` slot. A single EAS GraphQL query `where refUID = interventionScopeHash` returns every lifecycle Activity for the intervention.
+- **Reschedule-resilient.** If a schedule Activity is revoked and a replacement issued for the same `interventionId`, the child Activities remain anchored correctly — all still share the same scope. The bundle publisher decides which schedule Activity is authoritative by including exactly one of them in the evidence bundle.
+- **Collision boundary.** `interventionId` MUST be unique within a publisher. Two publishers using the same `interventionId` would produce colliding scope hashes; readers distinguish them by recovered signer (the schema UID + attester address is globally unique). Publishers that need a stronger boundary MAY namespace their IDs with an organization prefix.
+
+SDK helper: `hashInterventionScope(interventionId: string): string`
+
+Applies to:
+
+| Schema / Activity type | Field | Input |
+|---|---|---|
+| Activity (type=`schedule`) | EAS `refUID` slot | `interventionId` |
+| Activity (type=`checkin`) | EAS `refUID` slot | `interventionId` |
+| Activity (type=`checkout`) | EAS `refUID` slot | `interventionId` |
+| Activity (type=`report`) | EAS `refUID` slot | `interventionId` |
+
+The on-chain Intervention attestation retains `refUID = AreaRegistration UID` so readers indexing by area still get direct Intervention lookups. The link from Intervention to its lifecycle Activities is resolved by the reader: compute the scope hash from `intervention.interventionId`, query EAS for Activities with matching `refUID`.
+
+### 9.8 Activity Payload Canonicalization
+
+The `payloadHash` field in every Activity's ABI-encoded schema data is the keccak256 of a canonical JSON serialization of the payload object (see §3.2 for per-type payload shapes). The payload itself is carried in the evidence bundle as plaintext; the hash is the only protocol-level cryptographic anchor for payload content.
+
+Canonical form rules:
+
+```
+payloadHash = keccak256(utf8Bytes(canonicalJSON(payload)))
+```
+
+1. **Key ordering.** Object keys are sorted in **JavaScript string-comparison order** (UTF-16 code unit comparison) recursively at every nesting depth. Arrays retain their original order — sorting is NOT applied to array elements.
+2. **Whitespace.** No whitespace between tokens. `JSON.stringify(obj)` with no `space` argument, after key sorting.
+3. **Encoding.** UTF-8 bytes of the serialized JSON string.
+4. **Numbers.** Serialized per JSON number canonical form: no leading `+`, no `-0`, no trailing zeros in the fractional part, no exponent when a plain decimal is shorter. All payload numbers in §3.2 fit in a 53-bit mantissa; implementations MUST NOT serialize them as strings.
+5. **Strings.** JSON-escaped per RFC 8259. The SDK relies on the runtime's `JSON.stringify` escape rules; non-conforming runtimes MUST patch to match.
+6. **`null` handling.** `null` is preserved as-is. Missing optional keys are omitted entirely, not written as `null`, unless the §3.2 payload shape explicitly specifies `null`.
+7. **No duplicate keys.** Payload objects MUST NOT contain duplicate keys. (JSON forbids them; canonicalization does not need to handle this case.)
+
+SDK helper: `hashActivityPayload(payload): string`
+
+> **Normative for interoperability**
+>
+> Two implementations computing `payloadHash` on the same logical payload MUST produce byte-identical canonical JSON. Any divergence — extra whitespace, different key ordering, distinct number formatting — produces a different hash and invalidates the bundle. The rules above are normative for any implementation that claims compatibility with the OpenGarden Protocol. The SDK exposes `hashActivityPayload` as the single normative implementation; consumers SHOULD use it rather than re-implementing canonicalization.
+
+> **Why not use the inline-metadata budget?**
+>
+> §9.6 defines a `string metadata` slot for small inline JSON extras. Activity payloads are NOT inline — they travel alongside the signed envelope in the evidence bundle and are committed to via `payloadHash`. The distinction is intentional: inline metadata keeps the payload inside the signed bytes (smaller on-chain footprint, free signature coverage) at the cost of calldata; hashed payloads keep the signed bytes compact (33 bytes for the whole Activity) at the cost of requiring canonicalization and payload transport. Both conventions coexist — `AreaRegistration.metadata` uses the inline slot; `Activity.payloadHash` uses the hashed slot.

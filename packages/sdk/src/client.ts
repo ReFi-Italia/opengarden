@@ -21,28 +21,26 @@ import { STRICT_FINALIZE_POLICY, STRICT_VERIFY_POLICY } from "./policy";
 import { validateFinalizeInput } from "./preflight";
 import { SCHEMA_DEFINITIONS } from "./schemas/definitions";
 import {
+	buildCheckinPayload,
+	buildCheckoutPayload,
+	buildHealthcheckPayload,
+	buildReportPayload,
+	buildSchedulePayload,
 	decodeAreaRegistration,
 	decodeGardenerMilestone,
-	decodeHealthcheck,
-	decodePublishedIntervention,
-	decodeScheduledIntervention,
+	decodeIntervention,
+	encodeActivityData,
 	encodeAreaRegistration,
-	encodeGardenerCheckin,
-	encodeGardenerCheckout,
 	encodeGardenerMilestone,
-	encodeGardenerReport,
-	encodeHealthcheck,
-	encodePublishedIntervention,
-	encodeScheduledIntervention,
+	encodeIntervention,
 	newSchemaEncoder,
+	parseActivityDecodedDataJson,
 } from "./schemas/encoders";
 import type {
 	Area,
 	EvidenceBundleVerification,
-	Healthcheck,
 	Intervention,
 	Milestone,
-	ScheduledIntervention,
 } from "./types/attestation";
 import type {
 	ChainConfig,
@@ -50,7 +48,12 @@ import type {
 	SchemaUIDs,
 	StorageAdapter,
 } from "./types/config";
-import type { SchemaName } from "./types/enums";
+import {
+	ActivityType,
+	type ActivityTypeName,
+	activityTypeFromName,
+	type SchemaName,
+} from "./types/enums";
 import type {
 	EvidenceBundle,
 	EvidenceBundleBuilderInput,
@@ -66,20 +69,21 @@ import type {
 } from "./types/results";
 import type {
 	AreaRegistrationInput,
-	GardenerCheckinInput,
-	GardenerCheckoutInput,
+	CheckinActivityInput,
+	CheckoutActivityInput,
 	GardenerMilestoneInput,
-	GardenerReportInput,
-	HealthcheckInput,
-	PublishedInterventionInput,
-	ScheduledInterventionInput,
+	HealthcheckActivityInput,
+	InterventionInput,
+	ReportActivityInput,
+	ScheduleActivityInput,
 } from "./types/schemas";
-import { toUnixSeconds } from "./utils";
+import { hashActivityPayload, hashInterventionScope, toUnixSeconds } from "./utils";
 import {
 	type VerificationCheck,
 	verifyBundleExecutionDateBracket,
+	verifyBundleInterventionScope,
 	verifyBundleOnChainTimestamps,
-	verifyBundleRefUIDs,
+	verifyBundlePayloadIntegrity,
 	verifyBundleSignatures,
 	verifyBundleTemporalOrder,
 	verifyBundleVersion,
@@ -278,12 +282,12 @@ export class OpenGardenClient {
 	}
 
 	async publishIntervention(
-		data: PublishedInterventionInput,
+		data: InterventionInput,
 	): Promise<OnChainAttestationResult> {
-		const schemaUID = this.requireSchemaUID("PublishedIntervention");
+		const schemaUID = this.requireSchemaUID("Intervention");
 		return this.attestOnChain(
 			schemaUID,
-			encodePublishedIntervention(data),
+			encodeIntervention(data),
 			ZERO_ADDRESS,
 			data.areaUID,
 		);
@@ -301,31 +305,46 @@ export class OpenGardenClient {
 		);
 	}
 
-	// --- Timestamped Off-Chain Writes ---
+	// --- Off-Chain Activity Writes (timestamped on-chain) ---
 
-	private async signAndTimestamp(
-		schemaName: SchemaName,
-		encodedData: string,
-		recipient: string,
+	/**
+	 * Internal primitive: builds an Activity's ABI data from its canonical
+	 * payload, signs an EAS offchain envelope, timestamps its UID on-chain, and
+	 * returns the full `TimestampedOffChainResult` (including the plaintext
+	 * payload for bundle assembly).
+	 *
+	 * All lifecycle Activity methods route through here. Healthcheck too — it
+	 * differs only in its `refUID` target (AreaRegistration UID vs intervention
+	 * scope hash) and has no intervention-scope-related envelope metadata.
+	 */
+	private async signActivity(
+		type: ActivityTypeName,
+		payload: unknown,
 		refUID: string,
-		revocable: boolean,
-		time?: Date | bigint,
+		recipient: string,
+		timeOverride?: Date | bigint,
 	): Promise<TimestampedOffChainResult> {
-		const schemaUID = this.requireSchemaUID(schemaName);
-		const offchain = await this.eas.getOffchain();
+		const schemaUID = this.requireSchemaUID("Activity");
+		const activityTypeEnum = activityTypeFromName(type);
+		const payloadHash = hashActivityPayload(payload);
+		const data = encodeActivityData(activityTypeEnum, payloadHash);
 
+		const offchain = await this.eas.getOffchain();
 		const signedAttestation = await offchain.signOffchainAttestation(
 			{
 				schema: schemaUID,
 				recipient,
 				time:
-					time !== undefined
-						? toUnixSeconds(time)
+					timeOverride !== undefined
+						? toUnixSeconds(timeOverride)
 						: BigInt(Math.floor(Date.now() / 1000)),
 				expirationTime: 0n,
-				revocable,
+				// Activity schema is registered `revocable: true` — at call-time all
+				// types are signed `true`. Non-schedule types are simply never revoked
+				// in practice; a verifier policy rejects revoked bundles of those types.
+				revocable: true,
 				refUID,
-				data: encodedData,
+				data,
 			},
 			this.signer,
 		);
@@ -342,11 +361,9 @@ export class OpenGardenClient {
 
 		const attester = await this.signer.getAddress();
 
-		// EAS SDK's `SignedOffchainAttestation` doesn't carry the signer address
-		// as a top-level field — it's only recoverable from the signature. Inject
-		// it so evidence bundles (which embed this object verbatim) are
-		// self-verifying without needing to re-run signature recovery just to
-		// learn who signed.
+		// EAS SDK's `SignedOffchainAttestation` may not carry the signer address
+		// as a top-level field — inject it so bundles are self-verifying without
+		// re-running signature recovery just to learn the identity.
 		const signedWithSigner = {
 			...(signedAttestation as unknown as Record<string, unknown>),
 			signer: attester,
@@ -354,7 +371,12 @@ export class OpenGardenClient {
 
 		return {
 			uid: signedAttestation.uid,
+			type,
 			attester,
+			// Narrow `unknown` back to the `TimestampedOffChainResult.payload`
+			// contract (always a JSON-serializable object) — per-type payload
+			// discipline is enforced upstream by the `buildXxxPayload` helpers.
+			payload: payload as Record<string, unknown>,
 			signedAttestation: signedWithSigner,
 			timestampTxHash: timestampReceipt.hash,
 			onchainTimestamp,
@@ -363,69 +385,71 @@ export class OpenGardenClient {
 	}
 
 	async scheduleIntervention(
-		data: ScheduledInterventionInput,
+		input: ScheduleActivityInput,
 	): Promise<TimestampedOffChainResult> {
-		const encodedData = encodeScheduledIntervention(data);
-		return this.signAndTimestamp(
-			"ScheduledIntervention",
-			encodedData,
-			data.crewLead,
-			data.areaUID,
-			true,
+		const payload = buildSchedulePayload(input);
+		const refUID = hashInterventionScope(input.interventionId);
+		return this.signActivity(
+			"schedule",
+			payload,
+			refUID,
+			input.crewLead,
+			input.time,
 		);
 	}
 
 	async checkin(
-		data: GardenerCheckinInput,
+		input: CheckinActivityInput,
 	): Promise<TimestampedOffChainResult> {
-		const encodedData = encodeGardenerCheckin(data);
-		return this.signAndTimestamp(
-			"GardenerCheckin",
-			encodedData,
+		const payload = buildCheckinPayload(input);
+		const refUID = hashInterventionScope(input.interventionId);
+		return this.signActivity(
+			"checkin",
+			payload,
+			refUID,
 			ZERO_ADDRESS,
-			data.interventionUID,
-			false,
-			data.time,
+			input.time,
 		);
 	}
 
 	async checkout(
-		data: GardenerCheckoutInput,
+		input: CheckoutActivityInput,
 	): Promise<TimestampedOffChainResult> {
-		const encodedData = encodeGardenerCheckout(data);
-		return this.signAndTimestamp(
-			"GardenerCheckout",
-			encodedData,
+		const payload = buildCheckoutPayload(input);
+		const refUID = hashInterventionScope(input.interventionId);
+		return this.signActivity(
+			"checkout",
+			payload,
+			refUID,
 			ZERO_ADDRESS,
-			data.checkinUID,
-			false,
-			data.time,
+			input.time,
 		);
 	}
 
 	async submitReport(
-		data: GardenerReportInput,
+		input: ReportActivityInput,
 	): Promise<TimestampedOffChainResult> {
-		const encodedData = encodeGardenerReport(data);
-		return this.signAndTimestamp(
-			"GardenerReport",
-			encodedData,
+		const payload = buildReportPayload(input);
+		const refUID = hashInterventionScope(input.interventionId);
+		return this.signActivity(
+			"report",
+			payload,
+			refUID,
 			ZERO_ADDRESS,
-			data.interventionUID,
-			false,
+			input.time,
 		);
 	}
 
 	async recordHealthcheck(
-		data: HealthcheckInput,
+		input: HealthcheckActivityInput,
 	): Promise<TimestampedOffChainResult> {
-		const encodedData = encodeHealthcheck(data);
-		return this.signAndTimestamp(
-			"Healthcheck",
-			encodedData,
+		const payload = buildHealthcheckPayload(input);
+		return this.signActivity(
+			"healthcheck",
+			payload,
+			input.areaUID,
 			ZERO_ADDRESS,
-			data.areaUID,
-			false,
+			input.time,
 		);
 	}
 
@@ -441,32 +465,27 @@ export class OpenGardenClient {
 			uid: string;
 			sig: Record<string, unknown>;
 			role: BundleIndexingRole;
-			crewIndex?: number;
+			activityIndex?: number;
 		}> = [
 			{
-				uid: input.scheduled.uid,
-				sig: input.scheduled.signedAttestation,
-				role: "scheduled",
+				uid: input.schedule.uid,
+				sig: input.schedule.signedAttestation,
+				role: "schedule",
 			},
 		];
-		input.crew.forEach((member, i) => {
+		input.crewActivities.forEach((activity, i) => {
+			if (
+				activity.type !== "checkin" &&
+				activity.type !== "checkout" &&
+				activity.type !== "report"
+			) {
+				return;
+			}
 			entries.push({
-				uid: member.checkin.uid,
-				sig: member.checkin.signedAttestation,
-				role: "checkin",
-				crewIndex: i,
-			});
-			entries.push({
-				uid: member.checkout.uid,
-				sig: member.checkout.signedAttestation,
-				role: "checkout",
-				crewIndex: i,
-			});
-			entries.push({
-				uid: member.report.uid,
-				sig: member.report.signedAttestation,
-				role: "report",
-				crewIndex: i,
+				uid: activity.uid,
+				sig: activity.signedAttestation,
+				role: activity.type,
+				activityIndex: i,
 			});
 		});
 
@@ -477,7 +496,9 @@ export class OpenGardenClient {
 				return {
 					uid: e.uid,
 					role: e.role,
-					...(e.crewIndex !== undefined ? { crewIndex: e.crewIndex } : {}),
+					...(e.activityIndex !== undefined
+						? { activityIndex: e.activityIndex }
+						: {}),
 					ok: result.ok,
 					...(result.error ? { error: result.error } : {}),
 				} satisfies BundleIndexingResult;
@@ -553,7 +574,7 @@ export class OpenGardenClient {
 				`Intervention attestation not found: ${uid}`,
 			);
 		}
-		const decoded = decodePublishedIntervention(attestation.data);
+		const decoded = decodeIntervention(attestation.data);
 		return {
 			uid: attestation.uid,
 			areaUID: attestation.refUID,
@@ -565,7 +586,7 @@ export class OpenGardenClient {
 	}
 
 	async getAreaInterventions(areaUID: string): Promise<Intervention[]> {
-		const schemaUID = this.requireSchemaUID("PublishedIntervention");
+		const schemaUID = this.requireSchemaUID("Intervention");
 		const query = `
       query GetAreaInterventions($schemaId: String!, $refUID: String!) {
         attestations(where: { schemaId: { equals: $schemaId }, refUID: { equals: $refUID }, revoked: { equals: false } }, orderBy: [{ time: desc }]) {
@@ -589,7 +610,7 @@ export class OpenGardenClient {
 		return items.map((a) => ({
 			uid: a.id,
 			areaUID: a.refUID,
-			...decodePublishedIntervention(a.data),
+			...decodeIntervention(a.data),
 			attester: a.attester,
 			recipient: a.recipient,
 			time: BigInt(a.time),
@@ -625,76 +646,86 @@ export class OpenGardenClient {
 		}));
 	}
 
-	async getScheduledInterventions(filter: {
-		areaUID?: string;
-		crewLead?: string;
-	}): Promise<ScheduledIntervention[]> {
-		if (!filter.areaUID && !filter.crewLead) {
-			throw new OpenGardenError(
-				OpenGardenErrorCode.INVALID_INPUT,
-				"getScheduledInterventions requires at least one filter: areaUID or crewLead",
-			);
-		}
-
-		const schemaUID = this.requireSchemaUID("ScheduledIntervention");
-		const whereFields: string[] = [
-			"schemaId: { equals: $schemaId }",
-			"revoked: { equals: false }",
-		];
-		const paramDefs: string[] = ["$schemaId: String!"];
-		const variables: Record<string, string> = { schemaId: schemaUID };
-
-		if (filter.areaUID) {
-			whereFields.push("refUID: { equals: $refUID }");
-			paramDefs.push("$refUID: String!");
-			variables.refUID = filter.areaUID;
-		}
-		if (filter.crewLead) {
-			whereFields.push("recipient: { equals: $recipient }");
-			paramDefs.push("$recipient: String!");
-			variables.recipient = filter.crewLead;
-		}
-
+	/**
+	 * Returns activity UIDs + decoded (activityType, payloadHash) for every
+	 * Activity sharing the given intervention's scope. Payload plaintext is NOT
+	 * fetched — it lives in the evidence bundle (for published interventions)
+	 * or the publishing organization's attestation store (for in-flight
+	 * activities). Use `verifyEvidenceBundle` / `getEvidenceBundle` to obtain
+	 * full activity payloads.
+	 */
+	async getInterventionActivities(interventionId: string): Promise<
+		Array<{
+			uid: string;
+			activityType: ActivityType;
+			payloadHash: string;
+			signer: string;
+			refUID: string;
+			revoked: boolean;
+			time: bigint;
+		}>
+	> {
+		const schemaUID = this.requireSchemaUID("Activity");
+		const refUID = hashInterventionScope(interventionId);
 		const query = `
-      query GetScheduledInterventions(${paramDefs.join(", ")}) {
-        attestations(where: { ${whereFields.join(", ")} }, orderBy: [{ time: desc }]) {
+      query GetInterventionActivities($schemaId: String!, $refUID: String!) {
+        attestations(where: { schemaId: { equals: $schemaId }, refUID: { equals: $refUID } }, orderBy: [{ time: asc }]) {
           id
           attester
-          recipient
           time
-          data
+          decodedDataJson
           refUID
+          revoked
         }
       }
     `;
-
 		const items = await this.gqlFetch<{
 			id: string;
 			attester: string;
-			recipient: string;
 			time: string;
-			data: string;
+			decodedDataJson: string;
 			refUID: string;
-		}>(query, variables);
-		return items.map((a) => ({
-			uid: a.id,
-			areaUID: a.refUID,
-			...decodeScheduledIntervention(a.data),
-			attester: a.attester,
-			recipient: a.recipient,
-			time: BigInt(a.time),
-		}));
+			revoked: boolean;
+		}>(query, { schemaId: schemaUID, refUID });
+		return items.map((a) => {
+			const { activityType, payloadHash } = parseActivityDecodedDataJson(
+				a.decodedDataJson,
+			);
+			return {
+				uid: a.id,
+				activityType,
+				payloadHash,
+				signer: a.attester,
+				refUID: a.refUID,
+				revoked: a.revoked,
+				time: BigInt(a.time),
+			};
+		});
 	}
 
-	async getAreaHealthchecks(areaUID: string): Promise<Healthcheck[]> {
-		const schemaUID = this.requireSchemaUID("Healthcheck");
+	/**
+	 * Returns `healthcheck` Activity headers for an area (UID + decoded
+	 * activityType/payloadHash). Payload plaintext lives in the publishing
+	 * organization's attestation store; this method only surfaces the
+	 * on-chain-timestamped headers.
+	 */
+	async getAreaHealthchecks(areaUID: string): Promise<
+		Array<{
+			uid: string;
+			payloadHash: string;
+			signer: string;
+			refUID: string;
+			time: bigint;
+		}>
+	> {
+		const schemaUID = this.requireSchemaUID("Activity");
 		const query = `
       query GetAreaHealthchecks($schemaId: String!, $refUID: String!) {
         attestations(where: { schemaId: { equals: $schemaId }, refUID: { equals: $refUID }, revoked: { equals: false } }, orderBy: [{ time: desc }]) {
           id
           attester
           time
-          data
+          decodedDataJson
           refUID
         }
       }
@@ -703,16 +734,24 @@ export class OpenGardenClient {
 			id: string;
 			attester: string;
 			time: string;
-			data: string;
+			decodedDataJson: string;
 			refUID: string;
 		}>(query, { schemaId: schemaUID, refUID: areaUID });
-		return items.map((a) => ({
-			uid: a.id,
-			areaUID: a.refUID,
-			...decodeHealthcheck(a.data),
-			attester: a.attester,
-			time: BigInt(a.time),
-		}));
+		return items
+			.map((a) => {
+				const { activityType, payloadHash } = parseActivityDecodedDataJson(
+					a.decodedDataJson,
+				);
+				return { a, activityType, payloadHash };
+			})
+			.filter(({ activityType }) => activityType === ActivityType.Healthcheck)
+			.map(({ a, payloadHash }) => ({
+				uid: a.id,
+				payloadHash,
+				signer: a.attester,
+				refUID: a.refUID,
+				time: BigInt(a.time),
+			}));
 	}
 
 	// --- Evidence Bundle ---
@@ -728,8 +767,6 @@ export class OpenGardenClient {
 				"Storage adapter is required to upload evidence bundles. Pass a StorageAdapter in the config.",
 			);
 		}
-		// Bundle embeds raw EIP-712 signed attestations whose message fields use
-		// `bigint` — JSON.stringify needs a custom replacer to serialize them.
 		return this.storage.upload(JSON.stringify(bundle, bundleJsonReplacer));
 	}
 
@@ -762,10 +799,11 @@ export class OpenGardenClient {
 		}
 
 		const signatures = await verifyBundleSignatures(bundle, this.eas);
+		const payloads = verifyBundlePayloadIntegrity(bundle);
 		const timestamps = await verifyBundleOnChainTimestamps(bundle, (u) =>
 			this.eas.getTimestamp(u),
 		);
-		const refUIDs = verifyBundleRefUIDs(bundle);
+		const scope = verifyBundleInterventionScope(bundle, intervention);
 		const temporal = verifyBundleTemporalOrder(bundle);
 		const executionBracket = verifyBundleExecutionDateBracket(
 			bundle,
@@ -773,22 +811,23 @@ export class OpenGardenClient {
 		);
 
 		const checks: VerificationCheck[] = [
+			versionCheck,
 			signatures,
+			payloads,
 			timestamps,
-			refUIDs,
+			scope,
 			temporal,
 			executionBracket,
 		];
-		// Composite `valid` only considers checks the policy marks as required;
-		// every sub-check still runs and is reported in `checks[]` so callers
-		// can inspect them regardless.
 		const valid = checks.every((c) => !policy.required.has(c.code) || c.valid);
 
 		return {
 			valid,
+			bundleVersionValid: versionCheck.valid,
 			signaturesValid: signatures.valid,
+			payloadIntegrityValid: payloads.valid,
 			timestampsVerified: timestamps.valid,
-			refUIDsValid: refUIDs.valid,
+			interventionScopeValid: scope.valid,
 			temporalOrderValid: temporal.valid,
 			executionDateBracketed: executionBracket.valid,
 			checks,

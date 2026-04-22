@@ -1,6 +1,6 @@
 # @refi-italia/opengarden
 
-TypeScript SDK for the OpenGarden Protocol. Wraps [EAS](https://attest.org) to manage the intervention lifecycle — scheduling work, signing crew attestations, bundling evidence, publishing on-chain records, and minting gardener milestones.
+TypeScript SDK for the OpenGarden Protocol. Wraps [EAS](https://attest.org) to manage the intervention lifecycle — scheduling work, signing crew activities, bundling evidence, publishing on-chain records, and minting gardener milestones.
 
 For protocol design, schema shapes, temporal-integrity rules, trust model, and verification semantics (protocol tier vs verifier-policy tier), see the [**EAS Schema Spec**](../../docs/eas-schema-spec.md). This README covers how to drive the SDK — it does not duplicate protocol documentation.
 
@@ -22,47 +22,28 @@ pnpm add @refi-italia/opengarden ethers
 
 `ethers` v6 is a peer dependency.
 
-## Quick start
+## Quick start — full lifecycle
+
+The canonical path. `finalizeIntervention` orchestrates preflight → build bundle → upload → index → publish in one call. Unless you need mid-flight control, use it.
 
 ```ts
 import { ethers } from 'ethers';
-import { createOpenGardenClient } from '@refi-italia/opengarden';
+import {
+  createOpenGardenClient,
+  AreaType,
+  InterventionType,
+} from '@refi-italia/opengarden';
 
-const provider = new ethers.JsonRpcProvider('https://mainnet.optimism.io');
+const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
 const signer = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
 
-// `createOpenGardenClient` lazy-loads `eas-sdk` and wires the EAS +
-// SchemaRegistry dependencies automatically. Chain can be a name string
-// (`"optimism-mainnet"`) or a full `ChainConfig` object for custom chains.
 const client = await createOpenGardenClient({
   signer,
-  chain: 'optimism-mainnet',
+  chain: 'optimism-sepolia',
+  storage: ipfsStorage, // see "Storage adapter" section below
 });
 
-// Schema UIDs ship pre-registered for chains tracked in `chains/schemas.json`,
-// so on those chains you can skip `registerAllSchemas` entirely.
-await client.registerAllSchemas();
-
-// Register an area
-const area = await client.registerArea({
-  areaId: 'RM-PIGN-042',
-  latitude: 41.8902,
-  longitude: 12.4922,
-  areaType: AreaType.PublicGreenSpace,
-  name: 'Giardino Via Appia 12',
-  municipality: 'RM-I',
-  boundariesHash: null, // or an IPFS CID hashing the boundary polygon / photo bundle
-  metadata: '',         // or a small inline JSON string (spec §9.6; 512-byte budget)
-});
-
-console.log('Area UID:', area.uid);
-```
-
-## Area registration (one-time per area)
-
-Every intervention references an `AreaRegistration` attestation as its geographic anchor. Areas are registered **once per area**, not per intervention — a single `areaUID` is shared by every scheduled, executed, and published intervention on that site.
-
-```ts
+// 1. One-time: register the area.
 const area = await client.registerArea({
   areaId: 'RM-PIGN-042',
   latitude: 41.8902,
@@ -74,80 +55,136 @@ const area = await client.registerArea({
   metadata: '',
 });
 
-// Persist area.uid application-side. All subsequent interventions and
-// healthchecks for this site reuse the same UID.
+// 2. Schedule + execute (each activity timestamped on-chain).
+const interventionId = 'INT-2026-0001';
+
+const schedule = await client.scheduleIntervention({
+  interventionId,
+  areaUID: area.uid,
+  interventionType: InterventionType.RoutineMaintenance,
+  crewLead: signer.address,
+  crewSize: 1,
+  scheduledDate: new Date(),
+  estimatedMinutes: 60,
+  description: 'Trim hedges, mulch beds.',
+  commissionId: null,
+});
+
+const checkin  = await client.checkin({  interventionId, latitude: 41.89, longitude: 12.49, photoCID: '' });
+const checkout = await client.checkout({ interventionId, actualMinutes: 55 });
+const report   = await client.submitReport({ interventionId, tasksCompleted: ['PRUNE', 'CLEAN'], photosCID: '', notes: '' });
+
+// 3. Finalize — one call: preflight + bundle + upload + index + publish.
+const result = await client.finalizeIntervention({
+  interventionId,
+  areaUID: area.uid,
+  schedule,
+  crewActivities: [checkin, checkout, report],
+  interventionType: InterventionType.RoutineMaintenance,
+  executionDate: new Date(),
+  commissionId: null,
+});
+
+console.log('Intervention UID:', result.publication.uid);
+console.log('Bundle hash:     ', result.evidenceBundleHash);
+console.log('Indexed:         ', `${result.indexedCount}/${result.indexingResults.length}`);
 ```
 
-Run this once when onboarding a new site. Areas are `revocable: false` on-chain — the registration is a permanent geographic fact.
+That's the entire write-side flow. Read-side: `client.verifyEvidenceBundle(result.publication.uid)`.
 
-## Intervention lifecycle — SDK mapping
+## Concepts
 
-Spec [§3–§4](../../docs/eas-schema-spec.md#3-off-chain-schemas) defines the attestation flow and temporal rules. The SDK exposes one method per protocol step. All methods below reference an existing `areaUID` from a prior `registerArea` call.
+A 30-second mental model before diving into sections below.
+
+- **Activity** — the single off-chain schema that carries every lifecycle event (`schedule`, `checkin`, `checkout`, `report`, `healthcheck`). Each Activity is EIP-712 signed and has its UID timestamped on-chain via `EAS.timestamp()`. See spec [§3](../../docs/eas-schema-spec.md#3-off-chain-schema).
+- **Intervention scope hash** — `keccak256(utf8Bytes(interventionId))`. Every lifecycle Activity sets `refUID = interventionScopeHash`, so a single EAS query returns the whole chain. Writers only need the `interventionId` string — no need to pass around the schedule Activity's UID. See spec [§9.7](../../docs/eas-schema-spec.md#97-intervention-scope-hash).
+- **Evidence bundle** — a flat JSON array of Activities (schedule + crew) with their full signed envelopes and plaintext payloads. Uploaded to storage, hashed, referenced from the on-chain `Intervention`. Healthchecks are area-scoped and are NOT bundled. See spec [§5](../../docs/eas-schema-spec.md#5-evidence-bundle-structure).
+- **Crew pairing by signer** — a crew member's `(checkin, checkout, report)` triple is identified by matching `signer` within the intervention scope, not by a refUID chain. A crew signer's own wallet is the link.
+
+## Area registration
+
+Every intervention references an `AreaRegistration` as its geographic anchor. Areas are registered **once per area** — a single `areaUID` is reused by every scheduled / executed / published intervention and every healthcheck on that site.
 
 ```ts
-// Schedule intervention (off-chain + timestamped)
-const schedule = await client.scheduleIntervention({
-  areaUID,
-  crewLead: crewLeadWallet,
-  crewSize: 2,
-  ...
+const area = await client.registerArea({
+  areaId: 'RM-PIGN-042',
+  latitude: 41.8902,
+  longitude: 12.4922,
+  areaType: AreaType.PublicGreenSpace,
+  name: 'Giardino Via Appia 12',
+  municipality: 'RM-I',
+  boundariesHash: null,   // or an IPFS CID hashing a boundary polygon / photo bundle
+  metadata: '',           // or a small inline JSON string (spec §9.6; 512-byte budget)
 });
-
-// Per crew member: checkin → checkout → report. Each signed by the member's wallet.
-const aliceCheckin  = await client.checkin({ interventionUID: schedule.uid, ... });
-const aliceCheckout = await client.checkout({ checkinUID: aliceCheckin.uid, ... });
-const aliceReport   = await client.submitReport({ interventionUID: schedule.uid, checkoutUID: aliceCheckout.uid, ... });
-// … same three calls for every other crew member.
-
-// Build evidence bundle — crew is an array of { checkin, checkout, report } tuples
-const bundle = client.buildEvidenceBundle({
-  interventionId: 'INT-2026-0001',
-  areaUID,
-  scheduled: schedule,
-  crew: [
-    { checkin: aliceCheckin, checkout: aliceCheckout, report: aliceReport },
-    { checkin: bobCheckin,   checkout: bobCheckout,   report: bobReport },
-  ],
-});
-
-// Upload bundle (requires storage adapter)
-const bundleHash = await client.uploadEvidenceBundle(bundle);
-
-// Publish intervention on-chain. Publication IS the organization's quality
-// sign-off — see spec §1 and §2.2. Internal QA fields stay DB-side.
-const intervention = await client.publishIntervention({
-  areaUID,
-  interventionId: 'INT-2026-0001',
-  evidenceBundleHash: bundleHash,
-  ...
-});
-
-// Mint gardener milestone (on-chain, soulbound) — once the gardener's report
-// history crosses a threshold. Orthogonal to any single intervention.
-await client.mintMilestone({ recipient: crewLeadWallet, milestoneLevel: 1, ... });
 ```
 
-`areaUID` and other parent references are routed to the EAS-native `refUID` slot internally — the SDK's input/output types always accept and return them under their logical name (e.g. `Intervention.areaUID`). See spec [§2–§3 attestation metadata notes](../../docs/eas-schema-spec.md#2-on-chain-schemas) and [§6 reference graph](../../docs/eas-schema-spec.md#6-attestation-reference-graph).
+Areas are `revocable: false`.
 
-`finalizeIntervention(input)` bundles the build-bundle, upload, and publish steps into a single call with preflight input validation.
+## Intervention lifecycle
+
+Spec [§3–§4](../../docs/eas-schema-spec.md#3-off-chain-schema) defines the single polymorphic Activity schema and the temporal ordering rules. Five lifecycle methods — one per Activity type — each signs off-chain + timestamps on-chain.
+
+| Method | Activity type | What it signs |
+|---|---|---|
+| `scheduleIntervention(input)` | `schedule` | The job plan. Recipient = crew lead. |
+| `checkin(input)` | `checkin` | Gardener arrival (GPS + photo). |
+| `checkout(input)` | `checkout` | Session closure (actual minutes). |
+| `submitReport(input)` | `report` | Tasks + photos + notes. |
+| `recordHealthcheck(input)` | `healthcheck` | Periodic area-condition signal. Area-scoped, not bundled. |
+
+Every lifecycle method except `recordHealthcheck` takes an `interventionId: string`. Under the hood, `refUID` is set to `keccak256(interventionId)` — the scope hash — so crew devices don't need the schedule Activity's UID to sign their own checkins.
+
+Each crew member signs their own checkin/checkout/report from their own wallet. For a crew job, call the three gardener methods once per member, then pass all activities as a flat list into `finalizeIntervention`:
+
+```ts
+// Alice's chain (signed with Alice's wallet)
+const aCheckin  = await aliceClient.checkin({  interventionId, latitude, longitude, photoCID: aCID });
+const aCheckout = await aliceClient.checkout({ interventionId, actualMinutes: 55 });
+const aReport   = await aliceClient.submitReport({ interventionId, tasksCompleted: ['PRUNE'], photosCID: aPhotos, notes: '' });
+
+// Bob's chain (signed with Bob's wallet)
+const bCheckin  = await bobClient.checkin({  interventionId, latitude, longitude, photoCID: bCID });
+const bCheckout = await bobClient.checkout({ interventionId, actualMinutes: 60 });
+const bReport   = await bobClient.submitReport({ interventionId, tasksCompleted: ['CLEAN'], photosCID: bPhotos, notes: '' });
+
+// Organization finalizes
+await orgClient.finalizeIntervention({
+  interventionId,
+  areaUID,
+  schedule,
+  crewActivities: [aCheckin, aCheckout, aReport, bCheckin, bCheckout, bReport],
+  interventionType: InterventionType.RoutineMaintenance,
+  executionDate: new Date(),
+  commissionId: null,
+});
+```
+
+Pairing (which checkout is Alice's, which is Bob's) is resolved by signer wallet — no UID chain to wire up.
+
+### Providing `time` explicitly
+
+`checkin`, `checkout`, `submitReport`, `recordHealthcheck`, and `scheduleIntervention` all accept an optional `time?: Date | bigint` field. The SDK writes it into the EIP-712 envelope's `message.time`.
+
+- **Sign at the moment of the event** → omit `time`. Wall-clock default.
+- **Sign server-side on later upload** → pass the device-recorded moment explicitly. Otherwise the envelope claims the upload moment, not the actual event.
 
 ## Healthchecks (independent of interventions)
 
-Healthchecks are a periodic area-condition signal. They reference an `areaUID` but **are not tied to any intervention** — readers merge the healthcheck timeline with the intervention timeline by timestamp to reconstruct area state.
+Healthcheck Activities are a periodic area-condition signal. They reference an `areaUID` but **are not tied to any intervention** — readers merge the healthcheck timeline with the intervention timeline by timestamp to reconstruct area state. Healthchecks are area-scoped (`refUID = AreaRegistration UID`) and are NOT bundled into intervention evidence bundles.
 
 ```ts
 const hc = await client.recordHealthcheck({
   areaUID,
   healthScore: 8,
-  photoHash: ZERO_BYTES32,
+  photoCID: 'ipfs://Qm.../condition.jpg',
   notes: 'Hedge trimmed, beds mulched.',
-  metadata: '',
+  metadata: { v: 1, weather: 'sunny' },
 });
 ```
 
-Any wallet may issue a Healthcheck. The attester's role (organization / gardener / citizen) is resolved by the reader at aggregation time — see spec [§3.6](../../docs/eas-schema-spec.md#36-healthcheck) and [§7.4](../../docs/eas-schema-spec.md#74-example-policy--healthcheck-weighting) for weighting policies.
+Any wallet may issue a healthcheck Activity. The signer's role (organization / gardener / citizen) is resolved by the reader at aggregation time — see spec [§3.2.5](../../docs/eas-schema-spec.md#325-healthcheck-payload) and [§7.4](../../docs/eas-schema-spec.md#74-example-policy--healthcheck-weighting) for weighting policies.
 
-## Reading attestations
+## Reading
 
 ```ts
 // Single attestation by UID
@@ -156,30 +193,40 @@ const intervention = await client.getIntervention(interventionUID);
 
 // Query via EAS GraphQL
 const interventions = await client.getAreaInterventions(areaUID);
-const healthchecks = await client.getAreaHealthchecks(areaUID);
 const milestones = await client.getGardenerMilestones(walletAddress);
 
-// Verify evidence bundle
+// Activity-layer reads — returns activity headers (UID + decoded activityType/payloadHash).
+// Plaintext payloads live in evidence bundles (for published interventions) or
+// the publishing organization's attestation store (for in-flight activities).
+const activities = await client.getInterventionActivities(interventionId);
+const healthchecks = await client.getAreaHealthchecks(areaUID);
+
+// Verify an evidence bundle end-to-end
 const result = await client.verifyEvidenceBundle(interventionUID);
-// { valid, temporalOrderValid, timestampsVerified, executionDateBracketed, checks }
+// {
+//   valid,
+//   bundleVersionValid, signaturesValid, payloadIntegrityValid, timestampsVerified,
+//   interventionScopeValid, temporalOrderValid, executionDateBracketed,
+//   checks
+// }
 ```
+
+> **Note on `getInterventionActivities` visibility.** Activities only appear in easscan's GraphQL `attestations` table once submitted to its off-chain store. `finalizeIntervention` does this automatically via `indexBundleAttestations`; if you compose manually (see [Advanced](#advanced-manual-composition) below) and skip indexing, the scope-hash query returns empty even though the Activities are signed and timestamped. The bundle hash remains verifiable either way.
 
 ### Verification tiers
 
-Spec [§5 verification flow](../../docs/eas-schema-spec.md#5-evidence-bundle-structure) splits verification into a **protocol tier** (non-negotiable: hash, signatures, timestamps, bundle version) and a **policy tier** (verifier's call: attester-role filtering, crew-size cross-check, distinctness, temporal strictness, etc.).
+Spec [§5 verification flow](../../docs/eas-schema-spec.md#5-evidence-bundle-structure) splits verification into a **protocol tier** (non-negotiable: bundle version, signatures, payload integrity, on-chain timestamps) and a **policy tier** (verifier's call: intervention scope, temporal ordering, execution-date bracket, crew-size cross-check, distinctness, consistency).
 
-#### Policies as data
-
-`finalizeIntervention` (write-side gate) and `verifyEvidenceBundle` (read-side composite) accept a `policy` option naming which checks they enforce. Rationale and trust model in [spec §7](../../docs/eas-schema-spec.md#7-trust-model).
+`finalizeIntervention` (write-side gate) and `verifyEvidenceBundle` (read-side composite) both accept a `policy` option that names which checks they enforce. Checks the policy doesn't require still run and appear in `checks[]`, but don't count toward `valid`.
 
 ```ts
 import {
-  STRICT_FINALIZE_POLICY,       // default — every issue blocks publish
+  STRICT_FINALIZE_POLICY,       // default — every known issue blocks publish
   MINIMAL_FINALIZE_POLICY,      // only structural issues block
   LENIENT_FINALIZE_POLICY,      // nothing blocks
   finalizePolicy,               // ({ blocking: FinalizeInputIssueCode[] })
 
-  STRICT_VERIFY_POLICY,         // default — every sub-check must pass
+  STRICT_VERIFY_POLICY,         // default — every core sub-check must pass
   PROTOCOL_ONLY_VERIFY_POLICY,  // only protocol-tier checks required
   verifyPolicy,                 // ({ required: VerificationCheckCode[] })
 } from '@refi-italia/opengarden';
@@ -189,57 +236,98 @@ await client.finalizeIntervention(input, { policy: LENIENT_FINALIZE_POLICY });
 const verdict = await client.verifyEvidenceBundle(uid, {
   policy: PROTOCOL_ONLY_VERIFY_POLICY,
 });
-// verdict.checks[] always contains every sub-check; `policy` only controls
-// which ones roll up into `verdict.valid`.
 ```
 
-Omit `policy` to get the strict default (back-compat with prior behavior).
+Omit `policy` to get the strict default.
 
-#### Composing individual helpers
+### Composable verification helpers
 
-`verifyEvidenceBundle(uid)` currently runs the protocol tier plus a default strict policy (temporal order, execution-date bracket). For custom policies, compose individual helpers:
+`verifyEvidenceBundle` runs a default strict policy. For custom verification flows (e.g. a conservative auditor applying crew-distinctness and schedule-uniqueness), compose individual helpers:
 
 | Helper | Tier | Purpose |
 |---|---|---|
 | `verifyBundleVersion(bundle)` | Protocol | Reject unknown bundle versions |
-| `verifyBundleSignatures(bundle, eas)` | Protocol | Recover EIP-712 signer per entry; confirm bundle's `attester` matches |
+| `verifyBundleSignatures(bundle, eas)` | Protocol | Recover EIP-712 signer per activity; confirm bundle-level `signer` matches embedded signer |
+| `verifyBundlePayloadIntegrity(bundle)` | Protocol | Each activity's `payload` canonicalizes (§9.8) to the signed `payloadHash`; `activityType` matches `type` |
 | `verifyBundleOnChainTimestamps(bundle, fetchTs)` | Protocol | Bundle timestamps match `EAS.getTimestamp` |
-| `verifyBundleRefUIDs(bundle)` | Policy | Signed messages' `refUID` point at expected parents |
-| `verifyBundleTemporalOrder(bundle)` | Policy | Strict `T_scheduled < T_checkin < T_checkout < T_report` |
-| `verifyBundleExecutionDateBracket(bundle, intervention)` | Policy | `executionDate` sits between scheduled and publication |
-| `verifyBundleCrewSize(bundle, scheduled)` | Policy | Bundle crew arrays match `ScheduledIntervention.crewSize` |
-| `verifyBundleCrewConsistency(bundle)` | Policy | Each member's checkin/checkout/report share one attester |
-| `verifyBundleCrewDistinctness(bundle)` | Policy | Every crew member's attester wallet is distinct |
+| `verifyBundleInterventionScope(bundle, intervention)` | Policy | Every lifecycle activity's `refUID` equals `keccak256(intervention.interventionId)` |
+| `verifyBundleTemporalOrder(bundle)` | Policy | Per-signer `T_schedule < T_checkin < T_checkout < T_report` |
+| `verifyBundleExecutionDateBracket(bundle, intervention)` | Policy | `executionDate` sits between schedule and publication |
+| `verifyBundleCrewSize(bundle)` | Policy | Count of `checkin` activities matches `schedule.payload.crewSize` |
+| `verifyBundleCrewConsistency(bundle)` | Policy | Each crew signer has exactly one checkin + checkout + report |
+| `verifyBundleCrewDistinctness(bundle)` | Policy | Every crew signer wallet is distinct |
+| `verifyBundleScheduleUniqueness(bundle)` | Policy | Exactly one `schedule` activity in the bundle |
 
-See spec [§7.3–§7.4](../../docs/eas-schema-spec.md#73-example-policy--conservative-organizational-auditor) for sample policy compositions — e.g. conservative auditor (strict crew-size + distinctness + temporal) vs permissive dashboard (protocol tier only).
+See spec [§7.3–§7.4](../../docs/eas-schema-spec.md#73-example-policy--conservative-organizational-auditor) for example policy compositions.
 
-Example — composing a conservative auditor policy:
+Example — conservative-auditor policy:
 
 ```ts
 import {
   verifyBundleVersion,
   verifyBundleSignatures,
+  verifyBundlePayloadIntegrity,
   verifyBundleOnChainTimestamps,
-  verifyBundleRefUIDs,
+  verifyBundleInterventionScope,
   verifyBundleTemporalOrder,
   verifyBundleCrewSize,
   verifyBundleCrewConsistency,
   verifyBundleCrewDistinctness,
+  verifyBundleScheduleUniqueness,
 } from '@refi-italia/opengarden';
 
-// Assume `bundle`, `scheduled`, `eas`, and `fetchTs` are already resolved.
 const checks = [
   verifyBundleVersion(bundle),
   await verifyBundleSignatures(bundle, eas),
-  await verifyBundleOnChainTimestamps(bundle, fetchTs),
-  verifyBundleRefUIDs(bundle),
+  verifyBundlePayloadIntegrity(bundle),
+  await verifyBundleOnChainTimestamps(bundle, (uid) => eas.getTimestamp(uid)),
+  verifyBundleInterventionScope(bundle, intervention),
   verifyBundleTemporalOrder(bundle),
-  verifyBundleCrewSize(bundle, scheduled),
+  verifyBundleCrewSize(bundle),
   verifyBundleCrewConsistency(bundle),
   verifyBundleCrewDistinctness(bundle),
+  verifyBundleScheduleUniqueness(bundle),
 ];
 const valid = checks.every((c) => c.valid);
 ```
+
+## Advanced: manual composition
+
+`finalizeIntervention` is a thin orchestrator over four composable primitives. Use them directly only if you need custom error handling between steps, you're writing tests, or you maintain your own indexer.
+
+```ts
+// 1. Preflight (pure, no side effects)
+import { validateFinalizeInput } from '@refi-italia/opengarden';
+const issues = validateFinalizeInput(input);
+if (issues.length > 0) throw new Error('preflight failed');
+
+// 2. Build evidence bundle (pure)
+const bundle = client.buildEvidenceBundle({
+  interventionId,
+  areaUID,
+  schedule,
+  crewActivities: [checkin, checkout, report],
+});
+
+// 3. Upload to storage (returns bundle hash)
+const evidenceBundleHash = await client.uploadEvidenceBundle(bundle);
+
+// 4. Submit to easscan off-chain store (makes activities queryable via GraphQL)
+const indexingResults = await client.indexBundleAttestations({
+  interventionId, areaUID, schedule, crewActivities,
+});
+
+// 5. Publish on-chain
+const publication = await client.publishIntervention({
+  areaUID, interventionId,
+  interventionType: InterventionType.RoutineMaintenance,
+  executionDate: new Date(),
+  commissionId: null,
+  evidenceBundleHash,
+});
+```
+
+Skipping step (4) is a common gotcha — the bundle is still verifiable (the evidence bundle hash is the authoritative commitment), but `getInterventionActivities` / third-party easscan queries will return empty until the activities are submitted to the off-chain store. Prefer `finalizeIntervention` unless you have a specific reason not to.
 
 ## Storage adapter
 
@@ -280,7 +368,7 @@ const client = await createOpenGardenClient({
 });
 ```
 
-Schema strings (the source of truth for UID derivation) are defined in [spec §8](../../docs/eas-schema-spec.md#8-schema-registration-reference).
+Schema strings (the source of truth for UID derivation) are defined in [spec §8](../../docs/eas-schema-spec.md#8-schema-registration-reference). The protocol defines four schemas: `AreaRegistration`, `Intervention`, `GardenerMilestone`, `Activity`.
 
 ## API reference
 
@@ -337,17 +425,17 @@ const client = new OpenGardenClient({ signer, chain: OPTIMISM_MAINNET, eas, regi
 | `publishIntervention(data)` | `OnChainAttestationResult` | `ZERO_ADDRESS` |
 | `mintMilestone(data)` | `OnChainAttestationResult` | Gardener address |
 
-### Off-chain writes (timestamped)
+### Off-chain Activity writes (timestamped)
 
-Each method signs an off-chain attestation and timestamps its UID on-chain.
+Each method builds a typed Activity payload, signs an EAS offchain envelope, and timestamps its UID on-chain. All lifecycle methods set `refUID = keccak256(input.interventionId)` internally; `recordHealthcheck` uses `areaUID` as refUID since healthchecks are area-scoped.
 
-| Method | Returns |
-|---|---|
-| `scheduleIntervention(data)` | `TimestampedOffChainResult` |
-| `checkin(data)` | `TimestampedOffChainResult` |
-| `checkout(data)` | `TimestampedOffChainResult` |
-| `submitReport(data)` | `TimestampedOffChainResult` |
-| `recordHealthcheck(data)` | `TimestampedOffChainResult` |
+| Method | Returns | Activity type |
+|---|---|---|
+| `scheduleIntervention(input)` | `TimestampedOffChainResult` | `schedule` |
+| `checkin(input)` | `TimestampedOffChainResult` | `checkin` |
+| `checkout(input)` | `TimestampedOffChainResult` | `checkout` |
+| `submitReport(input)` | `TimestampedOffChainResult` | `report` |
+| `recordHealthcheck(input)` | `TimestampedOffChainResult` | `healthcheck` |
 
 ### Reads
 
@@ -356,21 +444,27 @@ Each method signs an off-chain attestation and timestamps its UID on-chain.
 | `getArea(uid)` | `Area` |
 | `getIntervention(uid)` | `Intervention` |
 | `getAreaInterventions(areaUID)` | `Intervention[]` (via GraphQL) |
-| `getAreaHealthchecks(areaUID)` | `Healthcheck[]` (via GraphQL) |
 | `getGardenerMilestones(address)` | `Milestone[]` (via GraphQL) |
+| `getInterventionActivities(interventionId)` | Activity headers (UID, `activityType`, `payloadHash`, signer, `refUID`, time, revoked). Payload plaintext lives in the evidence bundle. |
+| `getAreaHealthchecks(areaUID)` | Healthcheck Activity headers for an area. |
 
 ### Evidence bundle
 
 | Method | Returns |
 |---|---|
-| `buildEvidenceBundle(input)` | `EvidenceBundle` |
-| `uploadEvidenceBundle(bundle)` | `string` (hash) |
-| `finalizeIntervention(input)` | `FinalizeInterventionResult` — build + upload + publish in one call, with preflight |
+| `finalizeIntervention(input)` | `FinalizeInterventionResult` — **preflight + build + upload + index + publish in one call**. Use this unless you need manual control. |
+| `buildEvidenceBundle(input)` | `EvidenceBundle` (pure builder) |
+| `uploadEvidenceBundle(bundle)` | `string` (bundle hash) |
+| `indexBundleAttestations(input)` | `BundleIndexingResult[]` (submits activities to easscan off-chain store) |
 | `verifyEvidenceBundle(interventionUID)` | `EvidenceBundleVerification` |
 
-Composable verification helpers (for custom policies): `verifyBundleVersion`, `verifyBundleSignatures`, `verifyBundleOnChainTimestamps`, `verifyBundleRefUIDs`, `verifyBundleTemporalOrder`, `verifyBundleExecutionDateBracket`, `verifyBundleCrewSize`, `verifyBundleCrewConsistency`, `verifyBundleCrewDistinctness`. See [Verification tiers](#verification-tiers) above.
+Composable verification helpers: `verifyBundleVersion`, `verifyBundleSignatures`, `verifyBundlePayloadIntegrity`, `verifyBundleOnChainTimestamps`, `verifyBundleInterventionScope`, `verifyBundleTemporalOrder`, `verifyBundleExecutionDateBracket`, `verifyBundleCrewSize`, `verifyBundleCrewConsistency`, `verifyBundleCrewDistinctness`, `verifyBundleScheduleUniqueness`. See [Composable verification helpers](#composable-verification-helpers) above.
 
 Policy presets + builders: `STRICT_FINALIZE_POLICY`, `MINIMAL_FINALIZE_POLICY`, `LENIENT_FINALIZE_POLICY`, `finalizePolicy`, `STRICT_VERIFY_POLICY`, `PROTOCOL_ONLY_VERIFY_POLICY`, `verifyPolicy`.
+
+Hashing primitives: `hashInterventionScope(interventionId)`, `hashActivityPayload(payload)`, `hashIdentifier(id)`, `hashPhotoBundle(items)`, `canonicalJSON(value)`.
+
+Type guards for decoded activities: `isScheduleActivity`, `isCheckinActivity`, `isCheckoutActivity`, `isReportActivity`, `isHealthcheckActivity`.
 
 ## Development
 
@@ -411,13 +505,11 @@ All SDK errors are `OpenGardenError` instances with a typed `code`:
 | Code | When |
 |---|---|
 | `SCHEMA_NOT_REGISTERED` | Write method called before schema registration |
-| `ATTESTATION_NOT_FOUND` | `getArea`/`getIntervention` returns empty |
-| `INVALID_INPUT` | Invalid input or unsupported chain for GraphQL |
-| `TRANSACTION_FAILED` | On-chain transaction reverted |
-| `TIMESTAMP_MISMATCH` | Bundle timestamp doesn't match on-chain |
-| `BUNDLE_VERIFICATION_FAILED` | Evidence bundle integrity check failed |
-| `STORAGE_NOT_CONFIGURED` | Upload/verify called without storage adapter |
-| `SIGNER_ERROR` | Missing or invalid signer |
+| `ATTESTATION_NOT_FOUND` | `getArea` / `getIntervention` returns empty |
+| `INVALID_INPUT` | Invalid input, unsupported chain for GraphQL, or preflight blocking issue in `finalizeIntervention` |
+| `BUNDLE_VERIFICATION_FAILED` | Evidence bundle integrity check failed (e.g. unsupported `bundleVersion`) |
+| `STORAGE_NOT_CONFIGURED` | `uploadEvidenceBundle` / `verifyEvidenceBundle` called without a storage adapter |
+| `SIGNER_ERROR` | Missing or invalid signer, or transaction receipt unavailable |
 
 ## License
 

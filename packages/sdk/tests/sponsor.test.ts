@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { ZERO_BYTES32 } from "../src/constants";
 import {
-	decodePublishedIntervention,
-	encodePublishedIntervention,
+	decodeIntervention,
+	encodeIntervention,
 } from "../src/schemas/encoders";
 import { type SponsorRef, serializeSponsorRef } from "../src/sponsor";
 import { InterventionType } from "../src/types/enums";
@@ -64,54 +64,54 @@ describe("commissionId encoding with SponsorRef", () => {
 		const canonical = serializeSponsorRef(ref);
 		expect(canonical).not.toBeNull();
 
-		const encodedFromRef = encodePublishedIntervention({
+		const encodedFromRef = encodeIntervention({
 			...baseInput,
 			commissionId: ref,
 		});
-		const encodedFromString = encodePublishedIntervention({
+		const encodedFromString = encodeIntervention({
 			...baseInput,
 			commissionId: canonical as string,
 		});
 		expect(encodedFromRef).toBe(encodedFromString);
 
-		const decoded = decodePublishedIntervention(encodedFromRef);
+		const decoded = decodeIntervention(encodedFromRef);
 		expect(decoded.commissionRef).toBe(hashIdentifier(canonical as string));
 	});
 
 	it("distinct kinds with the same identifier produce distinct on-chain hashes", () => {
-		const corporate = encodePublishedIntervention({
+		const corporate = encodeIntervention({
 			...baseInput,
 			commissionId: { kind: "corporate", sponsorId: "abc" },
 		});
-		const municipal = encodePublishedIntervention({
+		const municipal = encodeIntervention({
 			...baseInput,
 			commissionId: { kind: "municipal", contractNumber: "abc" },
 		});
-		expect(decodePublishedIntervention(corporate).commissionRef).not.toBe(
-			decodePublishedIntervention(municipal).commissionRef,
+		expect(decodeIntervention(corporate).commissionRef).not.toBe(
+			decodeIntervention(municipal).commissionRef,
 		);
 	});
 
 	it("a volunteer SponsorRef encodes to ZERO_BYTES32", () => {
-		const encoded = encodePublishedIntervention({
+		const encoded = encodeIntervention({
 			...baseInput,
 			commissionId: { kind: "volunteer" },
 		});
-		const decoded = decodePublishedIntervention(encoded);
+		const decoded = decodeIntervention(encoded);
 		expect(decoded.commissionRef).toBe(ZERO_BYTES32);
 	});
 
 	it("a structured corporate ref differs from the same plain string", () => {
-		const structured = encodePublishedIntervention({
+		const structured = encodeIntervention({
 			...baseInput,
 			commissionId: { kind: "corporate", sponsorId: "acme-001" },
 		});
-		const plain = encodePublishedIntervention({
+		const plain = encodeIntervention({
 			...baseInput,
 			commissionId: "acme-001",
 		});
-		expect(decodePublishedIntervention(structured).commissionRef).not.toBe(
-			decodePublishedIntervention(plain).commissionRef,
+		expect(decodeIntervention(structured).commissionRef).not.toBe(
+			decodeIntervention(plain).commissionRef,
 		);
 	});
 });

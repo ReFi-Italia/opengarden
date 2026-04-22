@@ -10,18 +10,11 @@ export interface SchemaDefinition {
 export const SCHEMA_STRINGS: Record<SchemaName, string> = {
 	AreaRegistration:
 		"string areaId, int32 latitude, int32 longitude, uint8 areaType, string name, string municipality, bytes32 boundariesHash, string metadata",
-	PublishedIntervention:
+	Intervention:
 		"string interventionId, uint8 interventionType, uint64 executionDate, bytes32 evidenceBundleHash, bytes32 commissionRef",
 	GardenerMilestone:
 		"uint8 milestoneLevel, uint16 totalInterventions, uint16 totalValidated, uint8 avgHealthImprovement, uint64 achievedAt, bytes32 evidenceRoot",
-	ScheduledIntervention:
-		"string interventionId, uint8 interventionType, uint64 scheduledDate, uint16 estimatedMinutes, string description, bytes32 commissionRef, uint8 crewSize",
-	GardenerCheckin: "int32 latitude, int32 longitude, bytes32 photoHash",
-	GardenerCheckout: "uint16 actualMinutes",
-	GardenerReport:
-		"bytes32 checkoutUID, string tasksCompleted, uint8 taskCount, bytes32 photosHash, string notes",
-	Healthcheck:
-		"uint8 healthScore, bytes32 photoHash, string notes, string metadata",
+	Activity: "uint8 activityType, bytes32 payloadHash",
 };
 
 export const SCHEMA_DEFINITIONS: Record<SchemaName, SchemaDefinition> = {
@@ -31,8 +24,8 @@ export const SCHEMA_DEFINITIONS: Record<SchemaName, SchemaDefinition> = {
 		onchain: true,
 		timestamped: false,
 	},
-	PublishedIntervention: {
-		schema: SCHEMA_STRINGS.PublishedIntervention,
+	Intervention: {
+		schema: SCHEMA_STRINGS.Intervention,
 		revocable: false,
 		onchain: true,
 		timestamped: false,
@@ -43,33 +36,13 @@ export const SCHEMA_DEFINITIONS: Record<SchemaName, SchemaDefinition> = {
 		onchain: true,
 		timestamped: false,
 	},
-	ScheduledIntervention: {
-		schema: SCHEMA_STRINGS.ScheduledIntervention,
+	// Registered `revocable: true` so schedule Activities can be revoked during
+	// cancel/reschedule. Checkin/checkout/report/healthcheck are never revoked
+	// in practice — a verifier policy MAY reject bundles containing revoked
+	// entries of those types. See spec §8.
+	Activity: {
+		schema: SCHEMA_STRINGS.Activity,
 		revocable: true,
-		onchain: false,
-		timestamped: true,
-	},
-	GardenerCheckin: {
-		schema: SCHEMA_STRINGS.GardenerCheckin,
-		revocable: false,
-		onchain: false,
-		timestamped: true,
-	},
-	GardenerCheckout: {
-		schema: SCHEMA_STRINGS.GardenerCheckout,
-		revocable: false,
-		onchain: false,
-		timestamped: true,
-	},
-	GardenerReport: {
-		schema: SCHEMA_STRINGS.GardenerReport,
-		revocable: false,
-		onchain: false,
-		timestamped: true,
-	},
-	Healthcheck: {
-		schema: SCHEMA_STRINGS.Healthcheck,
-		revocable: false,
 		onchain: false,
 		timestamped: true,
 	},

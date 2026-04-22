@@ -1,82 +1,97 @@
 import { EVIDENCE_BUNDLE_VERSION } from "./constants";
 import { OpenGardenError, OpenGardenErrorCode } from "./errors";
 import type {
+	CheckinActivityPayload,
+	CheckoutActivityPayload,
+	ReportActivityPayload,
+	ScheduleActivityPayload,
+} from "./types/attestation";
+import type {
+	BundleActivity,
 	EvidenceBundle,
 	EvidenceBundleBuilderInput,
-	EvidenceBundleGardenerAttestation,
 } from "./types/evidence";
+import type { TimestampedOffChainResult } from "./types/results";
 
-function extractAttestation(result: {
-	uid: string;
-	signedAttestation: Record<string, unknown>;
-	onchainTimestamp: bigint;
-}) {
+function toBundleEntry(result: TimestampedOffChainResult): BundleActivity {
 	const message = result.signedAttestation.message as
 		| Record<string, unknown>
 		| undefined;
 	const claimedTimestamp = message?.time ? Number(message.time) : 0;
 
-	return {
+	const base = {
 		uid: result.uid,
+		signer: result.attester,
 		claimedTimestamp,
 		onchainTimestamp: Number(result.onchainTimestamp),
 		signedAttestation: result.signedAttestation,
 	};
-}
 
-function extractGardenerAttestation(
-	result: {
-		uid: string;
-		attester?: string;
-		signedAttestation: Record<string, unknown>;
-		onchainTimestamp: bigint;
-	},
-	role: "checkin" | "checkout" | "report",
-	crewIndex: number,
-): EvidenceBundleGardenerAttestation {
-	const base = extractAttestation(result);
-	// Prefer the top-level attester field (populated by signAndTimestamp).
-	// Fall back to legacy locations in signedAttestation for pre-0.2 results.
-	const message = result.signedAttestation.message as
-		| Record<string, unknown>
-		| undefined;
-	const attester =
-		result.attester ??
-		(result.signedAttestation.signer as string | undefined) ??
-		(result.signedAttestation.attester as string | undefined) ??
-		(message?.attester as string | undefined);
-	if (!attester) {
-		throw new OpenGardenError(
-			OpenGardenErrorCode.INVALID_INPUT,
-			`Crew member ${crewIndex} ${role} (uid=${result.uid}) is missing signer/attester`,
-		);
+	switch (result.type) {
+		case "schedule":
+			return {
+				...base,
+				type: "schedule",
+				payload: result.payload as unknown as ScheduleActivityPayload,
+			};
+		case "checkin":
+			return {
+				...base,
+				type: "checkin",
+				payload: result.payload as unknown as CheckinActivityPayload,
+			};
+		case "checkout":
+			return {
+				...base,
+				type: "checkout",
+				payload: result.payload as unknown as CheckoutActivityPayload,
+			};
+		case "report":
+			return {
+				...base,
+				type: "report",
+				payload: result.payload as unknown as ReportActivityPayload,
+			};
+		case "healthcheck":
+			throw new OpenGardenError(
+				OpenGardenErrorCode.INVALID_INPUT,
+				`Healthcheck activities are area-scoped and MUST NOT appear in intervention evidence bundles (uid=${result.uid})`,
+			);
+		case "unspecified":
+			throw new OpenGardenError(
+				OpenGardenErrorCode.INVALID_INPUT,
+				`Activity of type "unspecified" cannot be bundled (uid=${result.uid})`,
+			);
 	}
-	return { ...base, attester };
 }
 
+/**
+ * Builds a §5.2-compliant evidence bundle from the writer-side activity
+ * results. Activities are sorted ascending by `onchainTimestamp`. The schedule
+ * activity is required (`type === "schedule"`) and is included alongside the
+ * crew activities in the flat `activities` array.
+ */
 export function buildEvidenceBundle(
 	input: EvidenceBundleBuilderInput,
 ): EvidenceBundle {
+	if (input.schedule.type !== "schedule") {
+		throw new OpenGardenError(
+			OpenGardenErrorCode.INVALID_INPUT,
+			`buildEvidenceBundle: input.schedule must be a schedule Activity (got type="${input.schedule.type}")`,
+		);
+	}
+
+	const entries: BundleActivity[] = [
+		toBundleEntry(input.schedule),
+		...input.crewActivities.map(toBundleEntry),
+	];
+
+	entries.sort((a, b) => a.onchainTimestamp - b.onchainTimestamp);
+
 	return {
 		interventionId: input.interventionId,
 		areaUID: input.areaUID,
-		attestations: {
-			scheduled: extractAttestation(input.scheduled),
-			checkins: input.crew.map((m, i) =>
-				extractGardenerAttestation(m.checkin, "checkin", i),
-			),
-			checkouts: input.crew.map((m, i) =>
-				extractGardenerAttestation(m.checkout, "checkout", i),
-			),
-			reports: input.crew.map((m, i) =>
-				extractGardenerAttestation(m.report, "report", i),
-			),
-		},
-		photos: {
-			checkinPhotos: input.photos?.checkinPhotos,
-			reportPhotos: input.photos?.reportPhotos,
-			afterPhotos: input.photos?.afterPhotos,
-		},
+		activities: entries,
 		bundleVersion: EVIDENCE_BUNDLE_VERSION,
 	};
 }
@@ -102,13 +117,7 @@ export function bundleJsonReplacer(_key: string, value: unknown): unknown {
  * Idempotent — fields already of type `bigint` are left alone.
  */
 export function restoreBundleBigInts(bundle: EvidenceBundle): EvidenceBundle {
-	const entries = [
-		bundle.attestations.scheduled,
-		...bundle.attestations.checkins,
-		...bundle.attestations.checkouts,
-		...bundle.attestations.reports,
-	];
-	for (const entry of entries) {
+	for (const entry of bundle.activities) {
 		restoreSignedAttestationBigInts(entry.signedAttestation);
 	}
 	return bundle;

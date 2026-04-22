@@ -1,5 +1,3 @@
-// Types
-
 // Client
 export { OpenGardenClient } from "./client";
 // Lazy DX helper
@@ -60,17 +58,45 @@ export type { SchemaDefinition } from "./schemas/definitions";
 // Schema definitions
 export { SCHEMA_DEFINITIONS, SCHEMA_STRINGS } from "./schemas/definitions";
 // Schema encoder runtime (advanced — most consumers should use createOpenGardenClient)
-export { initEncoders } from "./schemas/encoders";
+export {
+	buildCheckinPayload,
+	buildCheckoutPayload,
+	buildHealthcheckPayload,
+	buildReportPayload,
+	buildSchedulePayload,
+	decodeActivityData,
+	encodeActivityData,
+	encodeActivityFromPayload,
+	initEncoders,
+	parseActivityDecodedDataJson,
+} from "./schemas/encoders";
 // Sponsor reference helpers
 export type { SponsorRef } from "./sponsor";
 export { serializeSponsorRef } from "./sponsor";
 export type {
+	Activity,
 	Area,
+	CheckinActivity,
+	CheckinActivityPayload,
+	CheckoutActivity,
+	CheckoutActivityPayload,
 	EvidenceBundleVerification,
-	Healthcheck,
+	HealthcheckActivity,
+	HealthcheckActivityPayload,
 	Intervention,
+	LifecycleActivity,
 	Milestone,
-	ScheduledIntervention,
+	ReportActivity,
+	ReportActivityPayload,
+	ScheduleActivity,
+	ScheduleActivityPayload,
+} from "./types/attestation";
+export {
+	isCheckinActivity,
+	isCheckoutActivity,
+	isHealthcheckActivity,
+	isReportActivity,
+	isScheduleActivity,
 } from "./types/attestation";
 export type {
 	ChainConfig,
@@ -78,15 +104,25 @@ export type {
 	SchemaUIDs,
 	StorageAdapter,
 } from "./types/config";
-export type { SchemaName } from "./types/enums";
-export { AreaType, InterventionType, MilestoneLevel } from "./types/enums";
+export type { ActivityTypeName, SchemaName } from "./types/enums";
+export {
+	ACTIVITY_TYPE_NAMES,
+	ActivityType,
+	activityTypeFromName,
+	AreaType,
+	InterventionType,
+	MilestoneLevel,
+} from "./types/enums";
 export type {
+	BundleActivity,
+	CheckinBundleActivity,
+	CheckoutBundleActivity,
 	EvidenceBundle,
-	EvidenceBundleAttestation,
 	EvidenceBundleBuilderInput,
-	EvidenceBundleGardenerAttestation,
 	FinalizeInterventionInput,
 	FinalizeInterventionResult,
+	ReportBundleActivity,
+	ScheduleBundleActivity,
 	SignedOffchainAttestation,
 } from "./types/evidence";
 export type {
@@ -98,19 +134,23 @@ export type {
 	TimestampedOffChainResult,
 } from "./types/results";
 export type {
+	ActivityPayloadInput,
 	AreaRegistrationInput,
-	GardenerCheckinInput,
-	GardenerCheckoutInput,
+	CheckinActivityInput,
+	CheckoutActivityInput,
 	GardenerMilestoneInput,
-	GardenerReportInput,
-	HealthcheckInput,
-	PublishedInterventionInput,
-	ScheduledInterventionInput,
+	HealthcheckActivityInput,
+	InterventionInput,
+	ReportActivityInput,
+	ScheduleActivityInput,
 } from "./types/schemas";
 // Utilities
 export {
+	canonicalJSON,
 	fromMicrodegrees,
+	hashActivityPayload,
 	hashIdentifier,
+	hashInterventionScope,
 	hashPhotoBundle,
 	toMicrodegrees,
 	toUnixSeconds,
@@ -126,8 +166,10 @@ export {
 	verifyBundleCrewDistinctness,
 	verifyBundleCrewSize,
 	verifyBundleExecutionDateBracket,
+	verifyBundleInterventionScope,
 	verifyBundleOnChainTimestamps,
-	verifyBundleRefUIDs,
+	verifyBundlePayloadIntegrity,
+	verifyBundleScheduleUniqueness,
 	verifyBundleSignatures,
 	verifyBundleTemporalOrder,
 	verifyBundleVersion,

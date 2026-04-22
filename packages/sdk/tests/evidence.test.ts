@@ -1,119 +1,144 @@
 import { describe, expect, it } from "vitest";
 import { EVIDENCE_BUNDLE_VERSION } from "../src/constants";
 import { OpenGardenError, OpenGardenErrorCode } from "../src/errors";
-import { buildEvidenceBundle } from "../src/evidence";
+import {
+	buildEvidenceBundle,
+	bundleJsonReplacer,
+	restoreBundleBigInts,
+} from "../src/evidence";
 import type { EvidenceBundleBuilderInput } from "../src/types/evidence";
-import type { TimestampedOffChainResult } from "../src/types/results";
-import { FAKE_TX_RECEIPT, makeFakeTimestampedResult } from "./_helpers";
+import { makeFakeActivityResult } from "./_helpers";
 
-function mockTimestampedResult(
-	uid: string,
-	time: number,
-	onchainTimestamp: bigint,
-	attester?: string,
-): TimestampedOffChainResult {
-	return makeFakeTimestampedResult(uid, {
-		time: BigInt(time),
-		onchainTimestamp,
-		attester,
-	});
+const ALICE = "0x000000000000000000000000000000000000a1ce";
+const BOB = "0x0000000000000000000000000000000000000b0b";
+
+function soloInput(): EvidenceBundleBuilderInput {
+	return {
+		interventionId: "INT-2026-0001",
+		areaUID: "0xarea123",
+		schedule: makeFakeActivityResult("0xsched", "schedule", {
+			time: 1000n,
+			onchainTimestamp: 1015n,
+			payload: {
+				interventionId: "INT-2026-0001",
+				areaUID: "0xarea123",
+				crewSize: 1,
+				interventionType: 1,
+				scheduledDate: 1000,
+				estimatedMinutes: 60,
+				description: "",
+				commissionRef:
+					"0x0000000000000000000000000000000000000000000000000000000000000000",
+			},
+		}),
+		crewActivities: [
+			makeFakeActivityResult("0xcheckin", "checkin", {
+				time: 2000n,
+				onchainTimestamp: 2018n,
+				attester: ALICE,
+				payload: { latitude: 41890000, longitude: 12492000, photoCID: "" },
+			}),
+			makeFakeActivityResult("0xcheckout", "checkout", {
+				time: 3000n,
+				onchainTimestamp: 3012n,
+				attester: ALICE,
+				payload: { actualMinutes: 45 },
+			}),
+			makeFakeActivityResult("0xreport", "report", {
+				time: 3100n,
+				onchainTimestamp: 3120n,
+				attester: ALICE,
+				payload: { tasksCompleted: ["PRUNE"], photosCID: "", notes: "" },
+			}),
+		],
+	};
 }
 
 describe("buildEvidenceBundle", () => {
-	const soloInput: EvidenceBundleBuilderInput = {
-		interventionId: "INT-2026-0001",
-		areaUID: "0xarea123",
-		scheduled: mockTimestampedResult("0xsched", 1000, 1015n),
-		crew: [
-			{
-				checkin: mockTimestampedResult("0xcheckin", 2000, 2018n, "0xAlice"),
-				checkout: mockTimestampedResult("0xcheckout", 3000, 3012n, "0xAlice"),
-				report: mockTimestampedResult("0xreport", 3100, 3120n, "0xAlice"),
-			},
-		],
-		photos: {
-			checkinPhotos: ["ipfs://Qm.../arrival.jpg"],
-			reportPhotos: "ipfs://Qm.../work/",
-		},
-	};
-
 	it("sets bundleVersion to the current constant", () => {
-		const bundle = buildEvidenceBundle(soloInput);
+		const bundle = buildEvidenceBundle(soloInput());
 		expect(bundle.bundleVersion).toBe(EVIDENCE_BUNDLE_VERSION);
 	});
 
-	it("includes interventionId and areaUID", () => {
-		const bundle = buildEvidenceBundle(soloInput);
+	it("preserves interventionId and areaUID", () => {
+		const bundle = buildEvidenceBundle(soloInput());
 		expect(bundle.interventionId).toBe("INT-2026-0001");
 		expect(bundle.areaUID).toBe("0xarea123");
 	});
 
-	it("includes all core attestations for a solo job", () => {
-		const bundle = buildEvidenceBundle(soloInput);
-		expect(bundle.attestations.scheduled.uid).toBe("0xsched");
-		expect(bundle.attestations.checkins).toHaveLength(1);
-		expect(bundle.attestations.checkouts).toHaveLength(1);
-		expect(bundle.attestations.reports).toHaveLength(1);
-		expect(bundle.attestations.checkins[0].uid).toBe("0xcheckin");
-		expect(bundle.attestations.checkouts[0].uid).toBe("0xcheckout");
-		expect(bundle.attestations.reports[0].uid).toBe("0xreport");
+	it("flattens schedule + crew into a single activities array", () => {
+		const bundle = buildEvidenceBundle(soloInput());
+		expect(bundle.activities).toHaveLength(4);
+		const types = bundle.activities.map((a) => a.type);
+		expect(types).toContain("schedule");
+		expect(types).toContain("checkin");
+		expect(types).toContain("checkout");
+		expect(types).toContain("report");
 	});
 
-	it("preserves per-gardener arrays for a crew job", () => {
-		const crewInput: EvidenceBundleBuilderInput = {
-			...soloInput,
-			crew: [
-				{
-					checkin: mockTimestampedResult("0xciA", 2000, 2018n, "0xAlice"),
-					checkout: mockTimestampedResult("0xcoA", 3000, 3012n, "0xAlice"),
-					report: mockTimestampedResult("0xrpA", 3100, 3120n, "0xAlice"),
-				},
-				{
-					checkin: mockTimestampedResult("0xciB", 2100, 2118n, "0xBob"),
-					checkout: mockTimestampedResult("0xcoB", 3200, 3212n, "0xBob"),
-					report: mockTimestampedResult("0xrpB", 3300, 3320n, "0xBob"),
-				},
-			],
-		};
-		const bundle = buildEvidenceBundle(crewInput);
-		expect(bundle.attestations.checkins).toHaveLength(2);
-		expect(bundle.attestations.checkouts).toHaveLength(2);
-		expect(bundle.attestations.reports).toHaveLength(2);
-		expect(bundle.attestations.reports[0].attester).toBe("0xAlice");
-		expect(bundle.attestations.reports[1].attester).toBe("0xBob");
+	it("sorts activities ascending by onchainTimestamp", () => {
+		// Feed crew activities out of order — builder MUST sort.
+		const input = soloInput();
+		input.crewActivities = [
+			input.crewActivities[2], // report (3120)
+			input.crewActivities[0], // checkin (2018)
+			input.crewActivities[1], // checkout (3012)
+		];
+		const bundle = buildEvidenceBundle(input);
+		const timestamps = bundle.activities.map((a) => a.onchainTimestamp);
+		expect(timestamps).toEqual([...timestamps].sort((a, b) => a - b));
 	});
 
 	it("converts onchainTimestamp from bigint to number", () => {
-		const bundle = buildEvidenceBundle(soloInput);
-		expect(bundle.attestations.scheduled.onchainTimestamp).toBe(1015);
-		expect(bundle.attestations.checkins[0].onchainTimestamp).toBe(2018);
+		const bundle = buildEvidenceBundle(soloInput());
+		for (const a of bundle.activities) {
+			expect(typeof a.onchainTimestamp).toBe("number");
+		}
 	});
 
-	it("includes photo references", () => {
-		const bundle = buildEvidenceBundle(soloInput);
-		expect(bundle.photos.checkinPhotos).toEqual(["ipfs://Qm.../arrival.jpg"]);
-		expect(bundle.photos.reportPhotos).toBe("ipfs://Qm.../work/");
-		expect(bundle.photos.afterPhotos).toBeUndefined();
+	it("carries signer through from result.attester", () => {
+		const bundle = buildEvidenceBundle(soloInput());
+		const checkin = bundle.activities.find((a) => a.type === "checkin");
+		expect(checkin?.signer).toBe(ALICE);
 	});
 
-	it("throws INVALID_INPUT when a gardener attestation has no signer or attester", () => {
-		const resultWithoutAttester: TimestampedOffChainResult = {
-			uid: "0xciA",
-			signedAttestation: { message: { time: 2000n } },
-			timestampTxHash: "0xtx",
-			onchainTimestamp: 2018n,
-			timestampReceipt: FAKE_TX_RECEIPT,
-		};
-		const input: EvidenceBundleBuilderInput = {
-			...soloInput,
-			crew: [
-				{
-					checkin: resultWithoutAttester,
-					checkout: mockTimestampedResult("0xcoA", 3000, 3012n, "0xAlice"),
-					report: mockTimestampedResult("0xrpA", 3100, 3120n, "0xAlice"),
-				},
-			],
-		};
+	it("supports crew jobs with multiple signers", () => {
+		const input = soloInput();
+		input.crewActivities = [
+			...input.crewActivities,
+			makeFakeActivityResult("0xciB", "checkin", {
+				time: 2100n,
+				onchainTimestamp: 2118n,
+				attester: BOB,
+				payload: { latitude: 41890000, longitude: 12492000, photoCID: "" },
+			}),
+			makeFakeActivityResult("0xcoB", "checkout", {
+				time: 3200n,
+				onchainTimestamp: 3212n,
+				attester: BOB,
+				payload: { actualMinutes: 50 },
+			}),
+			makeFakeActivityResult("0xrpB", "report", {
+				time: 3300n,
+				onchainTimestamp: 3320n,
+				attester: BOB,
+				payload: { tasksCompleted: ["CLEAN"], photosCID: "", notes: "" },
+			}),
+		];
+		const bundle = buildEvidenceBundle(input);
+		expect(bundle.activities).toHaveLength(7);
+		const checkinSigners = bundle.activities
+			.filter((a) => a.type === "checkin")
+			.map((a) => a.signer);
+		expect(checkinSigners).toEqual(expect.arrayContaining([ALICE, BOB]));
+	});
+
+	it("throws when schedule result has wrong type", () => {
+		const input = soloInput();
+		input.schedule = makeFakeActivityResult("0xbadsched", "checkin", {
+			time: 1000n,
+			onchainTimestamp: 1015n,
+		});
 		expect(() => buildEvidenceBundle(input)).toThrow(OpenGardenError);
 		try {
 			buildEvidenceBundle(input);
@@ -121,31 +146,104 @@ describe("buildEvidenceBundle", () => {
 			expect((e as OpenGardenError).code).toBe(
 				OpenGardenErrorCode.INVALID_INPUT,
 			);
-			expect((e as Error).message).toContain("checkin");
-			expect((e as Error).message).toContain("0xciA");
+			expect((e as Error).message).toMatch(/schedule/i);
 		}
 	});
 
-	it("accepts message.attester as a fallback identity source", () => {
-		const resultWithMessageAttester: TimestampedOffChainResult = {
-			uid: "0xciA",
-			signedAttestation: {
-				message: { time: 2000n, attester: "0xBobFromMessage" },
-			},
-			timestampTxHash: "0xtx",
-			onchainTimestamp: 2018n,
-			timestampReceipt: FAKE_TX_RECEIPT,
+	it("rejects healthcheck activities in crewActivities", () => {
+		const input = soloInput();
+		input.crewActivities = [
+			...input.crewActivities,
+			makeFakeActivityResult("0xhc", "healthcheck", {
+				time: 3400n,
+				onchainTimestamp: 3410n,
+				payload: { healthScore: 8, photoCID: "", notes: "" },
+			}),
+		];
+		expect(() => buildEvidenceBundle(input)).toThrow(/healthcheck/i);
+	});
+
+	it("rejects unspecified activities in crewActivities", () => {
+		const input = soloInput();
+		input.crewActivities = [
+			...input.crewActivities,
+			makeFakeActivityResult("0xunk", "unspecified", {
+				time: 3400n,
+				onchainTimestamp: 3410n,
+			}),
+		];
+		expect(() => buildEvidenceBundle(input)).toThrow(/unspecified/i);
+	});
+
+	it("preserves plaintext payload per activity", () => {
+		const bundle = buildEvidenceBundle(soloInput());
+		const checkout = bundle.activities.find((a) => a.type === "checkout");
+		expect(checkout?.payload).toEqual({ actualMinutes: 45 });
+	});
+
+	it("embeds the signed attestation verbatim", () => {
+		const bundle = buildEvidenceBundle(soloInput());
+		const schedule = bundle.activities.find((a) => a.type === "schedule");
+		expect(schedule?.signedAttestation).toBeDefined();
+		expect(
+			(schedule?.signedAttestation as { uid?: string }).uid,
+		).toBe("0xsched");
+	});
+});
+
+describe("bundleJsonReplacer", () => {
+	it("serializes bigint as decimal string", () => {
+		const result = JSON.stringify({ t: 1234567890n }, bundleJsonReplacer);
+		expect(result).toBe(`{"t":"1234567890"}`);
+	});
+
+	it("passes non-bigint values through unchanged", () => {
+		const result = JSON.stringify(
+			{ s: "hello", n: 42, b: true, a: [1, 2] },
+			bundleJsonReplacer,
+		);
+		expect(result).toBe(`{"s":"hello","n":42,"b":true,"a":[1,2]}`);
+	});
+
+	it("round-trips a full bundle envelope", () => {
+		const bundle = buildEvidenceBundle(soloInput());
+		const json = JSON.stringify(bundle, bundleJsonReplacer);
+		const parsed = JSON.parse(json);
+		expect(parsed.interventionId).toBe("INT-2026-0001");
+		expect(parsed.activities).toHaveLength(4);
+	});
+});
+
+describe("restoreBundleBigInts", () => {
+	it("restores time and expirationTime from decimal strings to bigints", () => {
+		const bundle = buildEvidenceBundle(soloInput());
+		const json = JSON.stringify(bundle, bundleJsonReplacer);
+		const parsed = JSON.parse(json);
+		restoreBundleBigInts(parsed);
+		for (const entry of parsed.activities) {
+			const msg = entry.signedAttestation.message;
+			if (msg && msg.time !== undefined) {
+				expect(typeof msg.time).toBe("bigint");
+			}
+		}
+	});
+
+	it("is idempotent — already-bigint fields are left alone", () => {
+		const bundle = buildEvidenceBundle(soloInput());
+		const before = bundle.activities[0].signedAttestation;
+		restoreBundleBigInts(bundle);
+		const after = bundle.activities[0].signedAttestation;
+		expect(after).toBe(before);
+	});
+
+	it("skips non-numeric string values", () => {
+		const bundle = buildEvidenceBundle(soloInput());
+		// Corrupt the field
+		const first = bundle.activities[0].signedAttestation as {
+			message: Record<string, unknown>;
 		};
-		const bundle = buildEvidenceBundle({
-			...soloInput,
-			crew: [
-				{
-					checkin: resultWithMessageAttester,
-					checkout: mockTimestampedResult("0xcoA", 3000, 3012n, "0xBob"),
-					report: mockTimestampedResult("0xrpA", 3100, 3120n, "0xBob"),
-				},
-			],
-		});
-		expect(bundle.attestations.checkins[0].attester).toBe("0xBobFromMessage");
+		first.message.time = "not-a-number";
+		restoreBundleBigInts(bundle);
+		expect(first.message.time).toBe("not-a-number");
 	});
 });

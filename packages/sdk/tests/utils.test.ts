@@ -1,8 +1,11 @@
 import { keccak256, toUtf8Bytes } from "ethers";
 import { describe, expect, it } from "vitest";
 import {
+	canonicalJSON,
 	fromMicrodegrees,
+	hashActivityPayload,
 	hashIdentifier,
+	hashInterventionScope,
 	hashPhotoBundle,
 	toMicrodegrees,
 	toUnixSeconds,
@@ -120,5 +123,131 @@ describe("toUnixSeconds", () => {
 
 	it("converts the Unix epoch", () => {
 		expect(toUnixSeconds(new Date(0))).toBe(0n);
+	});
+});
+
+describe("hashInterventionScope", () => {
+	it("returns a 32-byte hex string", () => {
+		expect(hashInterventionScope("INT-2026-0187")).toMatch(/^0x[0-9a-f]{64}$/);
+	});
+
+	it("matches keccak256(utf8Bytes(interventionId))", () => {
+		const id = "INT-2026-0187";
+		expect(hashInterventionScope(id)).toBe(keccak256(toUtf8Bytes(id)));
+	});
+
+	it("is deterministic", () => {
+		expect(hashInterventionScope("INT-001")).toBe(
+			hashInterventionScope("INT-001"),
+		);
+	});
+
+	it("produces different hashes for different interventionIds", () => {
+		expect(hashInterventionScope("INT-001")).not.toBe(
+			hashInterventionScope("INT-002"),
+		);
+	});
+
+	it("throws on empty string", () => {
+		expect(() => hashInterventionScope("")).toThrow(/empty/);
+	});
+});
+
+describe("canonicalJSON", () => {
+	it("sorts object keys lexicographically", () => {
+		expect(canonicalJSON({ b: 1, a: 2, c: 3 })).toBe(`{"a":2,"b":1,"c":3}`);
+	});
+
+	it("sorts keys recursively at every nesting depth", () => {
+		expect(canonicalJSON({ z: { b: 1, a: 2 }, a: 3 })).toBe(
+			`{"a":3,"z":{"a":2,"b":1}}`,
+		);
+	});
+
+	it("preserves array element order", () => {
+		expect(canonicalJSON({ items: ["c", "a", "b"] })).toBe(
+			`{"items":["c","a","b"]}`,
+		);
+	});
+
+	it("drops undefined values", () => {
+		expect(canonicalJSON({ a: 1, b: undefined, c: 3 })).toBe(`{"a":1,"c":3}`);
+	});
+
+	it("preserves null values", () => {
+		expect(canonicalJSON({ a: null, b: 1 })).toBe(`{"a":null,"b":1}`);
+	});
+
+	it("emits no whitespace", () => {
+		expect(canonicalJSON({ a: 1, b: [1, 2, 3] })).not.toMatch(/\s/);
+	});
+
+	it("produces byte-identical output for same logical payload regardless of insertion order", () => {
+		expect(canonicalJSON({ a: 1, b: 2 })).toBe(canonicalJSON({ b: 2, a: 1 }));
+	});
+
+	it("handles deeply nested objects", () => {
+		const payload = {
+			outer: {
+				z: 1,
+				a: {
+					nested: "value",
+					more: true,
+				},
+			},
+		};
+		expect(canonicalJSON(payload)).toBe(
+			`{"outer":{"a":{"more":true,"nested":"value"},"z":1}}`,
+		);
+	});
+
+	it("handles arrays of objects without sorting element keys of different objects differently", () => {
+		const payload = { list: [{ b: 2, a: 1 }, { a: 3, b: 4 }] };
+		expect(canonicalJSON(payload)).toBe(
+			`{"list":[{"a":1,"b":2},{"a":3,"b":4}]}`,
+		);
+	});
+});
+
+describe("hashActivityPayload", () => {
+	it("returns a 32-byte hex string", () => {
+		expect(hashActivityPayload({ actualMinutes: 45 })).toMatch(
+			/^0x[0-9a-f]{64}$/,
+		);
+	});
+
+	it("matches keccak256(utf8Bytes(canonicalJSON(payload)))", () => {
+		const payload = { actualMinutes: 45 };
+		expect(hashActivityPayload(payload)).toBe(
+			keccak256(toUtf8Bytes(canonicalJSON(payload))),
+		);
+	});
+
+	it("is stable regardless of key insertion order", () => {
+		const a = hashActivityPayload({ a: 1, b: 2, c: 3 });
+		const b = hashActivityPayload({ c: 3, b: 2, a: 1 });
+		expect(a).toBe(b);
+	});
+
+	it("produces different hashes for different payloads", () => {
+		expect(hashActivityPayload({ actualMinutes: 45 })).not.toBe(
+			hashActivityPayload({ actualMinutes: 46 }),
+		);
+	});
+
+	it("handles empty payload", () => {
+		expect(hashActivityPayload({})).toMatch(/^0x[0-9a-f]{64}$/);
+	});
+
+	it("treats missing keys and undefined keys as equivalent", () => {
+		expect(hashActivityPayload({ a: 1 })).toBe(
+			hashActivityPayload({ a: 1, b: undefined }),
+		);
+	});
+
+	it("does NOT treat missing keys and null keys as equivalent", () => {
+		expect(hashActivityPayload({ a: 1 })).not.toBe(
+			hashActivityPayload({ a: 1, b: null }),
+		);
 	});
 });

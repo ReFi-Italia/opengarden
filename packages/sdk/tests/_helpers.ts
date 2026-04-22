@@ -1,8 +1,17 @@
 import type { TransactionReceipt } from "ethers";
 import { OpenGardenClient } from "../src/client";
 import { OPTIMISM_MAINNET } from "../src/constants";
+import {
+	encodeActivityData,
+} from "../src/schemas/encoders";
 import type { ChainConfig, OpenGardenConfig } from "../src/types/config";
+import {
+	ActivityType,
+	type ActivityTypeName,
+	activityTypeFromName,
+} from "../src/types/enums";
 import type { TimestampedOffChainResult } from "../src/types/results";
+import { hashActivityPayload } from "../src/utils";
 
 export const MOCK_SIGNER_ADDRESS = "0x0000000000000000000000000000000000000001";
 
@@ -68,24 +77,52 @@ interface FakeResultOptions {
 	onchainTimestamp?: bigint;
 	attester?: string;
 	refUID?: string;
+	payload?: Record<string, unknown>;
 }
 
-export function makeFakeTimestampedResult(
+/**
+ * Builds a fake `TimestampedOffChainResult` for Activity tests. Encodes a
+ * realistic `signedAttestation.message.data` field so payload-integrity
+ * checks have something to decode.
+ */
+export function makeFakeActivityResult(
 	uid: string,
+	type: ActivityTypeName,
 	opts: FakeResultOptions = {},
 ): TimestampedOffChainResult {
-	const message: Record<string, unknown> = { time: opts.time ?? 1000000n };
+	const payload = opts.payload ?? {};
+	const payloadHash = hashActivityPayload(payload);
+	const data = (() => {
+		try {
+			return encodeActivityData(activityTypeFromName(type), payloadHash);
+		} catch {
+			// SchemaEncoder may not be initialised in this test context; fall back
+			// to a manual concat so the data field shape is plausible.
+			const typeHex = activityTypeFromName(type).toString(16).padStart(64, "0");
+			return `0x${typeHex}${payloadHash.slice(2)}`;
+		}
+	})();
+
+	const message: Record<string, unknown> = {
+		time: opts.time ?? 1_000_000n,
+		data,
+	};
 	if (opts.refUID !== undefined) message.refUID = opts.refUID;
+
 	return {
 		uid,
+		type,
 		attester: opts.attester ?? MOCK_SIGNER_ADDRESS,
+		payload,
 		signedAttestation: {
 			uid,
 			signer: opts.attester ?? MOCK_SIGNER_ADDRESS,
 			message,
 		},
 		timestampTxHash: "0xtimestamp",
-		onchainTimestamp: opts.onchainTimestamp ?? 123456n,
+		onchainTimestamp: opts.onchainTimestamp ?? 123_456n,
 		timestampReceipt: FAKE_TX_RECEIPT,
 	};
 }
+
+export { ActivityType };

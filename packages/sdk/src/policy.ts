@@ -26,12 +26,12 @@ export interface FinalizePolicy {
 const ALL_FINALIZE_ISSUES: readonly FinalizeInputIssueCode[] = [
 	FinalizeInputIssueCode.EMPTY_CREW,
 	FinalizeInputIssueCode.EXECUTION_DATE_BEFORE_SCHEDULE,
-	FinalizeInputIssueCode.SCHEDULE_REFUID_MISMATCH,
-	FinalizeInputIssueCode.CHECKIN_REFUID_MISMATCH,
-	FinalizeInputIssueCode.CHECKOUT_REFUID_MISMATCH,
-	FinalizeInputIssueCode.REPORT_REFUID_MISMATCH,
-	FinalizeInputIssueCode.CREW_ATTESTER_MISMATCH,
+	FinalizeInputIssueCode.SCHEDULE_SCOPE_MISMATCH,
+	FinalizeInputIssueCode.ACTIVITY_SCOPE_MISMATCH,
+	FinalizeInputIssueCode.SCHEDULE_AREA_MISMATCH,
+	FinalizeInputIssueCode.CREW_CHAIN_INCOMPLETE,
 	FinalizeInputIssueCode.TEMPORAL_ORDER_VIOLATION,
+	FinalizeInputIssueCode.PAYLOAD_HASH_MISMATCH,
 ];
 
 /** Strict preset — every known issue code blocks publication. */
@@ -86,8 +86,9 @@ export interface VerifyPolicy {
 const ALL_VERIFY_CHECKS: readonly VerificationCheckCode[] = [
 	VerificationCheckCode.BUNDLE_VERSION,
 	VerificationCheckCode.SIGNATURES,
+	VerificationCheckCode.PAYLOAD_INTEGRITY,
 	VerificationCheckCode.ON_CHAIN_TIMESTAMPS,
-	VerificationCheckCode.REFUID_WIRING,
+	VerificationCheckCode.INTERVENTION_SCOPE,
 	VerificationCheckCode.TEMPORAL_ORDER,
 	VerificationCheckCode.EXECUTION_DATE_BRACKET,
 ];
@@ -100,12 +101,13 @@ export const STRICT_VERIFY_POLICY: VerifyPolicy = Object.freeze({
 /**
  * Protocol-only preset — only non-negotiable protocol-tier checks are
  * required. Readers using this policy are explicitly opting out of policy-
- * tier checks (refUID wiring, temporal strictness, execution bracket).
+ * tier checks (intervention scope, temporal strictness, execution bracket).
  */
 export const PROTOCOL_ONLY_VERIFY_POLICY: VerifyPolicy = Object.freeze({
 	required: new Set<VerificationCheckCode>([
 		VerificationCheckCode.BUNDLE_VERSION,
 		VerificationCheckCode.SIGNATURES,
+		VerificationCheckCode.PAYLOAD_INTEGRITY,
 		VerificationCheckCode.ON_CHAIN_TIMESTAMPS,
 	]),
 });
