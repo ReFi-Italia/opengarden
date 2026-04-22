@@ -1,12 +1,6 @@
 import { OpenGardenError, OpenGardenErrorCode } from "./errors";
 import { decodeActivityData } from "./schemas/encoders";
-import type {
-	CheckinActivityPayload,
-	CheckoutActivityPayload,
-	ReportActivityPayload,
-	ScheduleActivityPayload,
-} from "./types/attestation";
-import type { ActivityTypeName } from "./types/enums";
+import type { ScheduleActivityPayload } from "./types/attestation";
 import type { FinalizeInterventionInput } from "./types/evidence";
 import type { TimestampedOffChainResult } from "./types/results";
 import {
@@ -359,12 +353,3 @@ function assertPayloadHash(
 	}
 }
 
-// --- Type-only exports for tests / downstream consumers ---
-
-export type {
-	CheckinActivityPayload,
-	CheckoutActivityPayload,
-	ReportActivityPayload,
-	ScheduleActivityPayload,
-};
-export type { ActivityTypeName };
