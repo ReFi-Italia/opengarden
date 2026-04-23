@@ -232,7 +232,8 @@ describe("OpenGardenClient schema-not-registered errors", () => {
 				crewLead: ALICE,
 				crewSize: 1,
 				scheduledDate: 1_700_000_000n,
-				estimatedMinutes: 60,
+				plannedDuration: 60,
+				tasksPlanned: [],
 				description: "",
 				commissionId: null,
 			});
@@ -503,7 +504,8 @@ describe("OpenGardenClient off-chain Activity writes", () => {
 			crewLead: ALICE,
 			crewSize: 1,
 			scheduledDate: 1_700_000_100n,
-			estimatedMinutes: 60,
+			plannedDuration: 60,
+			tasksPlanned: [],
 			description: "",
 			commissionId: null,
 		});
@@ -522,7 +524,8 @@ describe("OpenGardenClient off-chain Activity writes", () => {
 			crewLead: ALICE,
 			crewSize: 2,
 			scheduledDate: 1_700_000_100n,
-			estimatedMinutes: 90,
+			plannedDuration: 90,
+			tasksPlanned: ["PRUNE"],
 			description: "Test",
 			commissionId: null,
 		};
@@ -537,7 +540,8 @@ describe("OpenGardenClient off-chain Activity writes", () => {
 			areaUID: AREA_UID,
 			interventionType: InterventionType.RoutineMaintenance,
 			scheduledDate: 1_700_000_100,
-			estimatedMinutes: 90,
+			plannedDuration: 90,
+			tasksPlanned: ["PRUNE"],
 			description: "Test",
 			commissionRef: ZERO_BYTES32,
 			crewSize: 2,
@@ -553,7 +557,6 @@ describe("OpenGardenClient off-chain Activity writes", () => {
 			interventionId: INTERVENTION_ID,
 			latitude: 41.89,
 			longitude: 12.4964,
-			photoCID: "",
 		});
 		expect(signCalls[0].refUID).toBe(hashInterventionScope(INTERVENTION_ID));
 		expect(signCalls[0].recipient).toBe(ZERO_ADDRESS);
@@ -566,7 +569,6 @@ describe("OpenGardenClient off-chain Activity writes", () => {
 		const { client, signCalls } = createActivityClient();
 		await client.checkout({
 			interventionId: INTERVENTION_ID,
-			actualMinutes: 45,
 		});
 		expect(decodeActivityData(signCalls[0].data).activityType).toBe(
 			ActivityType.Checkout,
@@ -579,7 +581,8 @@ describe("OpenGardenClient off-chain Activity writes", () => {
 		await client.submitReport({
 			interventionId: INTERVENTION_ID,
 			tasksCompleted: ["PRUNE"],
-			photosCID: "",
+			reportedEffort: 0,
+			mediaCID: "",
 			notes: "",
 		});
 		expect(decodeActivityData(signCalls[0].data).activityType).toBe(
@@ -593,7 +596,7 @@ describe("OpenGardenClient off-chain Activity writes", () => {
 		await client.recordHealthcheck({
 			areaUID: AREA_UID,
 			healthScore: 8,
-			photoCID: "",
+			mediaCID: "",
 			notes: "",
 		});
 		expect(signCalls[0].refUID).toBe(AREA_UID);
@@ -608,7 +611,6 @@ describe("OpenGardenClient off-chain Activity writes", () => {
 			interventionId: INTERVENTION_ID,
 			latitude: 41.89,
 			longitude: 12.4964,
-			photoCID: "",
 			time: 1_700_000_050n,
 		});
 		expect(signCalls[0].time).toBe(1_700_000_050n);
@@ -620,7 +622,6 @@ describe("OpenGardenClient off-chain Activity writes", () => {
 			interventionId: INTERVENTION_ID,
 			latitude: 41.89,
 			longitude: 12.4964,
-			photoCID: "",
 			time: new Date("2024-03-01T00:00:00.000Z"),
 		});
 		expect(signCalls[0].time).toBe(1709251200n);
@@ -633,7 +634,6 @@ describe("OpenGardenClient off-chain Activity writes", () => {
 			interventionId: INTERVENTION_ID,
 			latitude: 41.89,
 			longitude: 12.4964,
-			photoCID: "",
 		});
 		const after = Math.floor(Date.now() / 1000);
 		const t = Number(signCalls[0].time);
@@ -645,10 +645,11 @@ describe("OpenGardenClient off-chain Activity writes", () => {
 		const { client } = createActivityClient();
 		const result = await client.checkout({
 			interventionId: INTERVENTION_ID,
-			actualMinutes: 45,
+			latitude: 41.89,
+			longitude: 12.4964,
 		});
 		expect(result.type).toBe("checkout");
-		expect(result.payload).toEqual({ actualMinutes: 45 });
+		expect(result.payload).toEqual({ latitude: 41890000, longitude: 12496400 });
 		expect(result.attester).toBe(MOCK_SIGNER_ADDRESS);
 		expect(result.uid).toMatch(/^0xsigned_/);
 	});
@@ -659,7 +660,6 @@ describe("OpenGardenClient off-chain Activity writes", () => {
 			interventionId: INTERVENTION_ID,
 			latitude: 41.89,
 			longitude: 12.4964,
-			photoCID: "",
 		});
 		expect(timestampCalls).toHaveLength(1);
 		expect(timestampCalls[0]).toMatch(/^0xsigned_/);
@@ -796,7 +796,8 @@ describe("OpenGardenClient finalizeIntervention", () => {
 					areaUID: AREA_UID,
 					interventionType: 1,
 					scheduledDate: 100,
-					estimatedMinutes: 60,
+					plannedDuration: 60,
+					tasksPlanned: [],
 					description: "",
 					commissionRef: ZERO_BYTES32,
 					crewSize: 1,
@@ -807,13 +808,13 @@ describe("OpenGardenClient finalizeIntervention", () => {
 					onchainTimestamp: 200n,
 					refUID: scope,
 					attester: ALICE,
-					payload: { latitude: 41890000, longitude: 12492000, photoCID: "" },
+					payload: { latitude: 41890000, longitude: 12492000 },
 				}),
 				makeFakeActivityResult("0xco", "checkout", {
 					onchainTimestamp: 300n,
 					refUID: scope,
 					attester: ALICE,
-					payload: { actualMinutes: 45 },
+					payload: {},
 				}),
 				makeFakeActivityResult("0xrp", "report", {
 					onchainTimestamp: 400n,
@@ -821,7 +822,8 @@ describe("OpenGardenClient finalizeIntervention", () => {
 					attester: ALICE,
 					payload: {
 						tasksCompleted: ["PRUNE"],
-						photosCID: "",
+						reportedEffort: 45,
+						mediaCID: "",
 						notes: "",
 					},
 				}),
@@ -1168,7 +1170,7 @@ describe("OpenGardenClient GraphQL reads", () => {
 	}
 
 	it("getInterventionActivities queries by keccak256(interventionId) refUID", async () => {
-		const payloadHash = hashActivityPayload({ actualMinutes: 45 });
+		const payloadHash = hashActivityPayload({ latitude: 41890000, longitude: 12492000 });
 
 		const fetchMock = vi.fn().mockResolvedValue({
 			json: async () => ({
@@ -1208,7 +1210,7 @@ describe("OpenGardenClient GraphQL reads", () => {
 	});
 
 	it("getAreaHealthchecks filters returned activities by type=healthcheck", async () => {
-		const healthPayload = { healthScore: 8, photoCID: "", notes: "" };
+		const healthPayload = { healthScore: 8, mediaCID: "", notes: "" };
 		const hcHash = hashActivityPayload(healthPayload);
 		const scheduleHash = hashActivityPayload({ anything: 1 });
 
@@ -1267,7 +1269,8 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 			areaUID: AREA_UID,
 			interventionType: 1,
 			scheduledDate: 100,
-			estimatedMinutes: 60,
+			plannedDuration: 60,
+			tasksPlanned: [],
 			description: "",
 			commissionRef: ZERO_BYTES32,
 			crewSize,
@@ -1328,21 +1331,26 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 					type: "checkin",
 					signer: ALICE,
 					onchainTimestamp: 200,
-					payload: { latitude: 0, longitude: 0, photoCID: "" },
+					payload: { latitude: 0, longitude: 0 },
 				}),
 				makeActivity({
 					uid: "0xco",
 					type: "checkout",
 					signer: ALICE,
 					onchainTimestamp: 300,
-					payload: { actualMinutes: 60 },
+					payload: {},
 				}),
 				makeActivity({
 					uid: "0xrp",
 					type: "report",
 					signer: ALICE,
 					onchainTimestamp: 400,
-					payload: { tasksCompleted: [], photosCID: "", notes: "" },
+					payload: {
+						tasksCompleted: [],
+						reportedEffort: 60,
+						mediaCID: "",
+						notes: "",
+					},
 				}),
 			],
 			bundleVersion: EVIDENCE_BUNDLE_VERSION,
@@ -1463,7 +1471,7 @@ describe("OpenGardenClient verifyEvidenceBundle", () => {
 		const bundle = makeSoloBundle();
 		const checkout = bundle.activities.find((a) => a.type === "checkout");
 		if (checkout) {
-			(checkout.payload as { actualMinutes: number }).actualMinutes = 9999;
+			(checkout.payload as { latitude?: number }).latitude = 99999999;
 		}
 		const { client } = createVerifyClient(bundle);
 		const result = await client.verifyEvidenceBundle("0xinterventionuid");

@@ -175,7 +175,8 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 			crewLead: walletAddress,
 			crewSize: 1,
 			scheduledDate: now(),
-			estimatedMinutes: 60,
+			plannedDuration: 60,
+			tasksPlanned: ["PRUNE", "CLEAN", "WATER"],
 			description: "E2E test routine maintenance",
 			commissionId: null,
 		});
@@ -204,7 +205,6 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 			interventionId,
 			latitude: 41.8902,
 			longitude: 12.4922,
-			photoCID: "",
 			time: claimed,
 		});
 
@@ -236,7 +236,8 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 		const claimed = now();
 		checkoutResult = await client.checkout({
 			interventionId,
-			actualMinutes: 55,
+			latitude: 41.8902,
+			longitude: 12.4922,
 			time: claimed,
 		});
 
@@ -262,7 +263,8 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 		reportResult = await client.submitReport({
 			interventionId,
 			tasksCompleted: ["PRUNE", "CLEAN", "WATER"],
-			photosCID: "",
+			reportedEffort: 55,
+			mediaCID: "",
 			notes: "E2E test — all tasks completed successfully",
 		});
 
@@ -281,7 +283,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 		const healthcheckResult = await client.recordHealthcheck({
 			areaUID,
 			healthScore: 8,
-			photoCID: "",
+			mediaCID: "",
 			notes: "Post-intervention spot check",
 		});
 

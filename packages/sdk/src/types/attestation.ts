@@ -53,8 +53,10 @@ export interface ScheduleActivityPayload {
 	interventionType: InterventionType;
 	/** Planned execution date, Unix seconds. */
 	scheduledDate: number;
-	/** Expected duration in minutes. `0` = unspecified. */
-	estimatedMinutes: number;
+	/** Wall-clock duration in minutes including planned breaks (crew-level). `0` = unspecified. */
+	plannedDuration: number;
+	/** Planned task codes. Union of crew `report.tasksCompleted` is expected to cover this set. */
+	tasksPlanned: string[];
 	description: string;
 	/** Bytes32 hash of commissioning entity ID (`hashIdentifier` from §9.1). `ZERO_BYTES32` = volunteer. */
 	commissionRef: string;
@@ -62,30 +64,34 @@ export interface ScheduleActivityPayload {
 }
 
 export interface CheckinActivityPayload {
-	/** Microdegrees (int32) — GPS latitude at check-in. */
-	latitude: number;
-	/** Microdegrees (int32) — GPS longitude at check-in. */
-	longitude: number;
-	/** IPFS CID of arrival photo. Empty string if none. */
-	photoCID: string;
+	/** Microdegrees (int32) — GPS latitude at check-in. Optional. Both latitude and longitude MUST be present together or both absent. */
+	latitude?: number;
+	/** Microdegrees (int32) — GPS longitude at check-in. Optional. */
+	longitude?: number;
 }
 
 export interface CheckoutActivityPayload {
-	actualMinutes: number;
+	/** Microdegrees (int32) — GPS latitude at check-out. Optional. Both latitude and longitude MUST be present together or both absent. */
+	latitude?: number;
+	/** Microdegrees (int32) — GPS longitude at check-out. Optional. */
+	longitude?: number;
 }
 
 export interface ReportActivityPayload {
-	/** List of completed task codes. Empty array if none. */
+	/** Per-gardener completed task codes. Empty array if none. */
 	tasksCompleted: string[];
-	/** IPFS CID of after-work photo bundle. Empty string if none. */
-	photosCID: string;
+	/** Per-gardener active work time in minutes, excluding breaks. `0` if unreported. */
+	reportedEffort: number;
+	/** CID resolving to after-work evidence (single file, folder, or manifest per §9.2). Empty string if none. */
+	mediaCID: string;
 	notes: string;
 }
 
 export interface HealthcheckActivityPayload {
 	/** 1-10 scale, 10 is best. */
 	healthScore: number;
-	photoCID: string;
+	/** CID resolving to condition documentation (single file, folder, or manifest per §9.2). Empty string if none. */
+	mediaCID: string;
 	notes: string;
 	/** App-specific extras (weather, annotations, seasonal context). Omit for none. SHOULD carry a `v` key for shape versioning. */
 	metadata?: Record<string, unknown> | null;

@@ -152,7 +152,7 @@ export {
 	hashBoundary,
 	hashIdentifier,
 	hashInterventionScope,
-	hashPhotoBundle,
+	hashMediaManifest,
 	toMicrodegrees,
 	toUnixSeconds,
 } from "./utils";

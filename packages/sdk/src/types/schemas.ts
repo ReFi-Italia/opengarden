@@ -79,7 +79,11 @@ export interface ScheduleActivityInput extends ActivityEnvelopeOverrides {
 	crewLead: string;
 	crewSize: number;
 	scheduledDate: Date | bigint;
-	estimatedMinutes: number;
+	/** Wall-clock duration of the intervention in minutes, including planned breaks (crew-level). `0` = unspecified. */
+	plannedDuration: number;
+	/** Planned task codes the crew as a whole is expected to cover. Verifier policy compares this against the union of `report.tasksCompleted` across crew. */
+	tasksPlanned: string[];
+	/** Free-text supplement to `tasksPlanned`. */
 	description: string;
 	/** Plain commissioning identifier, structured `SponsorRef`, or `null` for volunteer/unsponsored work. Hashed internally per spec §9.1 and stored in the schedule payload's `commissionRef`. */
 	commissionId: string | SponsorRef | null;
@@ -87,20 +91,28 @@ export interface ScheduleActivityInput extends ActivityEnvelopeOverrides {
 
 export interface CheckinActivityInput extends ActivityEnvelopeOverrides {
 	interventionId: string;
-	latitude: number;
-	longitude: number;
-	photoCID: string;
+	/** GPS latitude at check-in. Optional — omit when area-boundary membership is sufficient. Both `latitude` and `longitude` MUST be omitted together or both present. */
+	latitude?: number;
+	/** GPS longitude at check-in. Optional — see `latitude`. */
+	longitude?: number;
 }
 
 export interface CheckoutActivityInput extends ActivityEnvelopeOverrides {
 	interventionId: string;
-	actualMinutes: number;
+	/** GPS latitude at check-out. Optional — symmetric with `checkin`. Both `latitude` and `longitude` MUST be omitted together or both present. */
+	latitude?: number;
+	/** GPS longitude at check-out. Optional — see `latitude`. */
+	longitude?: number;
 }
 
 export interface ReportActivityInput extends ActivityEnvelopeOverrides {
 	interventionId: string;
+	/** Per-gardener completed task codes — a subset (or all) of `schedule.tasksPlanned`. */
 	tasksCompleted: string[];
-	photosCID: string;
+	/** Per-gardener active work time in minutes, excluding breaks. Drives person-minute impact aggregation. `0` if unreported. */
+	reportedEffort: number;
+	/** CID resolving to after-work evidence — single file, folder, or canonical manifest per spec §9.2. Empty string if none. */
+	mediaCID: string;
 	notes: string;
 }
 
@@ -109,7 +121,8 @@ export interface HealthcheckActivityInput extends ActivityEnvelopeOverrides {
 	areaUID: string;
 	/** 1-10, where 10 is best. */
 	healthScore: number;
-	photoCID: string;
+	/** CID resolving to condition documentation — single file, folder, or canonical manifest per spec §9.2. Empty string if none. */
+	mediaCID: string;
 	notes: string;
 	/** App-specific extras. Omit for none. */
 	metadata?: Record<string, unknown> | null;

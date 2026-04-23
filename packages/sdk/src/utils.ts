@@ -56,16 +56,19 @@ export function hashInterventionScope(interventionId: string): string {
 }
 
 /**
- * Collapses N photo/media references into a single bytes32 hash suitable for
- * the `photoHash` / `photosHash` / `mediaHash` fields of EAS attestations.
+ * Keccak256 of the canonical media manifest (spec §9.2) — `{ "v": 1, "items":
+ * [<sorted items>] }`. Useful for apps that want to commit a deterministic
+ * bytes32 over a set of media references (e.g. to pin alongside a CID for
+ * tamper-detection). Payload `mediaCID` fields themselves carry a CID string,
+ * not this hash — the CID comes from the storage adapter after uploading the
+ * manifest bytes.
  *
- * The manifest is canonicalized as `{ "v": 1, "items": [<sorted items>] }`
- * and hashed with keccak256. Pass the same list (in any order) to reproduce
- * the same hash. The manifest format is versioned for forward compatibility.
+ * Pass the same list in any order to reproduce the same hash. The manifest
+ * format is versioned for forward compatibility.
  */
-export function hashPhotoBundle(items: readonly string[]): string {
+export function hashMediaManifest(items: readonly string[]): string {
 	if (items.length === 0) {
-		throw new Error("Cannot hash an empty photo bundle");
+		throw new Error("Cannot hash an empty media manifest");
 	}
 	const sorted = [...items].sort();
 	const manifest = JSON.stringify({ v: 1, items: sorted });

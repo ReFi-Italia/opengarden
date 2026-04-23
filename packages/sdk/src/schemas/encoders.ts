@@ -172,7 +172,8 @@ export function buildSchedulePayload(
 		areaUID: input.areaUID,
 		interventionType: input.interventionType,
 		scheduledDate: Number(toUnixSeconds(input.scheduledDate)),
-		estimatedMinutes: input.estimatedMinutes,
+		plannedDuration: input.plannedDuration,
+		tasksPlanned: input.tasksPlanned,
 		description: input.description,
 		commissionRef: hashCommissionIdOrZero(input.commissionId),
 		crewSize: input.crewSize,
@@ -183,18 +184,24 @@ export function buildCheckinPayload(
 	input: CheckinActivityInput,
 ): CheckinActivityPayload {
 	validateCheckinActivity(input);
-	return {
-		latitude: toMicrodegrees(input.latitude),
-		longitude: toMicrodegrees(input.longitude),
-		photoCID: input.photoCID,
-	};
+	const payload: CheckinActivityPayload = {};
+	if (input.latitude !== undefined && input.longitude !== undefined) {
+		payload.latitude = toMicrodegrees(input.latitude);
+		payload.longitude = toMicrodegrees(input.longitude);
+	}
+	return payload;
 }
 
 export function buildCheckoutPayload(
 	input: CheckoutActivityInput,
 ): CheckoutActivityPayload {
 	validateCheckoutActivity(input);
-	return { actualMinutes: input.actualMinutes };
+	const payload: CheckoutActivityPayload = {};
+	if (input.latitude !== undefined && input.longitude !== undefined) {
+		payload.latitude = toMicrodegrees(input.latitude);
+		payload.longitude = toMicrodegrees(input.longitude);
+	}
+	return payload;
 }
 
 export function buildReportPayload(
@@ -203,7 +210,8 @@ export function buildReportPayload(
 	validateReportActivity(input);
 	return {
 		tasksCompleted: input.tasksCompleted,
-		photosCID: input.photosCID,
+		reportedEffort: input.reportedEffort,
+		mediaCID: input.mediaCID,
 		notes: input.notes,
 	};
 }
@@ -214,7 +222,7 @@ export function buildHealthcheckPayload(
 	validateHealthcheckActivity(input);
 	const payload: HealthcheckActivityPayload = {
 		healthScore: input.healthScore,
-		photoCID: input.photoCID,
+		mediaCID: input.mediaCID,
 		notes: input.notes,
 	};
 	if (input.metadata !== undefined && input.metadata !== null) {

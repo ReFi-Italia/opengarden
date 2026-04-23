@@ -210,7 +210,7 @@ describe("Activity ABI encoder", () => {
 
 describe("encodeActivityFromPayload", () => {
 	it("returns data + payloadHash that agree with each other", () => {
-		const payload = { actualMinutes: 45 };
+		const payload = { latitude: 41890000, longitude: 12492000 };
 		const { data, payloadHash } = encodeActivityFromPayload(
 			ActivityType.Checkout,
 			payload,
@@ -225,10 +225,8 @@ describe("encodeActivityFromPayload", () => {
 		const a = encodeActivityFromPayload(ActivityType.Checkin, {
 			latitude: 1,
 			longitude: 2,
-			photoCID: "cid",
 		});
 		const b = encodeActivityFromPayload(ActivityType.Checkin, {
-			photoCID: "cid",
 			longitude: 2,
 			latitude: 1,
 		});
@@ -248,7 +246,8 @@ describe("buildSchedulePayload", () => {
 		crewLead: MOCK_SIGNER_ADDRESS,
 		crewSize: 2,
 		scheduledDate: 1709251200n,
-		estimatedMinutes: 180,
+		plannedDuration: 180,
+		tasksPlanned: ["PRUNE", "CLEAN"],
 		description: "Trim hedges",
 		commissionId: "sponsor-acme",
 	};
@@ -261,7 +260,8 @@ describe("buildSchedulePayload", () => {
 				"0x00000000000000000000000000000000000000000000000000000000000000a1",
 			interventionType: InterventionType.RoutineMaintenance,
 			scheduledDate: 1709251200,
-			estimatedMinutes: 180,
+			plannedDuration: 180,
+			tasksPlanned: ["PRUNE", "CLEAN"],
 			description: "Trim hedges",
 			commissionRef: hashIdentifier("sponsor-acme"),
 			crewSize: 2,
@@ -302,14 +302,12 @@ describe("buildCheckinPayload", () => {
 		interventionId: "INT-2026-0001",
 		latitude: 41.89,
 		longitude: 12.4964,
-		photoCID: "ipfs://Qm.../arrival.jpg",
 	};
 
-	it("converts lat/lng to microdegrees", () => {
+	it("converts lat/lng to microdegrees when both present", () => {
 		const payload = buildCheckinPayload(base);
 		expect(payload.latitude).toBe(41890000);
 		expect(payload.longitude).toBe(12496400);
-		expect(payload.photoCID).toBe("ipfs://Qm.../arrival.jpg");
 	});
 
 	it("truncates extra decimals rather than rounding", () => {
@@ -320,6 +318,22 @@ describe("buildCheckinPayload", () => {
 		});
 		expect(payload.latitude).toBe(41890123);
 		expect(payload.longitude).toBe(12123456);
+	});
+
+	it("omits lat/lng when both absent", () => {
+		const payload = buildCheckinPayload({
+			interventionId: "INT-2026-0001",
+		});
+		expect(payload).toEqual({});
+	});
+
+	it("rejects lat without lng or vice versa", () => {
+		expect(() =>
+			buildCheckinPayload({ interventionId: "INT-2026-0001", latitude: 1 }),
+		).toThrow();
+		expect(() =>
+			buildCheckinPayload({ interventionId: "INT-2026-0001", longitude: 1 }),
+		).toThrow();
 	});
 
 	it("rejects out-of-range latitude", () => {
@@ -334,26 +348,25 @@ describe("buildCheckinPayload", () => {
 });
 
 describe("buildCheckoutPayload", () => {
-	it("passes actualMinutes through", () => {
+	it("converts lat/lng to microdegrees when both present", () => {
 		const payload = buildCheckoutPayload({
 			interventionId: "INT-2026-0001",
-			actualMinutes: 135,
+			latitude: 41.89,
+			longitude: 12.4964,
 		});
-		expect(payload).toEqual({ actualMinutes: 135 });
+		expect(payload).toEqual({ latitude: 41890000, longitude: 12496400 });
 	});
 
-	it("rejects out-of-range actualMinutes", () => {
+	it("omits lat/lng when both absent", () => {
+		const payload = buildCheckoutPayload({
+			interventionId: "INT-2026-0001",
+		});
+		expect(payload).toEqual({});
+	});
+
+	it("rejects lat without lng", () => {
 		expect(() =>
-			buildCheckoutPayload({
-				interventionId: "INT-2026-0001",
-				actualMinutes: -1,
-			}),
-		).toThrow();
-		expect(() =>
-			buildCheckoutPayload({
-				interventionId: "INT-2026-0001",
-				actualMinutes: 65_536,
-			}),
+			buildCheckoutPayload({ interventionId: "INT-2026-0001", latitude: 1 }),
 		).toThrow();
 	});
 });
@@ -363,22 +376,26 @@ describe("buildReportPayload", () => {
 		const payload = buildReportPayload({
 			interventionId: "INT-2026-0001",
 			tasksCompleted: ["PRUNE", "CLEAN", "WATER"],
-			photosCID: "ipfs://Qm.../work/",
+			reportedEffort: 120,
+			mediaCID: "ipfs://Qm.../work-manifest.json",
 			notes: "all good",
 		});
 		expect(payload.tasksCompleted).toEqual(["PRUNE", "CLEAN", "WATER"]);
-		expect(payload.photosCID).toBe("ipfs://Qm.../work/");
+		expect(payload.reportedEffort).toBe(120);
+		expect(payload.mediaCID).toBe("ipfs://Qm.../work-manifest.json");
 		expect(payload.notes).toBe("all good");
 	});
 
-	it("accepts an empty tasksCompleted array", () => {
+	it("accepts an empty tasksCompleted array and zero effort", () => {
 		const payload = buildReportPayload({
 			interventionId: "INT-2026-0001",
 			tasksCompleted: [],
-			photosCID: "",
+			reportedEffort: 0,
+			mediaCID: "",
 			notes: "",
 		});
 		expect(payload.tasksCompleted).toEqual([]);
+		expect(payload.reportedEffort).toBe(0);
 	});
 
 	it("rejects non-array tasksCompleted", () => {
@@ -387,7 +404,29 @@ describe("buildReportPayload", () => {
 				interventionId: "INT-2026-0001",
 				// biome-ignore lint/suspicious/noExplicitAny: intentional bad input
 				tasksCompleted: "PRUNE" as any,
-				photosCID: "",
+				reportedEffort: 0,
+				mediaCID: "",
+				notes: "",
+			}),
+		).toThrow();
+	});
+
+	it("rejects out-of-range reportedEffort", () => {
+		expect(() =>
+			buildReportPayload({
+				interventionId: "INT-2026-0001",
+				tasksCompleted: [],
+				reportedEffort: -1,
+				mediaCID: "",
+				notes: "",
+			}),
+		).toThrow();
+		expect(() =>
+			buildReportPayload({
+				interventionId: "INT-2026-0001",
+				tasksCompleted: [],
+				reportedEffort: 65_536,
+				mediaCID: "",
 				notes: "",
 			}),
 		).toThrow();
@@ -399,7 +438,7 @@ describe("buildHealthcheckPayload", () => {
 		areaUID:
 			"0x000000000000000000000000000000000000000000000000000000000000cafe",
 		healthScore: 8,
-		photoCID: "ipfs://Qm.../condition.jpg",
+		mediaCID: "ipfs://Qm.../condition.jpg",
 		notes: "Hedge trimmed.",
 	};
 
@@ -407,7 +446,7 @@ describe("buildHealthcheckPayload", () => {
 		const payload = buildHealthcheckPayload(base);
 		expect(payload).toEqual({
 			healthScore: 8,
-			photoCID: "ipfs://Qm.../condition.jpg",
+			mediaCID: "ipfs://Qm.../condition.jpg",
 			notes: "Hedge trimmed.",
 		});
 	});
@@ -443,11 +482,13 @@ describe("payload → ABI data → decode roundtrip", () => {
 	it("is stable across canonical payload rebuilds", () => {
 		const firstBuild = buildCheckoutPayload({
 			interventionId: "INT-2026-0001",
-			actualMinutes: 45,
+			latitude: 41.89,
+			longitude: 12.4964,
 		});
 		const secondBuild = buildCheckoutPayload({
 			interventionId: "INT-2026-0001",
-			actualMinutes: 45,
+			latitude: 41.89,
+			longitude: 12.4964,
 		});
 		expect(hashActivityPayload(firstBuild)).toBe(
 			hashActivityPayload(secondBuild),
@@ -463,7 +504,8 @@ describe("payload → ABI data → decode roundtrip", () => {
 			crewLead: MOCK_SIGNER_ADDRESS,
 			crewSize: 1,
 			scheduledDate: 1709251200n,
-			estimatedMinutes: 120,
+			plannedDuration: 120,
+			tasksPlanned: [],
 			description: "",
 			commissionId: null,
 		});

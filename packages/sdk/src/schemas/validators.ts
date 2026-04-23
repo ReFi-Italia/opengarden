@@ -115,18 +115,38 @@ export function validateScheduleActivity(input: ScheduleActivityInput): void {
 	assertNonEmptyString(input.interventionId, "interventionId");
 	assertEnum(input.interventionType, INTERVENTION_TYPES, "interventionType");
 	assertUint8(input.crewSize, "crewSize");
-	assertUint16(input.estimatedMinutes, "estimatedMinutes");
+	assertUint16(input.plannedDuration, "plannedDuration");
+	if (!Array.isArray(input.tasksPlanned)) {
+		fail("tasksPlanned", "expected array of task code strings");
+	}
+}
+
+function assertOptionalCoordinatePair(
+	latitude: number | undefined,
+	longitude: number | undefined,
+): void {
+	const hasLat = latitude !== undefined;
+	const hasLng = longitude !== undefined;
+	if (hasLat !== hasLng) {
+		fail(
+			hasLat ? "longitude" : "latitude",
+			"latitude and longitude must be both present or both absent",
+		);
+	}
+	if (hasLat && hasLng) {
+		assertLatitude(latitude as number, "latitude");
+		assertLongitude(longitude as number, "longitude");
+	}
 }
 
 export function validateCheckinActivity(input: CheckinActivityInput): void {
 	assertNonEmptyString(input.interventionId, "interventionId");
-	assertLatitude(input.latitude, "latitude");
-	assertLongitude(input.longitude, "longitude");
+	assertOptionalCoordinatePair(input.latitude, input.longitude);
 }
 
 export function validateCheckoutActivity(input: CheckoutActivityInput): void {
 	assertNonEmptyString(input.interventionId, "interventionId");
-	assertUint16(input.actualMinutes, "actualMinutes");
+	assertOptionalCoordinatePair(input.latitude, input.longitude);
 }
 
 export function validateReportActivity(input: ReportActivityInput): void {
@@ -134,6 +154,7 @@ export function validateReportActivity(input: ReportActivityInput): void {
 	if (!Array.isArray(input.tasksCompleted)) {
 		fail("tasksCompleted", "expected array of task code strings");
 	}
+	assertUint16(input.reportedEffort, "reportedEffort");
 }
 
 export function validateHealthcheckActivity(

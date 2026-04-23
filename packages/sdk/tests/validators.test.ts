@@ -272,7 +272,8 @@ const validSchedule = {
 	crewLead: MOCK_SIGNER_ADDRESS,
 	crewSize: 2,
 	scheduledDate: 1709251200n,
-	estimatedMinutes: 90,
+	plannedDuration: 90,
+	tasksPlanned: ["PRUNE"],
 	description: "Test",
 	commissionId: null,
 };
@@ -314,21 +315,33 @@ describe("Schedule activity validator", () => {
 		);
 	});
 
-	it("rejects estimatedMinutes above uint16 max", () => {
+	it("rejects plannedDuration above uint16 max", () => {
 		expectInvalidInput(
 			() =>
 				buildSchedulePayload({
 					...validSchedule,
-					estimatedMinutes: 70_000,
+					plannedDuration: 70_000,
 				}),
-			"estimatedMinutes",
+			"plannedDuration",
 		);
 	});
 
-	it("accepts estimatedMinutes=0 (unspecified sentinel)", () => {
+	it("accepts plannedDuration=0 (unspecified sentinel)", () => {
 		expect(() =>
-			buildSchedulePayload({ ...validSchedule, estimatedMinutes: 0 }),
+			buildSchedulePayload({ ...validSchedule, plannedDuration: 0 }),
 		).not.toThrow();
+	});
+
+	it("rejects non-array tasksPlanned", () => {
+		expectInvalidInput(
+			() =>
+				buildSchedulePayload({
+					...validSchedule,
+					// biome-ignore lint/suspicious/noExplicitAny: intentional bad input
+					tasksPlanned: "PRUNE" as any,
+				}),
+			"tasksPlanned",
+		);
 	});
 
 	it("accepts crewSize=1 for solo jobs", () => {
@@ -342,18 +355,39 @@ const validCheckin = {
 	interventionId: "INT-2026-0001",
 	latitude: 41.89,
 	longitude: 12.4964,
-	photoCID: "",
 };
 
 describe("Checkin activity validator", () => {
-	it("accepts the valid fixture", () => {
+	it("accepts the valid fixture with lat/lng", () => {
 		expect(() => buildCheckinPayload(validCheckin)).not.toThrow();
+	});
+
+	it("accepts omitted lat/lng (both absent)", () => {
+		expect(() =>
+			buildCheckinPayload({ interventionId: "INT-2026-0001" }),
+		).not.toThrow();
 	});
 
 	it("rejects empty interventionId", () => {
 		expectInvalidInput(
 			() => buildCheckinPayload({ ...validCheckin, interventionId: "" }),
 			"interventionId",
+		);
+	});
+
+	it("rejects lat without lng", () => {
+		expectInvalidInput(
+			() =>
+				buildCheckinPayload({ interventionId: "INT-2026-0001", latitude: 1 }),
+			"longitude",
+		);
+	});
+
+	it("rejects lng without lat", () => {
+		expectInvalidInput(
+			() =>
+				buildCheckinPayload({ interventionId: "INT-2026-0001", longitude: 1 }),
+			"latitude",
 		);
 	});
 
@@ -381,12 +415,19 @@ describe("Checkin activity validator", () => {
 
 const validCheckout = {
 	interventionId: "INT-2026-0001",
-	actualMinutes: 60,
+	latitude: 41.89,
+	longitude: 12.4964,
 };
 
 describe("Checkout activity validator", () => {
-	it("accepts the valid fixture", () => {
+	it("accepts the valid fixture with lat/lng", () => {
 		expect(() => buildCheckoutPayload(validCheckout)).not.toThrow();
+	});
+
+	it("accepts omitted lat/lng (both absent)", () => {
+		expect(() =>
+			buildCheckoutPayload({ interventionId: "INT-2026-0001" }),
+		).not.toThrow();
 	});
 
 	it("rejects empty interventionId", () => {
@@ -396,31 +437,20 @@ describe("Checkout activity validator", () => {
 		);
 	});
 
-	it("rejects actualMinutes above uint16 max", () => {
+	it("rejects lat without lng", () => {
 		expectInvalidInput(
-			() => buildCheckoutPayload({ ...validCheckout, actualMinutes: 70_000 }),
-			"actualMinutes",
+			() =>
+				buildCheckoutPayload({ interventionId: "INT-2026-0001", latitude: 1 }),
+			"longitude",
 		);
-	});
-
-	it("rejects negative actualMinutes", () => {
-		expectInvalidInput(
-			() => buildCheckoutPayload({ ...validCheckout, actualMinutes: -1 }),
-			"actualMinutes",
-		);
-	});
-
-	it("accepts actualMinutes=0 (zero-duration session sentinel)", () => {
-		expect(() =>
-			buildCheckoutPayload({ ...validCheckout, actualMinutes: 0 }),
-		).not.toThrow();
 	});
 });
 
 const validReport = {
 	interventionId: "INT-2026-0001",
 	tasksCompleted: ["PRUNE", "CLEAN"],
-	photosCID: "",
+	reportedEffort: 120,
+	mediaCID: "",
 	notes: "",
 };
 
@@ -453,12 +483,25 @@ describe("Report activity validator", () => {
 			buildReportPayload({ ...validReport, tasksCompleted: [] }),
 		).not.toThrow();
 	});
+
+	it("rejects reportedEffort above uint16 max", () => {
+		expectInvalidInput(
+			() => buildReportPayload({ ...validReport, reportedEffort: 70_000 }),
+			"reportedEffort",
+		);
+	});
+
+	it("accepts reportedEffort=0 (unreported sentinel)", () => {
+		expect(() =>
+			buildReportPayload({ ...validReport, reportedEffort: 0 }),
+		).not.toThrow();
+	});
 });
 
 const validHealthcheck = {
 	areaUID: ZERO_BYTES32,
 	healthScore: 6,
-	photoCID: "",
+	mediaCID: "",
 	notes: "",
 };
 

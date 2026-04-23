@@ -6,7 +6,7 @@ import {
 	hashActivityPayload,
 	hashIdentifier,
 	hashInterventionScope,
-	hashPhotoBundle,
+	hashMediaManifest,
 	toMicrodegrees,
 	toUnixSeconds,
 } from "../src/utils";
@@ -76,25 +76,25 @@ describe("hashIdentifier", () => {
 	});
 });
 
-describe("hashPhotoBundle", () => {
+describe("hashMediaManifest", () => {
 	it("returns a 32-byte hex string", () => {
-		const hash = hashPhotoBundle(["ipfs://Qm1", "ipfs://Qm2"]);
+		const hash = hashMediaManifest(["ipfs://Qm1", "ipfs://Qm2"]);
 		expect(hash).toMatch(/^0x[0-9a-f]{64}$/);
 	});
 
 	it("is order-independent", () => {
-		const a = hashPhotoBundle(["b", "a", "c"]);
-		const b = hashPhotoBundle(["c", "a", "b"]);
+		const a = hashMediaManifest(["b", "a", "c"]);
+		const b = hashMediaManifest(["c", "a", "b"]);
 		expect(a).toBe(b);
 	});
 
 	it("is deterministic for the same input", () => {
 		const items = ["ipfs://Qm1", "ipfs://Qm2", "ipfs://Qm3"];
-		expect(hashPhotoBundle(items)).toBe(hashPhotoBundle(items));
+		expect(hashMediaManifest(items)).toBe(hashMediaManifest(items));
 	});
 
-	it("produces different hashes for different bundles", () => {
-		expect(hashPhotoBundle(["a"])).not.toBe(hashPhotoBundle(["a", "b"]));
+	it("produces different hashes for different manifests", () => {
+		expect(hashMediaManifest(["a"])).not.toBe(hashMediaManifest(["a", "b"]));
 	});
 
 	it("reproduces the documented manifest shape", () => {
@@ -103,11 +103,11 @@ describe("hashPhotoBundle", () => {
 			v: 1,
 			items: ["ipfs://Qm-a", "ipfs://Qm-b"],
 		});
-		expect(hashPhotoBundle(items)).toBe(keccak256(toUtf8Bytes(manifest)));
+		expect(hashMediaManifest(items)).toBe(keccak256(toUtf8Bytes(manifest)));
 	});
 
-	it("throws on empty bundle", () => {
-		expect(() => hashPhotoBundle([])).toThrow(/empty/);
+	it("throws on empty manifest", () => {
+		expect(() => hashMediaManifest([])).toThrow(/empty/);
 	});
 });
 
@@ -211,13 +211,13 @@ describe("canonicalJSON", () => {
 
 describe("hashActivityPayload", () => {
 	it("returns a 32-byte hex string", () => {
-		expect(hashActivityPayload({ actualMinutes: 45 })).toMatch(
+		expect(hashActivityPayload({ reportedEffort: 45 })).toMatch(
 			/^0x[0-9a-f]{64}$/,
 		);
 	});
 
 	it("matches keccak256(utf8Bytes(canonicalJSON(payload)))", () => {
-		const payload = { actualMinutes: 45 };
+		const payload = { reportedEffort: 45 };
 		expect(hashActivityPayload(payload)).toBe(
 			keccak256(toUtf8Bytes(canonicalJSON(payload))),
 		);
@@ -230,8 +230,8 @@ describe("hashActivityPayload", () => {
 	});
 
 	it("produces different hashes for different payloads", () => {
-		expect(hashActivityPayload({ actualMinutes: 45 })).not.toBe(
-			hashActivityPayload({ actualMinutes: 46 }),
+		expect(hashActivityPayload({ reportedEffort: 45 })).not.toBe(
+			hashActivityPayload({ reportedEffort: 46 }),
 		);
 	});
 
