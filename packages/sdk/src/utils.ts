@@ -115,3 +115,14 @@ function canonicalize(value: unknown): unknown {
 export function hashActivityPayload(payload: unknown): string {
 	return keccak256(toUtf8Bytes(canonicalJSON(payload)));
 }
+
+/**
+ * Keccak256 of the canonical-JSON serialization of a boundary blob (polygon
+ * GeoJSON + any inline attributes the publisher chooses to include in the
+ * verifiable envelope). The SDK applies this automatically to the `boundary`
+ * input on `AreaRegistrationInput`; this helper is exported for callers that
+ * need to reproduce the same hash outside the encoding path.
+ */
+export function hashBoundary(boundary: Record<string, unknown>): string {
+	return keccak256(toUtf8Bytes(canonicalJSON(boundary)));
+}

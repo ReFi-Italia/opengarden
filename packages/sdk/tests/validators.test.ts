@@ -46,7 +46,7 @@ const validArea = {
 	areaType: AreaType.PublicGreenSpace,
 	name: "Test",
 	municipality: "RM-I",
-	boundariesHash: null,
+	boundary: null,
 	metadata: "",
 };
 

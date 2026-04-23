@@ -20,11 +20,13 @@ export interface AreaRegistrationInput {
 	name: string;
 	municipality: string;
 	/**
-	 * Content-addressable hash (IPFS CID / storage adapter hash) of a large
-	 * boundary payload — polygon GeoJSON, photo bundle, etc. `null` if the
-	 * organization has no boundary data for this area (encoded as ZERO_BYTES32).
+	 * Canonical boundary blob (polygon GeoJSON plus any inline attributes the
+	 * publisher chooses to cover with the signature). The SDK hashes this via
+	 * §9.8 canonical JSON and commits only the keccak256 on-chain as
+	 * `boundariesHash`. `null` for areas without boundary data (encoded as
+	 * ZERO_BYTES32).
 	 */
-	boundariesHash: string | null;
+	boundary: Record<string, unknown> | null;
 	/**
 	 * Small inline JSON escape hatch for app-specific extras (surface area,
 	 * access hours, institutional labels). Empty string for none. SHOULD stay

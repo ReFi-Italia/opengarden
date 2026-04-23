@@ -64,7 +64,7 @@ Registered once per work area. Serves as the canonical geographic anchor that al
 | **areaType** | `uint8` | 0 = unspecified, 1 = public green space, 2 = private garden, 3 = institutional grounds, 4 = roadside/median |
 | **name** | `string` | Human-readable area name (e.g. "Giardino Via Appia 12") |
 | **municipality** | `string` | Municipality or district code for institutional mapping |
-| **boundariesHash** | `bytes32` | Content-addressable hash (IPFS CID) of the area's boundary payload — polygon GeoJSON, high-res photo bundle, or any other large binary artifact that describes the site's footprint. `ZERO_BYTES32` if the organization has no boundary data for this area |
+| **boundariesHash** | `bytes32` | keccak256 of the canonical boundary blob (polygon GeoJSON plus any inline attributes the publisher chooses to cover) held in the organization's app database. The blob stays off-chain; the chain commits to the hash only. Verifiers fetch the blob from the app's exposed endpoint and recompute the hash to audit. `ZERO_BYTES32` if the organization has no boundary data for this area |
 | **metadata** | `string` | Small inline JSON escape hatch for app-specific extras (surface area m², access hours, institutional labels). SHOULD remain under the 512-byte budget defined in [§9.6](#96-inline-metadata-vs-hashed-payloads). Empty string if none |
 
 > **Attestation Metadata**
@@ -76,7 +76,7 @@ Registered once per work area. Serves as the canonical geographic anchor that al
 
 > **Gas Optimization**
 >
-> Coordinates use int32 microdegrees instead of string to reduce calldata. Large binary payloads (polygons, photo bundles) are offloaded to IPFS via the `boundariesHash` field. Small structured extras ride inline via `metadata` so readers don't need an extra IPFS fetch for a handful of bytes. The split follows the convention formalized in [§9.6](#96-inline-metadata-vs-hashed-payloads).
+> Coordinates use int32 microdegrees instead of string to reduce calldata. The boundary blob (polygon GeoJSON and similar structured data) is held in the organization's app database and committed on-chain via `boundariesHash` — the chain stores only the keccak256 of the blob. Small structured extras ride inline via `metadata` so readers don't need an extra fetch for a handful of bytes. The split follows the convention formalized in [§9.6](#96-inline-metadata-vs-hashed-payloads).
 
 ### 2.2 Intervention
 
@@ -225,7 +225,8 @@ Emitted when the organization plans a new intervention. One per job, regardless 
   "areaUID": "0xabc…def",
   "interventionType": 1,
   "scheduledDate": 1709251200,
-  "estimatedMinutes": 180,
+  "plannedDuration": 180,
+  "tasksPlanned": ["PRUNE", "CLEAN", "WATER", "PLANT"],
   "description": "Trim hedges, mulch beds, clear leaves on north side.",
   "commissionRef": "0x0000…0000",
   "crewSize": 2
@@ -238,46 +239,53 @@ Emitted when the organization plans a new intervention. One per job, regardless 
 | `areaUID` | string (bytes32 hex) | AreaRegistration UID — carries the area linkage at the payload layer since the refUID slot holds the intervention scope hash |
 | `interventionType` | number (uint8) | Same enum as Intervention (0–5) |
 | `scheduledDate` | number (Unix seconds) | Planned execution date |
-| `estimatedMinutes` | number (uint16) | Expected duration. `0` = unspecified |
-| `description` | string | Free-text description of required work |
+| `plannedDuration` | number (uint16 minutes) | Wall-clock duration of the intervention including planned breaks (crew-level, not per-gardener). `0` = unspecified |
+| `tasksPlanned` | string[] | Planned task codes (e.g. `"PRUNE"`, `"CLEAN"`, `"WATER"`, `"PLANT"`). Intervention-level — the crew as a whole is expected to cover this set. Verifier policy compares this against the union of `report.tasksCompleted` across crew. Empty array if none |
+| `description` | string | Free-text supplement to `tasksPlanned` |
 | `commissionRef` | string (bytes32 hex) | Hash of commissioning entity (`hashIdentifier` from §9.1). `ZERO_BYTES32` = volunteer / unsponsored |
 | `crewSize` | number (uint8) | Total gardeners assigned. `1` for solo jobs |
 
 #### 3.2.2 `checkin` payload
 
-Signed by the gardener (or their device) when arriving at the work site. **One per crew member per intervention.**
+Signed by the gardener (or their device) when arriving at the work site. Pure presence anchor — the cryptographic content is the signed envelope itself (who + when + refUID), optionally refined by GPS coordinates. **One per crew member per intervention.**
 
 ```json
 {
   "latitude": 41890200,
-  "longitude": 12492200,
-  "photoCID": "ipfs://Qm…/arrival.jpg"
+  "longitude": 12492200
 }
 ```
 
 | Key | Type | Description |
 |---|---|---|
-| `latitude` | number (int32 microdegrees) | GPS latitude at check-in |
-| `longitude` | number (int32 microdegrees) | GPS longitude at check-in |
-| `photoCID` | string | IPFS CID of arrival photo (visual proof of presence) |
+| `latitude` | number (int32 microdegrees) | GPS latitude at check-in. Optional — omit when the publisher considers area-boundary membership sufficient (small gardens) |
+| `longitude` | number (int32 microdegrees) | GPS longitude at check-in. Optional — same rule as `latitude`. Both MUST be omitted together or both present |
 
 > **Time**: carried by the EIP-712 envelope's `message.time` field, anchored on-chain via `EAS.timestamp(uid)`. No separate payload field restates it. Callers signing at the moment of check-in may let the signing library default `message.time` to wall-clock; callers signing server-side on later upload MUST pass the device-recorded moment as the envelope `time`.
 >
-> **Verification**: GPS proximity to the registered area coordinates can be verified programmatically.
+> **No photo field**: presence is proven by the signed envelope (signer + timestamp + refUID) plus optional GPS. Visual evidence of work belongs on `report` (after-work bundle) and `healthcheck` (condition at a point in time) — those are the evidence layers. Checkin is a time anchor, not an evidence document.
+>
+> **Verification**: when GPS is present, proximity to the registered area coordinates (or containment within `boundariesHash`-committed polygon) can be verified programmatically as verifier policy.
 
 #### 3.2.3 `checkout` payload
 
-Signed by the gardener when finishing work. Closes the work session. **One per crew member per intervention.** Paired to the same crew member's `checkin` via shared `refUID` (intervention scope hash) plus matching signer.
+Signed by the gardener when finishing work. Closes the work session — pure time anchor, symmetric with `checkin`. **One per crew member per intervention.** Paired to the same crew member's `checkin` via shared `refUID` (intervention scope hash) plus matching signer.
 
 ```json
-{ "actualMinutes": 135 }
+{
+  "latitude": 41890200,
+  "longitude": 12492200
+}
 ```
 
 | Key | Type | Description |
 |---|---|---|
-| `actualMinutes` | number (uint16) | Actual time spent on site |
+| `latitude` | number (int32 microdegrees) | GPS latitude at check-out. Optional — same rules as `checkin` |
+| `longitude` | number (int32 microdegrees) | GPS longitude at check-out. Optional — both MUST be omitted together or both present |
 
 > **Time**: same rules as `checkin` — EIP-712 envelope `time`, anchored on-chain.
+>
+> **Wall-clock duration**: derivable as `T_onchain[checkout] - T_onchain[checkin]` for the same signer (or more precisely as `message.time[checkout] - message.time[checkin]` when signing-time may lag event-time). No self-reported duration field on `checkout` — active-work effort (excluding breaks) is reported on `report.reportedEffort`.
 >
 > **Pairing**: a verifier pairs this checkout to the same signer's checkin within the same interventionId scope. No explicit `checkinUID` field — the (signer, intervention scope, type) triple is the pairing key.
 
@@ -287,18 +295,26 @@ The gardener's signed account of the work performed. Primary evidence document a
 
 ```json
 {
-  "tasksCompleted": ["PRUNE", "CLEAN", "WATER", "PLANT"],
-  "photosCID": "ipfs://Qm…/work-evidence/",
+  "tasksCompleted": ["PRUNE", "CLEAN", "WATER"],
+  "reportedEffort": 120,
+  "mediaCID": "ipfs://Qm…/work-evidence-manifest.json",
   "notes": "Bed 3 has drainage issue, flagged for follow-up."
 }
 ```
 
 | Key | Type | Description |
 |---|---|---|
-| `tasksCompleted` | string[] | Completed task codes (e.g. `"PRUNE"`, `"CLEAN"`, `"WATER"`, `"PLANT"`). Empty array if none |
-| `photosCID` | string | IPFS CID of after-work photo bundle. Use §9.2 hashPhotoBundle manifest when multiple files. Empty string if none |
+| `tasksCompleted` | string[] | Per-gardener completed task codes — a subset (or all) of `schedule.tasksPlanned`. Each crew member reports what they personally worked on. Empty array if none |
+| `reportedEffort` | number (uint16 minutes) | Per-gardener active work time, excluding breaks. Self-reported. Distinct from wall-clock duration derivable from `checkin`/`checkout` timestamps — captures effort for impact metrics (person-minutes delivered). `0` if unreported |
+| `mediaCID` | string | CID resolving to the after-work evidence — single file, folder, or manifest per §9.2. Empty string if none |
 | `notes` | string | Free-text field for observations, issues, materials used. Empty string if none |
 
+> **Plan/execute coverage**: a verifier may check `union(report[*].tasksCompleted)` against `schedule.tasksPlanned` — loose coverage (subset), strict coverage (equal), or coverage + extras allowed are all verifier policy.
+>
+> **Impact aggregation**: `sum(report[*].reportedEffort)` is the person-minutes delivered for this intervention. Aggregate across interventions for sponsor impact reports.
+>
+> **Effort sanity**: `report.reportedEffort` MUST NOT exceed the wall-clock bracket `T_onchain[report] - T_onchain[checkin]` for the same signer. A verifier may enforce this check strictly or leniently.
+>
 > **Pairing**: a verifier pairs this report to the same signer's checkout within the same interventionId scope. No explicit `checkoutUID` field.
 
 #### 3.2.5 `healthcheck` payload
@@ -308,7 +324,7 @@ A periodic condition assessment of an area. Independent of any specific interven
 ```json
 {
   "healthScore": 8,
-  "photoCID": "ipfs://Qm…/condition.jpg",
+  "mediaCID": "ipfs://Qm…/condition.jpg",
   "notes": "Hedge trimmed, beds mulched.",
   "metadata": { "v": 1, "weather": "sunny" }
 }
@@ -317,7 +333,7 @@ A periodic condition assessment of an area. Independent of any specific interven
 | Key | Type | Description |
 |---|---|---|
 | `healthScore` | number (uint8) | Condition score (1–10 scale, 10 is best) |
-| `photoCID` | string | IPFS CID of condition documentation photo. Empty string if none |
+| `mediaCID` | string | CID resolving to condition documentation — single file, folder, or manifest per §9.2. Empty string if none |
 | `notes` | string | Free-text observations. Empty string if none |
 | `metadata` | object | App-specific extras (weather, assessor annotations, seasonal context). Omitted or `null` for none. SHOULD carry a `v` key for shape versioning; unknown shapes MUST be ignored |
 
@@ -414,7 +430,8 @@ The bundle is the verifiable unit. No separate fetch from an off-chain attestati
         "areaUID": "0xabc…def",
         "interventionType": 1,
         "scheduledDate": 1709251200,
-        "estimatedMinutes": 180,
+        "plannedDuration": 180,
+        "tasksPlanned": ["PRUNE", "CLEAN", "WATER", "PLANT"],
         "description": "Trim hedges, mulch beds, clear leaves on north side.",
         "commissionRef": "0x0000…0000",
         "crewSize": 2
@@ -443,14 +460,13 @@ The bundle is the verifiable unit. No separate fetch from an off-chain attestati
       "onchainTimestamp": 1709337618,
       "payload": {
         "latitude": 41890200,
-        "longitude": 12492200,
-        "photoCID": "ipfs://Qm…/alice-arrival.jpg"
+        "longitude": 12492200
       },
       "signedAttestation": { "…": "…" }
     },
     { "type": "checkin",  "uid": "0x457…013", "signer": "0xBob…",   "payload": { "…": "…" }, "signedAttestation": { "…": "…" }, "claimedTimestamp": 1709337650, "onchainTimestamp": 1709337670 },
-    { "type": "checkout", "uid": "0x789…345", "signer": "0xAlice…", "payload": { "actualMinutes": 135 }, "signedAttestation": { "…": "…" }, "claimedTimestamp": 1709344800, "onchainTimestamp": 1709344812 },
-    { "type": "checkout", "uid": "0x790…346", "signer": "0xBob…",   "payload": { "actualMinutes": 140 }, "signedAttestation": { "…": "…" }, "claimedTimestamp": 1709344900, "onchainTimestamp": 1709344920 },
+    { "type": "checkout", "uid": "0x789…345", "signer": "0xAlice…", "payload": { "latitude": 41890180, "longitude": 12492210 }, "signedAttestation": { "…": "…" }, "claimedTimestamp": 1709344800, "onchainTimestamp": 1709344812 },
+    { "type": "checkout", "uid": "0x790…346", "signer": "0xBob…",   "payload": { "latitude": 41890190, "longitude": 12492205 }, "signedAttestation": { "…": "…" }, "claimedTimestamp": 1709344900, "onchainTimestamp": 1709344920 },
     { "type": "report",   "uid": "0xdef…901", "signer": "0xAlice…", "payload": { "…": "…" }, "signedAttestation": { "…": "…" }, "claimedTimestamp": 1709345100, "onchainTimestamp": 1709345120 },
     { "type": "report",   "uid": "0xdf0…902", "signer": "0xBob…",   "payload": { "…": "…" }, "signedAttestation": { "…": "…" }, "claimedTimestamp": 1709345200, "onchainTimestamp": 1709345220 }
   ],
@@ -485,7 +501,7 @@ The `signedAttestation.message.time`, `signedAttestation.message.expirationTime`
 
 Verifiers re-running EIP-712 typed-data hashing MUST parse these back to integers before recomputing the digest; otherwise the recomputed hash will not match the signature.
 
-Integer fields outside `signedAttestation.message` (`claimedTimestamp`, `onchainTimestamp`, payload-level numbers like `actualMinutes`) are serialized as JSON numbers because they always fit in a 53-bit mantissa for any plausible Unix timestamp or Activity payload value.
+Integer fields outside `signedAttestation.message` (`claimedTimestamp`, `onchainTimestamp`, payload-level numbers like `plannedDuration`, `reportedEffort`, `healthScore`, `crewSize`) are serialized as JSON numbers because they always fit in a 53-bit mantissa for any plausible Unix timestamp or Activity payload value.
 
 > **Bundle Version**
 >
@@ -705,29 +721,33 @@ Applies to:
 
 SDK helper: `hashIdentifier(id: string): string`
 
-### 9.2 Photo and Media Bundles
+### 9.2 Media References
 
-Fields carrying a hash of one or more media references (`photoHash`, `photosHash`, `boundariesHash`, `evidenceBundleHash`, and any future `*Hash` field introduced per §9.6) MUST be derived as follows.
+`mediaCID` fields on Activity payloads (`report.mediaCID`, `healthcheck.mediaCID`) are CID strings resolving to the attested evidence. Publishers pick the resolution shape.
 
-**Single item.** When a field references exactly one file (e.g. a `checkin` Activity payload's `photoCID` — one arrival photo), the value is whatever content-addressed hash or CID the organization's storage adapter returns for that file. The SDK does not constrain the algorithm — it only requires that the value be reproducible by fetching the file and rehashing it with the documented algorithm.
-
-**Multiple items.** When a payload references N > 1 files (e.g. the `photosCID` field of a `report` Activity payload pointing at an after-work photo bundle), the bytes32 MUST be the keccak256 of a canonical manifest:
+**Three valid shapes:**
 
 ```
-manifest = {"v":1,"items":[<item>, <item>, ...]}
-bytes32  = keccak256(utf8Bytes(JSON.stringify(manifest)))
+// 1. Single file — CID points at one image / video / document
+"mediaCID": "ipfs://bafybei…/condition.jpg"
+
+// 2. Folder — CID points at a directory containing multiple files
+"mediaCID": "ipfs://bafybei…/work-evidence/"
+
+// 3. Manifest — CID points at a JSON manifest listing N files (canonical form below)
+"mediaCID": "ipfs://bafybei…/work-evidence-manifest.json"
 ```
 
-Canonicalization rules:
+**Canonical manifest** (option 3) — use when a deterministic, re-derivable listing is required:
 
-1. `v` is the manifest version, currently `1`. Future versions MUST bump this and MUST be treated as a distinct manifest shape.
-2. `items` is the list of content-addressed references (IPFS CIDs, storage adapter hashes, or URLs) **sorted in JavaScript string-comparison order** before serialization. Callers pass items in any order; the SDK sorts.
-3. `JSON.stringify` is used with default settings — no custom spacing, no key reordering beyond what the object literal expresses. The manifest object has exactly two keys in the order `v`, `items`.
-4. The manifest itself SHOULD be uploaded to the organization's storage (alongside the photos) so auditors can fetch it and reproduce the hash without guessing the item set.
+```
+{"v":1,"items":["ipfs://…/1.jpg","ipfs://…/2.jpg","ipfs://…/walkthrough.mp4"]}
+```
 
-SDK helper: `hashPhotoBundle(items: string[]): string`
-
-Applies to any media-bundle field that references multiple items. Payload fields that always reference a single item (e.g. `checkin.payload.photoCID`, `healthcheck.payload.photoCID`) use the single-item rule above.
+1. `v = 1`. Future versions MUST bump this and MUST be treated as distinct manifest shapes.
+2. `items` MUST be sorted in JavaScript string-comparison order before serialization.
+3. Manifest object has exactly two keys in the order `v`, `items`, serialized with no whitespace.
+4. The manifest MUST be stored at the CID `mediaCID` resolves to — auditors fetch it to enumerate files and reproduce the byte sequence.
 
 ### 9.3 Coordinate Encoding
 
@@ -762,11 +782,11 @@ Used for small structured extras the protocol does not interpret. The payload li
 - SHOULD carry an app-defined `version` or `v` key so consumers can detect shape changes. Unknown shapes MUST be ignored, not rejected, at the protocol layer.
 - Current consumers: `AreaRegistration.metadata`, `healthcheck` Activity payload `metadata` key.
 
-**`bytes32 *Hash` — content-addressable hash of a large/binary payload.**
-Used when the payload cannot fit inline or is inherently binary (photos, polygon GeoJSON, evidence bundles).
+**`bytes32 *Hash` — keccak256 commitment to a large/binary payload.**
+Used when the payload cannot fit inline or is inherently binary (polygon GeoJSON, evidence bundles, large opaque blobs).
 
-- The `bytes32` value is whatever content-addressed hash the organization's storage adapter returns for the payload (IPFS CID, keccak256 of a canonical manifest, etc.).
-- MUST use a purpose-named field — `photoHash`, `photosHash`, `evidenceBundleHash`, `boundariesHash`, `payloadHash` — never the generic name `metadataHash`. The field name tells readers what to fetch (or how to interpret the hash).
+- The `bytes32` value is the keccak256 of the canonical serialization of the payload (§9.8 rules for JSON payloads; raw byte hash for opaque binary). The payload itself may live on IPFS, in the organization's app database, or in any other storage the publisher chooses — the chain commits to the hash, not the location. Verifiers fetch the payload from the publisher's exposed endpoint and recompute the hash to audit.
+- MUST use a purpose-named field — `boundariesHash`, `evidenceBundleHash`, `payloadHash`, and any future `*Hash` that names what is committed — never the generic name `metadataHash`. The field name tells readers what to fetch (or how to interpret the hash).
 - `ZERO_BYTES32` MUST be accepted as "no payload of this type for this attestation," except where a payload is structurally required (e.g. `Activity.payloadHash` — every Activity carries a payload, even if empty, so the hash reflects that payload and is not `ZERO_BYTES32`).
 - Current consumers: `AreaRegistration.boundariesHash`, `Intervention.evidenceBundleHash`, `Activity.payloadHash`.
 

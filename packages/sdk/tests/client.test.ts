@@ -211,7 +211,7 @@ describe("OpenGardenClient schema-not-registered errors", () => {
 				areaType: 1,
 				name: "",
 				municipality: "",
-				boundariesHash: null,
+				boundary: null,
 				metadata: "",
 			});
 			throw new Error("expected throw");
@@ -942,7 +942,7 @@ describe("OpenGardenClient getArea", () => {
 				areaType: 1,
 				name: "Test",
 				municipality: "RM-I",
-				boundariesHash: null,
+				boundary: null,
 				metadata: "",
 			});
 		})();

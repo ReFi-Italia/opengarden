@@ -149,6 +149,7 @@ export {
 	canonicalJSON,
 	fromMicrodegrees,
 	hashActivityPayload,
+	hashBoundary,
 	hashIdentifier,
 	hashInterventionScope,
 	hashPhotoBundle,

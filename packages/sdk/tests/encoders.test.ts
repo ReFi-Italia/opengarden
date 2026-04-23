@@ -24,7 +24,7 @@ import {
 	AreaType,
 	InterventionType,
 } from "../src/types/enums";
-import { hashActivityPayload, hashIdentifier } from "../src/utils";
+import { hashActivityPayload, hashBoundary, hashIdentifier } from "../src/utils";
 import { MOCK_SIGNER_ADDRESS } from "./_helpers";
 
 beforeAll(async () => {
@@ -41,7 +41,7 @@ describe("AreaRegistration encoder", () => {
 		areaType: AreaType.PublicGreenSpace,
 		name: "Giardino Via Appia 12",
 		municipality: "RM-I",
-		boundariesHash: null,
+		boundary: null,
 		metadata: "",
 	};
 
@@ -60,17 +60,26 @@ describe("AreaRegistration encoder", () => {
 		expect(decoded.metadata).toBe("");
 	});
 
-	it("encodes boundariesHash and inline metadata roundtrip", () => {
+	it("hashes boundary blob and preserves inline metadata roundtrip", () => {
+		const boundary = {
+			type: "Polygon",
+			coordinates: [
+				[
+					[12.4964, 41.89],
+					[12.4974, 41.89],
+					[12.4974, 41.891],
+					[12.4964, 41.891],
+					[12.4964, 41.89],
+				],
+			],
+		};
 		const encoded = encodeAreaRegistration({
 			...input,
-			boundariesHash:
-				"0x0000000000000000000000000000000000000000000000000000000000000001",
+			boundary,
 			metadata: '{"v":1,"surfaceM2":420,"accessHours":"dawn-dusk"}',
 		});
 		const decoded = decodeAreaRegistration(encoded);
-		expect(decoded.boundariesHash).toBe(
-			"0x0000000000000000000000000000000000000000000000000000000000000001",
-		);
+		expect(decoded.boundariesHash).toBe(hashBoundary(boundary));
 		expect(decoded.metadata).toBe(
 			'{"v":1,"surfaceM2":420,"accessHours":"dawn-dusk"}',
 		);

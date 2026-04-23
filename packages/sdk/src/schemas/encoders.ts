@@ -27,6 +27,7 @@ import type {
 import {
 	fromMicrodegrees,
 	hashActivityPayload,
+	hashBoundary,
 	hashIdentifier,
 	toMicrodegrees,
 	toUnixSeconds,
@@ -91,7 +92,7 @@ export function encodeAreaRegistration(input: AreaRegistrationInput): string {
 		{ name: "municipality", value: input.municipality, type: "string" },
 		{
 			name: "boundariesHash",
-			value: input.boundariesHash ?? ZERO_BYTES32,
+			value: input.boundary === null ? ZERO_BYTES32 : hashBoundary(input.boundary),
 			type: "bytes32",
 		},
 		{ name: "metadata", value: input.metadata, type: "string" },

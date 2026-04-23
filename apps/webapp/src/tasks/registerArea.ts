@@ -92,10 +92,10 @@ export const registerAreaTask: TaskConfig<{
 			areaType: Number(area.areaType) as AreaType,
 			name: area.name,
 			municipality: area.municipality,
-			metadataHash:
-				area.metadataHash && area.metadataHash.length > 0
-					? area.metadataHash
-					: null,
+			boundary:
+				(area.boundaryGeojson as Record<string, unknown> | null | undefined) ??
+				null,
+			metadata: "",
 		};
 
 		let context: OpenGardenContext | null = null;

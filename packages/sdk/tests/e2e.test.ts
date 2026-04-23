@@ -154,7 +154,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 			areaType: AreaType.PublicGreenSpace,
 			name: "E2E Test Garden",
 			municipality: "RM-TEST",
-			boundariesHash: null,
+			boundary: null,
 			metadata: "",
 		});
 
