@@ -44,6 +44,14 @@ _\*Gardener-signed activities (checkin, checkout, report) are deferred until the
 >
 > Off-chain attestations are cryptographically signed (EIP-712) but their timestamps are self-reported. To prevent backfilling — fabricating interventions after the fact — every off-chain attestation in the intervention lifecycle is timestamped on-chain via EAS's native `timestamp()` function. This creates an immutable, independently verifiable temporal ordering that proves each step happened when claimed.
 
+> **Storage-Agnostic Commitments**
+>
+> The protocol commits to **bytes**, not storage locations. Every off-chain payload that the chain commits to — evidence bundle JSON, boundary blobs, media files, media manifests — is referenced by a `keccak256` of its canonical byte sequence, never by a storage-layer identifier (IPFS CID, S3 key, URL).
+>
+> Where those bytes actually live is the publisher's concern. The publisher MAY use IPFS, S3, their own database, or any combination — and MAY change their storage choice over time without breaking any on-chain commitment. Verifiers fetch bytes from a publisher-exposed endpoint (URL, IPFS gateway, API) and recompute the `keccak256` to verify integrity.
+>
+> This keeps the protocol's cryptographic surface minimal (one hash primitive), decouples on-chain records from any particular storage network, and reflects the self-attestation principle: a publisher who takes their bytes offline simply loses verifiability, which verifier policy already handles via attester-trust weighting (Section 7).
+
 ---
 
 ## 2. On-Chain Schemas
@@ -89,7 +97,7 @@ Created when an intervention is fully executed and the organization signs off on
 | **interventionId** | `string` | Internal intervention identifier (e.g. "INT-2026-0187"). Also the input to the intervention scope hash (§9.7) that anchors every lifecycle activity |
 | **interventionType** | `uint8` | 0 = unspecified, 1 = routine maintenance, 2 = restoration, 3 = emergency, 4 = seasonal, 5 = new planting |
 | **executionDate** | `uint64` | Unix timestamp of when work was completed |
-| **evidenceBundleHash** | `bytes32` | IPFS CID hash of the evidence bundle JSON containing every lifecycle Activity's UID, signed envelope, and on-chain timestamp |
+| **evidenceBundleHash** | `bytes32` | keccak256 of the canonical evidence bundle bytes (§5). The bundle collects every lifecycle Activity's UID, signed envelope, and on-chain timestamp. Storage is publisher-owned — verifiers fetch the bundle bytes from a publisher-exposed endpoint and recompute the hash to audit |
 | **commissionRef** | `bytes32` | Keccak256 hash of commissioning entity identifier (corporate sponsor ID, municipal contract number, or grant ID). `ZERO_BYTES32` for volunteer / unsponsored work |
 
 > **Attestation Metadata**
@@ -297,7 +305,7 @@ The gardener's signed account of the work performed. Primary evidence document a
 {
   "tasksCompleted": ["PRUNE", "CLEAN", "WATER"],
   "reportedEffort": 120,
-  "mediaCID": "ipfs://Qm…/work-evidence-manifest.json",
+  "mediaHash": "0x3c5a…",
   "notes": "Bed 3 has drainage issue, flagged for follow-up."
 }
 ```
@@ -306,7 +314,7 @@ The gardener's signed account of the work performed. Primary evidence document a
 |---|---|---|
 | `tasksCompleted` | string[] | Per-gardener completed task codes — a subset (or all) of `schedule.tasksPlanned`. Each crew member reports what they personally worked on. Empty array if none |
 | `reportedEffort` | number (uint16 minutes) | Per-gardener active work time, excluding breaks. Self-reported. Distinct from wall-clock duration derivable from `checkin`/`checkout` timestamps — captures effort for impact metrics (person-minutes delivered). `0` if unreported |
-| `mediaCID` | string | CID resolving to the after-work evidence — single file, folder, or manifest per §9.2. Empty string if none |
+| `mediaHash` | string (bytes32 hex) | keccak256 of the after-work evidence bytes — a single file's raw bytes, or the canonical media manifest JSON bytes (§9.2). `ZERO_BYTES32` if none |
 | `notes` | string | Free-text field for observations, issues, materials used. Empty string if none |
 
 > **Plan/execute coverage**: a verifier may check `union(report[*].tasksCompleted)` against `schedule.tasksPlanned` — loose coverage (subset), strict coverage (equal), or coverage + extras allowed are all verifier policy.
@@ -324,7 +332,7 @@ A periodic condition assessment of an area. Independent of any specific interven
 ```json
 {
   "healthScore": 8,
-  "mediaCID": "ipfs://Qm…/condition.jpg",
+  "mediaHash": "0x8f1a…",
   "notes": "Hedge trimmed, beds mulched.",
   "metadata": { "v": 1, "weather": "sunny" }
 }
@@ -333,7 +341,7 @@ A periodic condition assessment of an area. Independent of any specific interven
 | Key | Type | Description |
 |---|---|---|
 | `healthScore` | number (uint8) | Condition score (1–10 scale, 10 is best) |
-| `mediaCID` | string | CID resolving to condition documentation — single file, folder, or manifest per §9.2. Empty string if none |
+| `mediaHash` | string (bytes32 hex) | keccak256 of the condition-documentation bytes — a single file or canonical media manifest (§9.2). `ZERO_BYTES32` if none |
 | `notes` | string | Free-text observations. Empty string if none |
 | `metadata` | object | App-specific extras (weather, assessor annotations, seasonal context). Omitted or `null` for none. SHOULD carry a `v` key for shape versioning; unknown shapes MUST be ignored |
 
@@ -396,7 +404,7 @@ At minimum, **timestamp the schedule Activity on-chain**. Combined with the inhe
 
 ## 5. Evidence Bundle Structure
 
-The `evidenceBundleHash` field on Intervention points to a JSON document on IPFS that collects every lifecycle Activity for the intervention. This is the bridge between the off-chain operational layer and the on-chain settlement layer.
+The `evidenceBundleHash` field on Intervention is the keccak256 of a canonical JSON document that collects every lifecycle Activity for the intervention. The document bytes themselves are held by the publisher and fetched from a publisher-exposed endpoint (see the [Storage-Agnostic Commitments](#1-architecture-overview) principle). This is the bridge between the off-chain operational layer and the on-chain settlement layer.
 
 The bundle is a **flat array of Activities** sorted by `onchainTimestamp`. Solo and crew jobs use the same shape — verifiers filter by `type` and group by signer to reconstruct per-gardener chains.
 
@@ -514,7 +522,7 @@ Verification splits into two tiers. The first tier is **protocol-level** — the
 **Protocol-level (non-negotiable — skip any of these and you no longer have a valid OpenGarden attestation):**
 
 (1) Read the `evidenceBundleHash` from the on-chain Intervention attestation.
-(2) Fetch the bundle JSON from IPFS (or the organization's storage) and confirm its content hashes to the on-chain `evidenceBundleHash`.
+(2) Fetch the bundle bytes from the publisher's exposed endpoint and confirm `keccak256(bundleBytes)` equals the on-chain `evidenceBundleHash`.
 (3) Verify the `bundleVersion` is understood (reject unknown versions).
 (4) For each bundle entry: recover the EIP-712 signer from `signedAttestation.signature` and `signedAttestation.message`; confirm it matches both `signedAttestation.signer` and the top-level `signer`. This is a **local** operation — the bundle carries the full signed payload, so no network query is required. Remember to parse string-encoded bigint fields (§5.3) back to integers before recomputing the typed-data digest.
 (5) For each bundle entry: canonicalize `payload` per §9.8 and confirm `keccak256(canonicalJSON(payload))` matches the `payloadHash` decoded from `signedAttestation.message.data`. Also confirm the decoded `activityType` matches the bundle entry's `type`.
@@ -561,7 +569,7 @@ EAS attestations can reference each other via the `refUID` field, creating a dir
 > **Graph Traversal**
 >
 > Starting from any Intervention, an auditor can traverse the full evidence chain:
-> On-chain attestation → evidence bundle on IPFS → every lifecycle Activity's signed envelope + payload + on-chain timestamp.
+> On-chain attestation → evidence bundle bytes (fetched from publisher) → every lifecycle Activity's signed envelope + payload + on-chain timestamp.
 >
 > Starting from any AreaRegistration, a dashboard can aggregate all Interventions (via `refUID`) and `healthcheck` Activities (via `refUID`) for that location, then merge them by on-chain timestamp to render a condition timeline.
 >
@@ -600,7 +608,7 @@ Implementations typically expose policies as **composable data** — named prese
 
 The signer wallet on every attestation is the **entry point** for any trust policy. Policies are built by resolving the signer wallet to some application-layer identity (role, reputation score, registry membership) and applying weighting or filtering rules.
 
-Each organization adopting the OpenGarden Protocol publishes its wallet address on its website and in the schema metadata on IPFS. Readers who want to scope queries to a specific organization filter on-chain attestations by that attester address. Off-chain Activities carry their signer in the EIP-712 envelope; it is also surfaced at the bundle-entry level (§5.2) so policies can inspect it without re-running signature recovery.
+Each organization adopting the OpenGarden Protocol publishes its wallet address through whatever channels its ecosystem trusts — website, signed operator registry, coordinated directory. Readers who want to scope queries to a specific organization filter on-chain attestations by that attester address. Off-chain Activities carry their signer in the EIP-712 envelope; it is also surfaced at the bundle-entry level (§5.2) so policies can inspect it without re-running signature recovery.
 
 ### 7.3 Example Policy — Conservative Organizational Auditor
 
@@ -611,7 +619,7 @@ A conservative auditor reviewing an Intervention for a sponsor's impact report m
 | Check | Rationale |
 |---|---|
 | On-chain attester ∈ known-organization registry | Filter out attestations from unrelated wallets |
-| `evidenceBundleHash` resolves, bundle content hashes to this value | Bundle integrity |
+| Bundle bytes fetched from publisher, `keccak256(bytes)` equals `evidenceBundleHash` | Bundle integrity |
 | Every Activity's `payload` canonicalizes to the signed `payloadHash` | Payload integrity |
 | Every lifecycle Activity's `refUID === keccak256(intervention.interventionId)` | Scope integrity — no stitched-from-other-intervention activities |
 | Count of `checkin` Activities == `schedule.payload.crewSize` | Every assigned gardener actually attested |
@@ -624,7 +632,7 @@ A permissive dashboard rendering volunteer cleanup days might only require:
 
 | Check | Rationale |
 |---|---|
-| `evidenceBundleHash` resolves, bundle content hashes to this value | Minimum integrity |
+| Bundle bytes fetched from publisher, `keccak256(bytes)` equals `evidenceBundleHash` | Minimum integrity |
 | At least one `report` Activity in the bundle | Someone attested work happened |
 
 Both are valid policies. The protocol exposes the primitives; the verifier picks the subset that matches their risk appetite.
@@ -723,31 +731,39 @@ SDK helper: `hashIdentifier(id: string): string`
 
 ### 9.2 Media References
 
-`mediaCID` fields on Activity payloads (`report.mediaCID`, `healthcheck.mediaCID`) are CID strings resolving to the attested evidence. Publishers pick the resolution shape.
+`mediaHash` fields on Activity payloads (`report.mediaHash`, `healthcheck.mediaHash`) are `bytes32` keccak256 commitments to the attested evidence. The underlying bytes live in publisher-owned storage (see the [Storage-Agnostic Commitments](#1-architecture-overview) principle).
 
-**Three valid shapes:**
-
-```
-// 1. Single file — CID points at one image / video / document
-"mediaCID": "ipfs://bafybei…/condition.jpg"
-
-// 2. Folder — CID points at a directory containing multiple files
-"mediaCID": "ipfs://bafybei…/work-evidence/"
-
-// 3. Manifest — CID points at a JSON manifest listing N files (canonical form below)
-"mediaCID": "ipfs://bafybei…/work-evidence-manifest.json"
-```
-
-**Canonical manifest** (option 3) — use when a deterministic, re-derivable listing is required:
+**Two shapes:**
 
 ```
-{"v":1,"items":["ipfs://…/1.jpg","ipfs://…/2.jpg","ipfs://…/walkthrough.mp4"]}
+// 1. Single file — hash of the file's raw bytes
+mediaHash = keccak256(fileBytes)
+// e.g. a single condition photo on healthcheck
+
+// 2. Multi-file manifest — hash of a canonical JSON manifest listing N files
+mediaHash = keccak256(utf8Bytes(canonicalManifestJSON))
+// e.g. a report with before/after photos + walkthrough video
+```
+
+**Canonical manifest** (shape 2) — use when a payload attests to multiple files. Each entry names the file and commits to its bytes by hash:
+
+```
+{"v":1,"items":[
+  {"hash":"0x3c…","contentType":"image/jpeg"},
+  {"hash":"0x8f…","contentType":"image/jpeg"},
+  {"hash":"0xa1…","contentType":"video/mp4"}
+]}
 ```
 
 1. `v = 1`. Future versions MUST bump this and MUST be treated as distinct manifest shapes.
-2. `items` MUST be sorted in JavaScript string-comparison order before serialization.
-3. Manifest object has exactly two keys in the order `v`, `items`, serialized with no whitespace.
-4. The manifest MUST be stored at the CID `mediaCID` resolves to — auditors fetch it to enumerate files and reproduce the byte sequence.
+2. `items` is an array of `{hash, contentType}` objects. `hash` is the keccak256 of that file's raw bytes (`bytes32` hex). `contentType` is the MIME string declared by the publisher at attestation time (optional — MAY be omitted when unknown).
+3. `items` MUST be sorted by `hash` in JavaScript string-comparison order before serialization. Callers pass items in any order; the serializer sorts.
+4. Manifest object has exactly two keys in the order `v`, `items`. JSON serialized with no whitespace.
+5. The manifest bytes are the input to `keccak256` — verifiers reproduce the hash by canonicalizing the manifest identically.
+
+**Verification flow:** a verifier holding a payload with `mediaHash` receives the underlying bytes (file or manifest) from the publisher's exposed endpoint, recomputes `keccak256(bytes)`, and confirms it equals `mediaHash`. For manifest shape 2, the verifier additionally fetches each `items[i]` file by whatever addressing the publisher uses, computes `keccak256(fileBytes)`, and confirms it equals `items[i].hash`.
+
+**Why not store a CID.** An earlier revision of this section stored the storage-layer CID (IPFS / S3 / URL) in the payload. That coupled the protocol to a retrieval convention, introduced ambiguity for verifiers reading across publishers that used different storage backends, and left the SDK library owning upload logic that was fundamentally app-specific. Keccak hashes are storage-agnostic — the protocol commits to bytes, not locations.
 
 ### 9.3 Coordinate Encoding
 
@@ -786,9 +802,10 @@ Used for small structured extras the protocol does not interpret. The payload li
 Used when the payload cannot fit inline or is inherently binary (polygon GeoJSON, evidence bundles, large opaque blobs).
 
 - The `bytes32` value is the keccak256 of the canonical serialization of the payload (§9.8 rules for JSON payloads; raw byte hash for opaque binary). The payload itself may live on IPFS, in the organization's app database, or in any other storage the publisher chooses — the chain commits to the hash, not the location. Verifiers fetch the payload from the publisher's exposed endpoint and recompute the hash to audit.
-- MUST use a purpose-named field — `boundariesHash`, `evidenceBundleHash`, `payloadHash`, and any future `*Hash` that names what is committed — never the generic name `metadataHash`. The field name tells readers what to fetch (or how to interpret the hash).
+- MUST use a purpose-named field — `boundariesHash`, `evidenceBundleHash`, `payloadHash`, `mediaHash`, and any future `*Hash` that names what is committed — never the generic name `metadataHash`. The field name tells readers what to fetch (or how to interpret the hash).
 - `ZERO_BYTES32` MUST be accepted as "no payload of this type for this attestation," except where a payload is structurally required (e.g. `Activity.payloadHash` — every Activity carries a payload, even if empty, so the hash reflects that payload and is not `ZERO_BYTES32`).
-- Current consumers: `AreaRegistration.boundariesHash`, `Intervention.evidenceBundleHash`, `Activity.payloadHash`.
+- The same convention applies to `*Hash` fields carried inside off-chain Activity payloads (not only on-chain schema slots). `report.mediaHash` and `healthcheck.mediaHash` (§9.2) are payload-level hash fields; they follow the same keccak256 + publisher-hosted-bytes rule.
+- Current consumers: `AreaRegistration.boundariesHash`, `Intervention.evidenceBundleHash`, `Activity.payloadHash`, `report.mediaHash`, `healthcheck.mediaHash`.
 
 **Mutually exclusive naming.** No schema field is named `metadataHash`. If both a small inline extension and a large hashed payload are needed on the same schema, they live in two distinct fields — `metadata` + a purpose-named `*Hash` — and readers can tell at a glance which is inline and which requires a fetch.
 
