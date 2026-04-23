@@ -21,7 +21,7 @@ import {
 	ZERO_ADDRESS,
 	ZERO_BYTES32,
 } from "../src/constants";
-import type { ChainConfig, StorageAdapter } from "../src/types/config";
+import type { ChainConfig } from "../src/types/config";
 import { ActivityType, AreaType, InterventionType } from "../src/types/enums";
 import type { TimestampedOffChainResult } from "../src/types/results";
 import { hashInterventionScope } from "../src/utils";
@@ -45,31 +45,6 @@ function delay(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/**
- * In-memory storage adapter — bundles are keyed by their keccak256 hash and
- * retrieved in the same process. Verification can round-trip without IPFS.
- */
-function createMemoryStorage(): StorageAdapter & {
-	store: Map<string, string>;
-} {
-	const store = new Map<string, string>();
-	return {
-		store,
-		async upload(data: Uint8Array | string): Promise<string> {
-			const content =
-				typeof data === "string" ? data : new TextDecoder().decode(data);
-			const hash = ethers.keccak256(ethers.toUtf8Bytes(content));
-			store.set(hash, content);
-			return hash;
-		},
-		async download(hash: string): Promise<Uint8Array> {
-			const content = store.get(hash);
-			if (!content) throw new Error(`Not found: ${hash}`);
-			return new TextEncoder().encode(content);
-		},
-	};
-}
-
 function now(): bigint {
 	return BigInt(Math.floor(Date.now() / 1000));
 }
@@ -77,7 +52,6 @@ function now(): bigint {
 describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 	let client: OpenGardenClient;
 	let walletAddress: string;
-	let storage: ReturnType<typeof createMemoryStorage>;
 
 	// Shared state across ordered tests.
 	const interventionId = `E2E-INT-${Date.now()}`;
@@ -87,6 +61,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 	let checkoutResult: TimestampedOffChainResult;
 	let reportResult: TimestampedOffChainResult;
 	let evidenceBundleHash: string;
+	let bundleBytes: Uint8Array;
 	let interventionUID: string;
 	let indexedCount = 0;
 
@@ -98,12 +73,10 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 		const provider = new ethers.JsonRpcProvider(RPC_URL);
 		const signer = new ethers.Wallet(PRIVATE_KEY, provider);
 		walletAddress = await signer.getAddress();
-		storage = createMemoryStorage();
 
 		client = await createOpenGardenClient({
 			signer,
 			chain,
-			storage,
 		});
 
 		const hasCanonicalUIDs =
@@ -264,7 +237,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 			interventionId,
 			tasksCompleted: ["PRUNE", "CLEAN", "WATER"],
 			reportedEffort: 55,
-			mediaCID: "",
+			mediaHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
 			notes: "E2E test — all tasks completed successfully",
 		});
 
@@ -283,7 +256,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 		const healthcheckResult = await client.recordHealthcheck({
 			areaUID,
 			healthScore: 8,
-			mediaCID: "",
+			mediaHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
 			notes: "Post-intervention spot check",
 		});
 
@@ -330,8 +303,10 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 			);
 		}
 
-		// Upload
+		// Hash goes on-chain; publisher derives canonical bytes from the bundle
+		// when they need them (for persistence, retrieval, or re-verification).
 		evidenceBundleHash = result.evidenceBundleHash;
+		bundleBytes = client.serializeEvidenceBundle(result.bundle).bytes;
 		expect(evidenceBundleHash).toBeTruthy();
 
 		// Indexer — 4 submissions (schedule + 3 crew). Healthcheck not bundled.
@@ -392,10 +367,13 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 	}, 30_000);
 
 	it("verifies the evidence bundle end-to-end against on-chain state", async () => {
-		const verification = await client.verifyEvidenceBundle(interventionUID);
+		const verification = await client.verifyEvidenceBundle(
+			interventionUID,
+			bundleBytes,
+		);
 
 		console.log(
-			`  Bundle verified: sigs=${verification.signaturesValid}, payloads=${verification.payloadIntegrityValid}, timestamps=${verification.timestampsVerified}, scope=${verification.interventionScopeValid}, temporal=${verification.temporalOrderValid}, bracket=${verification.executionDateBracketed}`,
+			`  Bundle verified: hash=${verification.bundleHashValid}, sigs=${verification.signaturesValid}, payloads=${verification.payloadIntegrityValid}, timestamps=${verification.timestampsVerified}, scope=${verification.interventionScopeValid}, temporal=${verification.temporalOrderValid}, bracket=${verification.executionDateBracketed}`,
 		);
 		for (const check of verification.checks) {
 			if (!check.valid) {
@@ -403,6 +381,7 @@ describe.skipIf(skip)("E2E: full intervention lifecycle", () => {
 			}
 		}
 
+		expect(verification.bundleHashValid).toBe(true);
 		expect(verification.bundleVersionValid).toBe(true);
 		expect(verification.signaturesValid).toBe(true);
 		expect(verification.payloadIntegrityValid).toBe(true);

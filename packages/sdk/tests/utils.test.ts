@@ -1,12 +1,13 @@
 import { keccak256, toUtf8Bytes } from "ethers";
 import { describe, expect, it } from "vitest";
 import {
+	buildMediaManifest,
 	canonicalJSON,
 	fromMicrodegrees,
 	hashActivityPayload,
 	hashIdentifier,
 	hashInterventionScope,
-	hashMediaManifest,
+	hashMediaFile,
 	toMicrodegrees,
 	toUnixSeconds,
 } from "../src/utils";
@@ -76,38 +77,76 @@ describe("hashIdentifier", () => {
 	});
 });
 
-describe("hashMediaManifest", () => {
-	it("returns a 32-byte hex string", () => {
-		const hash = hashMediaManifest(["ipfs://Qm1", "ipfs://Qm2"]);
+describe("hashMediaFile", () => {
+	it("returns a 32-byte hex string for raw bytes", () => {
+		const hash = hashMediaFile(new Uint8Array([1, 2, 3]));
 		expect(hash).toMatch(/^0x[0-9a-f]{64}$/);
 	});
 
-	it("is order-independent", () => {
-		const a = hashMediaManifest(["b", "a", "c"]);
-		const b = hashMediaManifest(["c", "a", "b"]);
-		expect(a).toBe(b);
+	it("matches keccak256 of the input bytes", () => {
+		const bytes = new Uint8Array([10, 20, 30]);
+		expect(hashMediaFile(bytes)).toBe(keccak256(bytes));
+	});
+
+	it("accepts a string payload (utf8-encoded)", () => {
+		expect(hashMediaFile("hello")).toBe(keccak256(toUtf8Bytes("hello")));
 	});
 
 	it("is deterministic for the same input", () => {
-		const items = ["ipfs://Qm1", "ipfs://Qm2", "ipfs://Qm3"];
-		expect(hashMediaManifest(items)).toBe(hashMediaManifest(items));
+		const bytes = new Uint8Array([1, 2, 3]);
+		expect(hashMediaFile(bytes)).toBe(hashMediaFile(bytes));
 	});
 
-	it("produces different hashes for different manifests", () => {
-		expect(hashMediaManifest(["a"])).not.toBe(hashMediaManifest(["a", "b"]));
+	it("produces different hashes for different inputs", () => {
+		expect(hashMediaFile(new Uint8Array([1]))).not.toBe(
+			hashMediaFile(new Uint8Array([2])),
+		);
+	});
+});
+
+describe("buildMediaManifest", () => {
+	const items = [
+		{ hash: "0x02", contentType: "image/jpeg" },
+		{ hash: "0x01", contentType: "image/jpeg" },
+	];
+
+	it("returns both canonical bytes and their keccak256", () => {
+		const result = buildMediaManifest(items);
+		expect(result.bytes).toBeInstanceOf(Uint8Array);
+		expect(result.hash).toMatch(/^0x[0-9a-f]{64}$/);
+		expect(result.hash).toBe(keccak256(result.bytes));
 	});
 
-	it("reproduces the documented manifest shape", () => {
-		const items = ["ipfs://Qm-b", "ipfs://Qm-a"];
-		const manifest = JSON.stringify({
+	it("sorts items by hash regardless of input order", () => {
+		const a = buildMediaManifest(items);
+		const b = buildMediaManifest([...items].reverse());
+		expect(a.hash).toBe(b.hash);
+		const parsed = JSON.parse(new TextDecoder().decode(a.bytes));
+		expect(parsed.items.map((i: { hash: string }) => i.hash)).toEqual([
+			"0x01",
+			"0x02",
+		]);
+	});
+
+	it("matches the documented manifest shape", () => {
+		const result = buildMediaManifest([
+			{ hash: "0xaa", contentType: "image/jpeg" },
+		]);
+		const expected = JSON.stringify({
 			v: 1,
-			items: ["ipfs://Qm-a", "ipfs://Qm-b"],
+			items: [{ hash: "0xaa", contentType: "image/jpeg" }],
 		});
-		expect(hashMediaManifest(items)).toBe(keccak256(toUtf8Bytes(manifest)));
+		expect(new TextDecoder().decode(result.bytes)).toBe(expected);
+	});
+
+	it("omits contentType from serialized items when not provided", () => {
+		const result = buildMediaManifest([{ hash: "0xaa" }]);
+		const expected = JSON.stringify({ v: 1, items: [{ hash: "0xaa" }] });
+		expect(new TextDecoder().decode(result.bytes)).toBe(expected);
 	});
 
 	it("throws on empty manifest", () => {
-		expect(() => hashMediaManifest([])).toThrow(/empty/);
+		expect(() => buildMediaManifest([])).toThrow(/empty/);
 	});
 });
 

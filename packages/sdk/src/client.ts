@@ -2,7 +2,7 @@ import type {
 	EAS,
 	SchemaRegistry,
 } from "@ethereum-attestation-service/eas-sdk";
-import type { Signer } from "ethers";
+import { keccak256, type Signer } from "ethers";
 import {
 	CHAIN_CONFIGS,
 	SCHEMA_NAME_UID,
@@ -12,8 +12,8 @@ import {
 import { OpenGardenError, OpenGardenErrorCode } from "./errors";
 import {
 	buildEvidenceBundle as buildBundle,
-	bundleJsonReplacer,
 	restoreBundleBigInts,
+	serializeEvidenceBundle,
 } from "./evidence";
 import { getGraphqlUrl, getStoreUrl, submitToIndexer } from "./indexer";
 import type { FinalizePolicy, VerifyPolicy } from "./policy";
@@ -46,7 +46,6 @@ import type {
 	ChainConfig,
 	OpenGardenConfig,
 	SchemaUIDs,
-	StorageAdapter,
 } from "./types/config";
 import {
 	ActivityType,
@@ -108,7 +107,6 @@ export class OpenGardenClient {
 	private readonly eas: EAS;
 	private readonly registry: SchemaRegistry;
 	private readonly signer: Signer;
-	private readonly storage?: StorageAdapter;
 	private readonly schemaUIDs: Partial<SchemaUIDs>;
 	private readonly graphqlUrl: string | undefined;
 	private readonly chainId: bigint;
@@ -131,7 +129,6 @@ export class OpenGardenClient {
 		const chain = resolveChain(config.chain);
 
 		this.signer = config.signer;
-		this.storage = config.storage;
 		this.schemaUIDs = { ...chain.schemaUIDs, ...config.schemaUIDs };
 		this.chainId = chain.chainId;
 		this.graphqlUrl = config.graphqlUrl ?? getGraphqlUrl(this.chainId);
@@ -525,7 +522,7 @@ export class OpenGardenClient {
 
 		const executionDate = toUnixSeconds(input.executionDate);
 		const bundle = this.buildEvidenceBundle(input);
-		const evidenceBundleHash = await this.uploadEvidenceBundle(bundle);
+		const { hash: evidenceBundleHash } = serializeEvidenceBundle(bundle);
 		const indexingResults = await this.indexBundleAttestations(input);
 		const indexedCount = indexingResults.filter((r) => r.ok).length;
 
@@ -760,84 +757,42 @@ export class OpenGardenClient {
 		return buildBundle(input);
 	}
 
-	async uploadEvidenceBundle(bundle: EvidenceBundle): Promise<string> {
-		if (!this.storage) {
-			throw new OpenGardenError(
-				OpenGardenErrorCode.STORAGE_NOT_CONFIGURED,
-				"Storage adapter is required to upload evidence bundles. Pass a StorageAdapter in the config.",
-			);
-		}
-		return this.storage.upload(JSON.stringify(bundle, bundleJsonReplacer));
-	}
-
 	/**
-	 * Upload a single media blob via the configured `StorageAdapter` and
-	 * return the resulting CID, suitable for embedding in a payload's
-	 * `mediaCID` field (`report.mediaCID`, `healthcheck.mediaCID`). Thin
-	 * passthrough over `storage.upload`.
+	 * Serialize an evidence bundle to its canonical byte sequence and
+	 * compute `keccak256(bytes)`. The hash is the on-chain commitment; the
+	 * bytes are what the publisher must persist for verifier retrieval. The
+	 * SDK does not upload anywhere — storage is the publisher's concern per
+	 * the Storage-Agnostic Commitments principle (spec §1).
 	 */
-	async uploadMedia(data: Uint8Array | string): Promise<string> {
-		if (!this.storage) {
-			throw new OpenGardenError(
-				OpenGardenErrorCode.STORAGE_NOT_CONFIGURED,
-				"Storage adapter is required to upload media. Pass a StorageAdapter in the config.",
-			);
-		}
-		return this.storage.upload(data);
+	serializeEvidenceBundle(
+		bundle: EvidenceBundle,
+	): { bytes: Uint8Array; hash: string } {
+		return serializeEvidenceBundle(bundle);
 	}
 
 	/**
-	 * Upload N media blobs and a canonical manifest (§9.2) referencing them,
-	 * returning the manifest's CID. Use for `report.mediaCID` when a single
-	 * report needs to attest multiple files (before/after pairs, per-task
-	 * evidence, etc.). Items upload in parallel; the manifest lists them in
-	 * JS string-comparison order for determinism.
+	 * Verify an evidence bundle against the on-chain Intervention.
 	 *
-	 * Accepts already-uploaded CIDs alongside fresh blobs — strings are
-	 * treated as existing CIDs and passed through; `Uint8Array` entries are
-	 * uploaded and replaced with their returned CIDs before manifest
-	 * serialization.
+	 * @param uid          On-chain Intervention UID.
+	 * @param bundleBytes  Bundle bytes the publisher serves for this
+	 *                     intervention. `keccak256(bundleBytes)` MUST equal
+	 *                     `Intervention.evidenceBundleHash`; the check is
+	 *                     performed here and surfaced via `bundleHashValid`.
 	 */
-	async uploadMediaBundle(
-		items: ReadonlyArray<Uint8Array | string>,
-	): Promise<string> {
-		if (!this.storage) {
-			throw new OpenGardenError(
-				OpenGardenErrorCode.STORAGE_NOT_CONFIGURED,
-				"Storage adapter is required to upload media. Pass a StorageAdapter in the config.",
-			);
-		}
-		if (items.length === 0) {
-			throw new OpenGardenError(
-				OpenGardenErrorCode.INVALID_INPUT,
-				"Cannot upload an empty media bundle",
-			);
-		}
-		const cids = await Promise.all(
-			items.map((item) =>
-				typeof item === "string" ? Promise.resolve(item) : this.storage!.upload(item),
-			),
-		);
-		const manifest = JSON.stringify({ v: 1, items: [...cids].sort() });
-		return this.storage.upload(manifest);
-	}
-
 	async verifyEvidenceBundle(
 		uid: string,
+		bundleBytes: Uint8Array,
 		options?: { policy?: VerifyPolicy },
 	): Promise<EvidenceBundleVerification> {
-		if (!this.storage) {
-			throw new OpenGardenError(
-				OpenGardenErrorCode.STORAGE_NOT_CONFIGURED,
-				"Storage adapter is required to verify evidence bundles. Pass a StorageAdapter in the config.",
-			);
-		}
 		const policy = options?.policy ?? STRICT_VERIFY_POLICY;
 
 		const intervention = await this.getIntervention(uid);
-		const bundleBytes = await this.storage.download(
-			intervention.evidenceBundleHash,
-		);
+
+		const computedHash = keccak256(bundleBytes);
+		const bundleHashValid =
+			computedHash.toLowerCase() ===
+			intervention.evidenceBundleHash.toLowerCase();
+
 		const bundle = restoreBundleBigInts(
 			JSON.parse(new TextDecoder().decode(bundleBytes)) as EvidenceBundle,
 		);
@@ -871,10 +826,13 @@ export class OpenGardenClient {
 			temporal,
 			executionBracket,
 		];
-		const valid = checks.every((c) => !policy.required.has(c.code) || c.valid);
+		const valid =
+			bundleHashValid &&
+			checks.every((c) => !policy.required.has(c.code) || c.valid);
 
 		return {
 			valid,
+			bundleHashValid,
 			bundleVersionValid: versionCheck.valid,
 			signaturesValid: signatures.valid,
 			payloadIntegrityValid: payloads.valid,

@@ -24,15 +24,11 @@ The asymmetry between `checkin` (GPS + photo), `checkout` (self-reported duratio
 **Report**
 
 - `reportedEffort: number` added. Per-gardener active work time in minutes, excluding breaks. Drives person-minute impact aggregation for sponsor metrics. Distinct from wall-clock duration because breaks aren't work — `sum(report[*].reportedEffort)` is the authoritative effort signal for an intervention.
-- `photosCID` → `mediaCID`. The CID accepts any shape the publisher chooses — single file, folder, or canonical manifest listing multiple files. "Media" is broader than "photos" (walkaround videos, soil-analysis PDFs are valid evidence) and matches the spec §9.2 heading.
+- `photosCID` removed (replaced by `mediaHash` — see the Storage-Agnostic Commitments changeset).
 
 **Healthcheck**
 
-- `photoCID` → `mediaCID`. Same three resolution shapes as report. Healthcheck remains the pre/post-intervention bracketing mechanism.
-
-**Utilities**
-
-- `hashPhotoBundle(items)` → `hashMediaManifest(items)`. Same keccak256 over the canonical `{v:1, items:[...]}` manifest; renamed to match spec vocabulary. Payload `mediaCID` fields carry a storage-layer CID pointing at the manifest blob, not this hash — the hash is still useful for apps that want a bytes32 commitment over a media set for tamper-detection.
+- `photoCID` removed (replaced by `mediaHash` — see the Storage-Agnostic Commitments changeset).
 
 **Validation**
 

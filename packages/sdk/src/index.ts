@@ -28,6 +28,7 @@ export {
 	buildEvidenceBundle,
 	bundleJsonReplacer,
 	restoreBundleBigInts,
+	serializeEvidenceBundle,
 } from "./evidence";
 // Indexer
 export { getGraphqlUrl, getStoreUrl, submitToIndexer } from "./indexer";
@@ -102,7 +103,6 @@ export type {
 	ChainConfig,
 	OpenGardenConfig,
 	SchemaUIDs,
-	StorageAdapter,
 } from "./types/config";
 export type { ActivityTypeName, SchemaName } from "./types/enums";
 export {
@@ -145,14 +145,16 @@ export type {
 	ScheduleActivityInput,
 } from "./types/schemas";
 // Utilities
+export type { MediaManifestItem } from "./utils";
 export {
+	buildMediaManifest,
 	canonicalJSON,
 	fromMicrodegrees,
 	hashActivityPayload,
 	hashBoundary,
 	hashIdentifier,
 	hashInterventionScope,
-	hashMediaManifest,
+	hashMediaFile,
 	toMicrodegrees,
 	toUnixSeconds,
 } from "./utils";

@@ -55,24 +55,46 @@ export function hashInterventionScope(interventionId: string): string {
 	return keccak256(toUtf8Bytes(interventionId));
 }
 
+export interface MediaManifestItem {
+	/** keccak256 of the file's raw bytes (0x-prefixed bytes32 hex). */
+	hash: string;
+	/** Optional MIME type declared by the publisher at attestation time. */
+	contentType?: string;
+}
+
 /**
- * Keccak256 of the canonical media manifest (spec §9.2) — `{ "v": 1, "items":
- * [<sorted items>] }`. Useful for apps that want to commit a deterministic
- * bytes32 over a set of media references (e.g. to pin alongside a CID for
- * tamper-detection). Payload `mediaCID` fields themselves carry a CID string,
- * not this hash — the CID comes from the storage adapter after uploading the
- * manifest bytes.
- *
- * Pass the same list in any order to reproduce the same hash. The manifest
- * format is versioned for forward compatibility.
+ * Keccak256 of a single media file's raw bytes. Suitable for `report.mediaHash`
+ * or `healthcheck.mediaHash` when the payload attests a single file.
  */
-export function hashMediaManifest(items: readonly string[]): string {
+export function hashMediaFile(bytes: Uint8Array | string): string {
+	const input = typeof bytes === "string" ? toUtf8Bytes(bytes) : bytes;
+	return keccak256(input);
+}
+
+/**
+ * Builds the canonical media manifest (spec §9.2) for N-file payloads and
+ * returns both the serialized bytes and their keccak256. Use `bytes` to
+ * persist the manifest in publisher storage, `hash` to commit in the signed
+ * payload's `mediaHash`. Items are sorted by `hash` so the result is
+ * deterministic regardless of caller-side order.
+ */
+export function buildMediaManifest(
+	items: ReadonlyArray<MediaManifestItem>,
+): { bytes: Uint8Array; hash: string } {
 	if (items.length === 0) {
-		throw new Error("Cannot hash an empty media manifest");
+		throw new Error("Cannot build an empty media manifest");
 	}
-	const sorted = [...items].sort();
-	const manifest = JSON.stringify({ v: 1, items: sorted });
-	return keccak256(toUtf8Bytes(manifest));
+	const sorted = [...items].sort((a, b) => (a.hash < b.hash ? -1 : a.hash > b.hash ? 1 : 0));
+	const manifest = {
+		v: 1,
+		items: sorted.map((item) =>
+			item.contentType === undefined
+				? { hash: item.hash }
+				: { hash: item.hash, contentType: item.contentType },
+		),
+	};
+	const bytes = toUtf8Bytes(JSON.stringify(manifest));
+	return { bytes, hash: keccak256(bytes) };
 }
 
 /**

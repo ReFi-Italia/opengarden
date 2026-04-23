@@ -82,16 +82,16 @@ export interface ReportActivityPayload {
 	tasksCompleted: string[];
 	/** Per-gardener active work time in minutes, excluding breaks. `0` if unreported. */
 	reportedEffort: number;
-	/** CID resolving to after-work evidence (single file, folder, or manifest per §9.2). Empty string if none. */
-	mediaCID: string;
+	/** keccak256 bytes32 hex of the after-work evidence bytes (single file or canonical manifest per §9.2). `ZERO_BYTES32` if none. */
+	mediaHash: string;
 	notes: string;
 }
 
 export interface HealthcheckActivityPayload {
 	/** 1-10 scale, 10 is best. */
 	healthScore: number;
-	/** CID resolving to condition documentation (single file, folder, or manifest per §9.2). Empty string if none. */
-	mediaCID: string;
+	/** keccak256 bytes32 hex of the condition-documentation bytes (single file or canonical manifest per §9.2). `ZERO_BYTES32` if none. */
+	mediaHash: string;
 	notes: string;
 	/** App-specific extras (weather, annotations, seasonal context). Omit for none. SHOULD carry a `v` key for shape versioning. */
 	metadata?: Record<string, unknown> | null;
@@ -148,6 +148,8 @@ export type Activity = LifecycleActivity | HealthcheckActivity;
 
 export interface EvidenceBundleVerification {
 	valid: boolean;
+	/** Protocol tier — `keccak256(bundleBytes)` matches the on-chain `evidenceBundleHash`. Caller-supplied bytes are authentic for this Intervention. */
+	bundleHashValid: boolean;
 	/** Protocol tier — bundle version is understood. */
 	bundleVersionValid: boolean;
 	/** Protocol tier — every signed attestation's EIP-712 signature recovers to its claimed signer. */

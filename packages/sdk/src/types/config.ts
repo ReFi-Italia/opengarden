@@ -20,11 +20,6 @@ export interface ChainConfig {
 	schemaUIDs?: Partial<SchemaUIDs>;
 }
 
-export interface StorageAdapter {
-	upload(data: Uint8Array | string): Promise<string>;
-	download(hash: string): Promise<Uint8Array>;
-}
-
 export type SchemaUIDs = Record<SchemaName, string>;
 
 export interface OpenGardenConfig {
@@ -40,7 +35,6 @@ export interface OpenGardenConfig {
 	 */
 	chain: ChainName | ChainConfig;
 	schemaUIDs?: Partial<SchemaUIDs>;
-	storage?: StorageAdapter;
 	/**
 	 * Override the EAS GraphQL endpoint used for read queries. Defaults to the
 	 * EASScan endpoint for the configured chain, or `undefined` if the chain

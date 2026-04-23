@@ -450,7 +450,7 @@ const validReport = {
 	interventionId: "INT-2026-0001",
 	tasksCompleted: ["PRUNE", "CLEAN"],
 	reportedEffort: 120,
-	mediaCID: "",
+	mediaHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
 	notes: "",
 };
 
@@ -501,7 +501,7 @@ describe("Report activity validator", () => {
 const validHealthcheck = {
 	areaUID: ZERO_BYTES32,
 	healthScore: 6,
-	mediaCID: "",
+	mediaHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
 	notes: "",
 };
 

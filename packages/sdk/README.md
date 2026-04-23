@@ -40,7 +40,6 @@ const signer = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
 const client = await createOpenGardenClient({
   signer,
   chain: 'optimism-sepolia',
-  storage: ipfsStorage, // see "Storage adapter" section below
 });
 
 // 1. One-time: register the area.
@@ -73,9 +72,9 @@ const schedule = await client.scheduleIntervention({
 
 const checkin  = await client.checkin({  interventionId, latitude: 41.89, longitude: 12.49 });
 const checkout = await client.checkout({ interventionId, latitude: 41.89, longitude: 12.49 });
-const report   = await client.submitReport({ interventionId, tasksCompleted: ['PRUNE', 'CLEAN'], reportedEffort: 55, mediaCID: '', notes: '' });
+const report   = await client.submitReport({ interventionId, tasksCompleted: ['PRUNE', 'CLEAN'], reportedEffort: 55, mediaHash: ZERO_BYTES32, notes: '' });
 
-// 3. Finalize — one call: preflight + bundle + upload + index + publish.
+// 3. Finalize — one call: preflight + hash bundle + index + publish.
 const result = await client.finalizeIntervention({
   interventionId,
   areaUID: area.uid,
@@ -88,10 +87,9 @@ const result = await client.finalizeIntervention({
 
 console.log('Intervention UID:', result.publication.uid);
 console.log('Bundle hash:     ', result.evidenceBundleHash);
-console.log('Indexed:         ', `${result.indexedCount}/${result.indexingResults.length}`);
 ```
 
-That's the entire write-side flow. Read-side: `client.verifyEvidenceBundle(result.publication.uid)`.
+Read-side: `client.verifyEvidenceBundle(interventionUID, bundleBytes)` — pass canonical bundle bytes (see `serializeEvidenceBundle`).
 
 ## Concepts
 
@@ -99,7 +97,8 @@ A 30-second mental model before diving into sections below.
 
 - **Activity** — the single off-chain schema that carries every lifecycle event (`schedule`, `checkin`, `checkout`, `report`, `healthcheck`). Each Activity is EIP-712 signed and has its UID timestamped on-chain via `EAS.timestamp()`. See spec [§3](../../docs/eas-schema-spec.md#3-off-chain-schema).
 - **Intervention scope hash** — `keccak256(utf8Bytes(interventionId))`. Every lifecycle Activity sets `refUID = interventionScopeHash`, so a single EAS query returns the whole chain. Writers only need the `interventionId` string — no need to pass around the schedule Activity's UID. See spec [§9.7](../../docs/eas-schema-spec.md#97-intervention-scope-hash).
-- **Evidence bundle** — a flat JSON array of Activities (schedule + crew) with their full signed envelopes and plaintext payloads. Uploaded to storage, hashed, referenced from the on-chain `Intervention`. Healthchecks are area-scoped and are NOT bundled. See spec [§5](../../docs/eas-schema-spec.md#5-evidence-bundle-structure).
+- **Evidence bundle** — a flat JSON array of Activities (schedule + crew) with their full signed envelopes and plaintext payloads. Serialized to bytes, committed on-chain via `keccak256(bundleBytes)` on `Intervention.evidenceBundleHash`. The publisher persists the bytes wherever verifiers can fetch them; the SDK does not upload anywhere. Healthchecks are area-scoped and are NOT bundled. See spec [§5](../../docs/eas-schema-spec.md#5-evidence-bundle-structure).
+- **Storage-agnostic commitments** — the SDK computes keccak256 hashes over canonical bytes (evidence bundle, boundary blobs, media files, media manifests) and the chain stores only those hashes. Where the bytes live is entirely the publisher's concern. Verifiers fetch bytes from a publisher-exposed endpoint and recompute the hash. See spec [§1](../../docs/eas-schema-spec.md#1-architecture-overview) and [§9.6](../../docs/eas-schema-spec.md#96-inline-metadata-vs-hashed-payloads).
 - **Crew pairing by signer** — a crew member's `(checkin, checkout, report)` triple is identified by matching `signer` within the intervention scope, not by a refUID chain. A crew signer's own wallet is the link.
 
 ## Area registration
@@ -141,12 +140,12 @@ Each crew member signs their own checkin/checkout/report from their own wallet. 
 // Alice's chain (signed with Alice's wallet)
 const aCheckin  = await aliceClient.checkin({  interventionId, latitude, longitude });
 const aCheckout = await aliceClient.checkout({ interventionId, latitude, longitude });
-const aReport   = await aliceClient.submitReport({ interventionId, tasksCompleted: ['PRUNE'], reportedEffort: 55, mediaCID: aMedia, notes: '' });
+const aReport   = await aliceClient.submitReport({ interventionId, tasksCompleted: ['PRUNE'], reportedEffort: 55, mediaHash: aMediaHash, notes: '' });
 
 // Bob's chain (signed with Bob's wallet)
 const bCheckin  = await bobClient.checkin({  interventionId, latitude, longitude });
 const bCheckout = await bobClient.checkout({ interventionId, latitude, longitude });
-const bReport   = await bobClient.submitReport({ interventionId, tasksCompleted: ['CLEAN'], reportedEffort: 60, mediaCID: bMedia, notes: '' });
+const bReport   = await bobClient.submitReport({ interventionId, tasksCompleted: ['CLEAN'], reportedEffort: 60, mediaHash: bMediaHash, notes: '' });
 
 // Organization finalizes
 await orgClient.finalizeIntervention({
@@ -177,7 +176,7 @@ Healthcheck Activities are a periodic area-condition signal. They reference an `
 const hc = await client.recordHealthcheck({
   areaUID,
   healthScore: 8,
-  mediaCID: 'ipfs://Qm.../condition.jpg',
+  mediaHash: hashMediaFile(conditionPhotoBytes),
   notes: 'Hedge trimmed, beds mulched.',
   metadata: { v: 1, weather: 'sunny' },
 });
@@ -310,8 +309,9 @@ const bundle = client.buildEvidenceBundle({
   crewActivities: [checkin, checkout, report],
 });
 
-// 3. Upload to storage (returns bundle hash)
-const evidenceBundleHash = await client.uploadEvidenceBundle(bundle);
+// 3. Serialize bundle to canonical bytes + keccak256 (no I/O)
+const { bytes: bundleBytes, hash: evidenceBundleHash } =
+  client.serializeEvidenceBundle(bundle);
 
 // 4. Submit to easscan off-chain store (makes activities queryable via GraphQL)
 const indexingResults = await client.indexBundleAttestations({
@@ -329,31 +329,6 @@ const publication = await client.publishIntervention({
 ```
 
 Skipping step (4) is a common gotcha — the bundle is still verifiable (the evidence bundle hash is the authoritative commitment), but `getInterventionActivities` / third-party easscan queries will return empty until the activities are submitted to the off-chain store. Prefer `finalizeIntervention` unless you have a specific reason not to.
-
-## Storage adapter
-
-Evidence bundle upload/download requires a storage adapter. The SDK doesn't bundle one — bring your own:
-
-```ts
-import { createOpenGardenClient } from '@refi-italia/opengarden';
-import type { StorageAdapter } from '@refi-italia/opengarden';
-
-const ipfsStorage: StorageAdapter = {
-  async upload(data) {
-    const cid = await pinToIPFS(data);
-    return cidToBytes32(cid);
-  },
-  async download(hash) {
-    return await fetchFromIPFS(bytes32ToCid(hash));
-  },
-};
-
-const client = await createOpenGardenClient({
-  signer,
-  chain: 'optimism-mainnet',
-  storage: ipfsStorage,
-});
-```
 
 ## Pre-registered schemas
 
@@ -382,7 +357,6 @@ Lazy-loads `eas-sdk`, constructs connected `EAS` + `SchemaRegistry` instances, a
 | `signer` | `ethers.Signer` | Yes | Wallet signer for transactions |
 | `chain` | `ChainName \| ChainConfig` | Yes | Chain name string (e.g. `"optimism-mainnet"`) or full `ChainConfig` |
 | `schemaUIDs` | `Partial<SchemaUIDs>` | No | Override canonical UIDs (merged on top of chain defaults) |
-| `storage` | `StorageAdapter` | No | Storage adapter for evidence bundles |
 | `graphqlUrl` | `string` | No | Override the EAS GraphQL endpoint used for reads |
 | `storeUrl` | `string` | No | Override the off-chain attestation store endpoint |
 
@@ -406,7 +380,6 @@ const client = new OpenGardenClient({ signer, chain: OPTIMISM_MAINNET, eas, regi
 | `registry` | `SchemaRegistry` | Yes | Connected SchemaRegistry instance (DI) |
 | `chain` | `ChainName \| ChainConfig` | Yes | Chain name string or full `ChainConfig` |
 | `schemaUIDs` | `Partial<SchemaUIDs>` | No | Override canonical UIDs |
-| `storage` | `StorageAdapter` | No | Storage adapter for evidence bundles |
 | `graphqlUrl` | `string` | No | Override the EAS GraphQL endpoint used for reads |
 | `storeUrl` | `string` | No | Override the off-chain attestation store endpoint |
 
@@ -453,26 +426,17 @@ Each method builds a typed Activity payload, signs an EAS offchain envelope, and
 
 | Method | Returns |
 |---|---|
-| `finalizeIntervention(input)` | `FinalizeInterventionResult` — **preflight + build + upload + index + publish in one call**. Use this unless you need manual control. |
+| `finalizeIntervention(input)` | `FinalizeInterventionResult` — **preflight + build + serialize + index + publish in one call**. Returns `{ bundle, bundleBytes, evidenceBundleHash, indexedCount, indexingResults, publication }`. Caller persists `bundleBytes` after the call. |
 | `buildEvidenceBundle(input)` | `EvidenceBundle` (pure builder) |
-| `uploadEvidenceBundle(bundle)` | `string` (bundle hash) |
+| `serializeEvidenceBundle(bundle)` | `{ bytes: Uint8Array; hash: string }` — canonical JSON bytes + `keccak256(bytes)`. |
 | `indexBundleAttestations(input)` | `BundleIndexingResult[]` (submits activities to easscan off-chain store) |
-| `verifyEvidenceBundle(interventionUID)` | `EvidenceBundleVerification` |
-
-### Media uploads
-
-| Method | Returns |
-|---|---|
-| `uploadMedia(data)` | `string` CID for a single blob (`Uint8Array` or `string`). Thin passthrough over `storage.upload`. Use for `healthcheck.mediaCID` or a single-file `report.mediaCID`. |
-| `uploadMediaBundle(items)` | `string` CID of a canonical manifest (spec §9.2) referencing N files. Accepts a mix of `Uint8Array` (uploads as-is) and `string` (treated as an already-uploaded CID). Manifest items are sorted for determinism. Use for `report.mediaCID` when a report needs to attest multiple files. |
-
-Both methods require a `StorageAdapter` in the client config. The storage model is otherwise unchanged — the SDK still only uploads the evidence bundle itself inside `finalizeIntervention`; media uploads are a caller-driven helper for the ergonomics case where the app wants to upload during report assembly rather than running its own adapter dance.
+| `verifyEvidenceBundle(uid, bundleBytes)` | `EvidenceBundleVerification` — caller fetches bytes from wherever the publisher serves them and passes them in. |
 
 Composable verification helpers: `verifyBundleVersion`, `verifyBundleSignatures`, `verifyBundlePayloadIntegrity`, `verifyBundleOnChainTimestamps`, `verifyBundleInterventionScope`, `verifyBundleTemporalOrder`, `verifyBundleExecutionDateBracket`, `verifyBundleCrewSize`, `verifyBundleCrewConsistency`, `verifyBundleCrewDistinctness`, `verifyBundleScheduleUniqueness`. See [Composable verification helpers](#composable-verification-helpers) above.
 
 Policy presets + builders: `STRICT_FINALIZE_POLICY`, `MINIMAL_FINALIZE_POLICY`, `LENIENT_FINALIZE_POLICY`, `finalizePolicy`, `STRICT_VERIFY_POLICY`, `PROTOCOL_ONLY_VERIFY_POLICY`, `verifyPolicy`.
 
-Hashing primitives: `hashInterventionScope(interventionId)`, `hashActivityPayload(payload)`, `hashIdentifier(id)`, `hashBoundary(blob)`, `hashMediaManifest(items)`, `canonicalJSON(value)`.
+Hashing primitives: `hashInterventionScope(interventionId)`, `hashActivityPayload(payload)`, `hashIdentifier(id)`, `hashBoundary(blob)`, `hashMediaFile(bytes)`, `buildMediaManifest(items)`, `canonicalJSON(value)`.
 
 Type guards for decoded activities: `isScheduleActivity`, `isCheckinActivity`, `isCheckoutActivity`, `isReportActivity`, `isHealthcheckActivity`.
 
@@ -518,7 +482,6 @@ All SDK errors are `OpenGardenError` instances with a typed `code`:
 | `ATTESTATION_NOT_FOUND` | `getArea` / `getIntervention` returns empty |
 | `INVALID_INPUT` | Invalid input, unsupported chain for GraphQL, or preflight blocking issue in `finalizeIntervention` |
 | `BUNDLE_VERIFICATION_FAILED` | Evidence bundle integrity check failed (e.g. unsupported `bundleVersion`) |
-| `STORAGE_NOT_CONFIGURED` | `uploadEvidenceBundle` / `verifyEvidenceBundle` called without a storage adapter |
 | `SIGNER_ERROR` | Missing or invalid signer, or transaction receipt unavailable |
 
 ## License

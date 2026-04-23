@@ -377,12 +377,14 @@ describe("buildReportPayload", () => {
 			interventionId: "INT-2026-0001",
 			tasksCompleted: ["PRUNE", "CLEAN", "WATER"],
 			reportedEffort: 120,
-			mediaCID: "ipfs://Qm.../work-manifest.json",
+			mediaHash: "0x00000000000000000000000000000000000000000000000000000000000000aa",
 			notes: "all good",
 		});
 		expect(payload.tasksCompleted).toEqual(["PRUNE", "CLEAN", "WATER"]);
 		expect(payload.reportedEffort).toBe(120);
-		expect(payload.mediaCID).toBe("ipfs://Qm.../work-manifest.json");
+		expect(payload.mediaHash).toBe(
+			"0x00000000000000000000000000000000000000000000000000000000000000aa",
+		);
 		expect(payload.notes).toBe("all good");
 	});
 
@@ -391,7 +393,7 @@ describe("buildReportPayload", () => {
 			interventionId: "INT-2026-0001",
 			tasksCompleted: [],
 			reportedEffort: 0,
-			mediaCID: "",
+			mediaHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
 			notes: "",
 		});
 		expect(payload.tasksCompleted).toEqual([]);
@@ -405,7 +407,7 @@ describe("buildReportPayload", () => {
 				// biome-ignore lint/suspicious/noExplicitAny: intentional bad input
 				tasksCompleted: "PRUNE" as any,
 				reportedEffort: 0,
-				mediaCID: "",
+				mediaHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
 				notes: "",
 			}),
 		).toThrow();
@@ -417,7 +419,7 @@ describe("buildReportPayload", () => {
 				interventionId: "INT-2026-0001",
 				tasksCompleted: [],
 				reportedEffort: -1,
-				mediaCID: "",
+				mediaHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
 				notes: "",
 			}),
 		).toThrow();
@@ -426,7 +428,7 @@ describe("buildReportPayload", () => {
 				interventionId: "INT-2026-0001",
 				tasksCompleted: [],
 				reportedEffort: 65_536,
-				mediaCID: "",
+				mediaHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
 				notes: "",
 			}),
 		).toThrow();
@@ -438,7 +440,7 @@ describe("buildHealthcheckPayload", () => {
 		areaUID:
 			"0x000000000000000000000000000000000000000000000000000000000000cafe",
 		healthScore: 8,
-		mediaCID: "ipfs://Qm.../condition.jpg",
+		mediaHash: "0x00000000000000000000000000000000000000000000000000000000000000bb",
 		notes: "Hedge trimmed.",
 	};
 
@@ -446,7 +448,7 @@ describe("buildHealthcheckPayload", () => {
 		const payload = buildHealthcheckPayload(base);
 		expect(payload).toEqual({
 			healthScore: 8,
-			mediaCID: "ipfs://Qm.../condition.jpg",
+			mediaHash: "0x00000000000000000000000000000000000000000000000000000000000000bb",
 			notes: "Hedge trimmed.",
 		});
 	});

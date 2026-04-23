@@ -111,8 +111,8 @@ export interface ReportActivityInput extends ActivityEnvelopeOverrides {
 	tasksCompleted: string[];
 	/** Per-gardener active work time in minutes, excluding breaks. Drives person-minute impact aggregation. `0` if unreported. */
 	reportedEffort: number;
-	/** CID resolving to after-work evidence — single file, folder, or canonical manifest per spec §9.2. Empty string if none. */
-	mediaCID: string;
+	/** keccak256 of the after-work evidence — a single file's raw bytes or the canonical media manifest JSON bytes (spec §9.2). 0x-prefixed bytes32 hex. `ZERO_BYTES32` if none. */
+	mediaHash: string;
 	notes: string;
 }
 
@@ -121,8 +121,8 @@ export interface HealthcheckActivityInput extends ActivityEnvelopeOverrides {
 	areaUID: string;
 	/** 1-10, where 10 is best. */
 	healthScore: number;
-	/** CID resolving to condition documentation — single file, folder, or canonical manifest per spec §9.2. Empty string if none. */
-	mediaCID: string;
+	/** keccak256 of the condition-documentation bytes — a single file or canonical media manifest (spec §9.2). 0x-prefixed bytes32 hex. `ZERO_BYTES32` if none. */
+	mediaHash: string;
 	notes: string;
 	/** App-specific extras. Omit for none. */
 	metadata?: Record<string, unknown> | null;

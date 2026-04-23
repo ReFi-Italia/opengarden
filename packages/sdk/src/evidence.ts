@@ -1,3 +1,4 @@
+import { keccak256, toUtf8Bytes } from "ethers";
 import { EVIDENCE_BUNDLE_VERSION } from "./constants";
 import { OpenGardenError, OpenGardenErrorCode } from "./errors";
 import type {
@@ -104,6 +105,20 @@ export function buildEvidenceBundle(
  */
 export function bundleJsonReplacer(_key: string, value: unknown): unknown {
 	return typeof value === "bigint" ? value.toString() : value;
+}
+
+/**
+ * Serialize an evidence bundle to its canonical byte sequence and compute
+ * `keccak256(bytes)` — the value committed on-chain as
+ * `Intervention.evidenceBundleHash`. Publishers persist `bytes` in whatever
+ * storage they expose; verifiers fetch those bytes and recompute the hash to
+ * verify integrity (spec §5.4 step 2).
+ */
+export function serializeEvidenceBundle(
+	bundle: EvidenceBundle,
+): { bytes: Uint8Array; hash: string } {
+	const bytes = toUtf8Bytes(JSON.stringify(bundle, bundleJsonReplacer));
+	return { bytes, hash: keccak256(bytes) };
 }
 
 /**

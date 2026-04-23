@@ -107,6 +107,12 @@ export type FinalizeInterventionInput = EvidenceBundleBuilderInput &
 
 export interface FinalizeInterventionResult {
 	bundle: EvidenceBundle;
+	/**
+	 * keccak256 of the canonical bundle bytes (`serializeEvidenceBundle(bundle).hash`).
+	 * Committed on-chain as `Intervention.evidenceBundleHash`. Callers can re-derive
+	 * canonical bytes at any time via `serializeEvidenceBundle(bundle)` — what to
+	 * persist and how is entirely the app's choice.
+	 */
 	evidenceBundleHash: string;
 	/** Count of `indexingResults` with `ok === true`. Convenience for simple dashboards. */
 	indexedCount: number;

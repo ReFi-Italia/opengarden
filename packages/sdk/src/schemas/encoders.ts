@@ -211,7 +211,7 @@ export function buildReportPayload(
 	return {
 		tasksCompleted: input.tasksCompleted,
 		reportedEffort: input.reportedEffort,
-		mediaCID: input.mediaCID,
+		mediaHash: input.mediaHash,
 		notes: input.notes,
 	};
 }
@@ -222,7 +222,7 @@ export function buildHealthcheckPayload(
 	validateHealthcheckActivity(input);
 	const payload: HealthcheckActivityPayload = {
 		healthScore: input.healthScore,
-		mediaCID: input.mediaCID,
+		mediaHash: input.mediaHash,
 		notes: input.notes,
 	};
 	if (input.metadata !== undefined && input.metadata !== null) {
