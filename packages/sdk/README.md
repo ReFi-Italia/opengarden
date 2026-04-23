@@ -51,7 +51,7 @@ const area = await client.registerArea({
   areaType: AreaType.PublicGreenSpace,
   name: 'Giardino Via Appia 12',
   municipality: 'RM-I',
-  boundariesHash: null,
+  boundary: null,
   metadata: '',
 });
 
@@ -65,14 +65,15 @@ const schedule = await client.scheduleIntervention({
   crewLead: signer.address,
   crewSize: 1,
   scheduledDate: new Date(),
-  estimatedMinutes: 60,
+  plannedDuration: 60,
+  tasksPlanned: ['PRUNE', 'CLEAN'],
   description: 'Trim hedges, mulch beds.',
   commissionId: null,
 });
 
-const checkin  = await client.checkin({  interventionId, latitude: 41.89, longitude: 12.49, photoCID: '' });
-const checkout = await client.checkout({ interventionId, actualMinutes: 55 });
-const report   = await client.submitReport({ interventionId, tasksCompleted: ['PRUNE', 'CLEAN'], photosCID: '', notes: '' });
+const checkin  = await client.checkin({  interventionId, latitude: 41.89, longitude: 12.49 });
+const checkout = await client.checkout({ interventionId, latitude: 41.89, longitude: 12.49 });
+const report   = await client.submitReport({ interventionId, tasksCompleted: ['PRUNE', 'CLEAN'], reportedEffort: 55, mediaCID: '', notes: '' });
 
 // 3. Finalize — one call: preflight + bundle + upload + index + publish.
 const result = await client.finalizeIntervention({
@@ -113,7 +114,7 @@ const area = await client.registerArea({
   areaType: AreaType.PublicGreenSpace,
   name: 'Giardino Via Appia 12',
   municipality: 'RM-I',
-  boundariesHash: null,   // or an IPFS CID hashing a boundary polygon / photo bundle
+  boundary: null,         // or a GeoJSON-shaped object; SDK keccaks the canonical JSON (spec §9.8) and commits the hash on-chain
   metadata: '',           // or a small inline JSON string (spec §9.6; 512-byte budget)
 });
 ```
@@ -127,9 +128,9 @@ Spec [§3–§4](../../docs/eas-schema-spec.md#3-off-chain-schema) defines the s
 | Method | Activity type | What it signs |
 |---|---|---|
 | `scheduleIntervention(input)` | `schedule` | The job plan. Recipient = crew lead. |
-| `checkin(input)` | `checkin` | Gardener arrival (GPS + photo). |
-| `checkout(input)` | `checkout` | Session closure (actual minutes). |
-| `submitReport(input)` | `report` | Tasks + photos + notes. |
+| `checkin(input)` | `checkin` | Gardener arrival. Time anchor + optional GPS. |
+| `checkout(input)` | `checkout` | Session closure. Time anchor + optional GPS. |
+| `submitReport(input)` | `report` | Tasks + effort + media + notes. |
 | `recordHealthcheck(input)` | `healthcheck` | Periodic area-condition signal. Area-scoped, not bundled. |
 
 Every lifecycle method except `recordHealthcheck` takes an `interventionId: string`. Under the hood, `refUID` is set to `keccak256(interventionId)` — the scope hash — so crew devices don't need the schedule Activity's UID to sign their own checkins.
@@ -138,14 +139,14 @@ Each crew member signs their own checkin/checkout/report from their own wallet. 
 
 ```ts
 // Alice's chain (signed with Alice's wallet)
-const aCheckin  = await aliceClient.checkin({  interventionId, latitude, longitude, photoCID: aCID });
-const aCheckout = await aliceClient.checkout({ interventionId, actualMinutes: 55 });
-const aReport   = await aliceClient.submitReport({ interventionId, tasksCompleted: ['PRUNE'], photosCID: aPhotos, notes: '' });
+const aCheckin  = await aliceClient.checkin({  interventionId, latitude, longitude });
+const aCheckout = await aliceClient.checkout({ interventionId, latitude, longitude });
+const aReport   = await aliceClient.submitReport({ interventionId, tasksCompleted: ['PRUNE'], reportedEffort: 55, mediaCID: aMedia, notes: '' });
 
 // Bob's chain (signed with Bob's wallet)
-const bCheckin  = await bobClient.checkin({  interventionId, latitude, longitude, photoCID: bCID });
-const bCheckout = await bobClient.checkout({ interventionId, actualMinutes: 60 });
-const bReport   = await bobClient.submitReport({ interventionId, tasksCompleted: ['CLEAN'], photosCID: bPhotos, notes: '' });
+const bCheckin  = await bobClient.checkin({  interventionId, latitude, longitude });
+const bCheckout = await bobClient.checkout({ interventionId, latitude, longitude });
+const bReport   = await bobClient.submitReport({ interventionId, tasksCompleted: ['CLEAN'], reportedEffort: 60, mediaCID: bMedia, notes: '' });
 
 // Organization finalizes
 await orgClient.finalizeIntervention({
@@ -176,7 +177,7 @@ Healthcheck Activities are a periodic area-condition signal. They reference an `
 const hc = await client.recordHealthcheck({
   areaUID,
   healthScore: 8,
-  photoCID: 'ipfs://Qm.../condition.jpg',
+  mediaCID: 'ipfs://Qm.../condition.jpg',
   notes: 'Hedge trimmed, beds mulched.',
   metadata: { v: 1, weather: 'sunny' },
 });
@@ -462,7 +463,7 @@ Composable verification helpers: `verifyBundleVersion`, `verifyBundleSignatures`
 
 Policy presets + builders: `STRICT_FINALIZE_POLICY`, `MINIMAL_FINALIZE_POLICY`, `LENIENT_FINALIZE_POLICY`, `finalizePolicy`, `STRICT_VERIFY_POLICY`, `PROTOCOL_ONLY_VERIFY_POLICY`, `verifyPolicy`.
 
-Hashing primitives: `hashInterventionScope(interventionId)`, `hashActivityPayload(payload)`, `hashIdentifier(id)`, `hashPhotoBundle(items)`, `canonicalJSON(value)`.
+Hashing primitives: `hashInterventionScope(interventionId)`, `hashActivityPayload(payload)`, `hashIdentifier(id)`, `hashBoundary(blob)`, `hashMediaManifest(items)`, `canonicalJSON(value)`.
 
 Type guards for decoded activities: `isScheduleActivity`, `isCheckinActivity`, `isCheckoutActivity`, `isReportActivity`, `isHealthcheckActivity`.
 
