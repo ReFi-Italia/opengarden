@@ -459,6 +459,15 @@ Each method builds a typed Activity payload, signs an EAS offchain envelope, and
 | `indexBundleAttestations(input)` | `BundleIndexingResult[]` (submits activities to easscan off-chain store) |
 | `verifyEvidenceBundle(interventionUID)` | `EvidenceBundleVerification` |
 
+### Media uploads
+
+| Method | Returns |
+|---|---|
+| `uploadMedia(data)` | `string` CID for a single blob (`Uint8Array` or `string`). Thin passthrough over `storage.upload`. Use for `healthcheck.mediaCID` or a single-file `report.mediaCID`. |
+| `uploadMediaBundle(items)` | `string` CID of a canonical manifest (spec §9.2) referencing N files. Accepts a mix of `Uint8Array` (uploads as-is) and `string` (treated as an already-uploaded CID). Manifest items are sorted for determinism. Use for `report.mediaCID` when a report needs to attest multiple files. |
+
+Both methods require a `StorageAdapter` in the client config. The storage model is otherwise unchanged — the SDK still only uploads the evidence bundle itself inside `finalizeIntervention`; media uploads are a caller-driven helper for the ergonomics case where the app wants to upload during report assembly rather than running its own adapter dance.
+
 Composable verification helpers: `verifyBundleVersion`, `verifyBundleSignatures`, `verifyBundlePayloadIntegrity`, `verifyBundleOnChainTimestamps`, `verifyBundleInterventionScope`, `verifyBundleTemporalOrder`, `verifyBundleExecutionDateBracket`, `verifyBundleCrewSize`, `verifyBundleCrewConsistency`, `verifyBundleCrewDistinctness`, `verifyBundleScheduleUniqueness`. See [Composable verification helpers](#composable-verification-helpers) above.
 
 Policy presets + builders: `STRICT_FINALIZE_POLICY`, `MINIMAL_FINALIZE_POLICY`, `LENIENT_FINALIZE_POLICY`, `finalizePolicy`, `STRICT_VERIFY_POLICY`, `PROTOCOL_ONLY_VERIFY_POLICY`, `verifyPolicy`.

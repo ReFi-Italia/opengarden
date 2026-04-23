@@ -367,6 +367,111 @@ describe("OpenGardenClient storage validation", () => {
 			);
 		}
 	});
+
+	it("throws STORAGE_NOT_CONFIGURED when uploadMedia called without adapter", async () => {
+		const client = createTestClient();
+		await expect(client.uploadMedia(new Uint8Array([1, 2, 3]))).rejects.toMatchObject({
+			code: OpenGardenErrorCode.STORAGE_NOT_CONFIGURED,
+		});
+	});
+
+	it("throws STORAGE_NOT_CONFIGURED when uploadMediaBundle called without adapter", async () => {
+		const client = createTestClient();
+		await expect(
+			client.uploadMediaBundle([new Uint8Array([1])]),
+		).rejects.toMatchObject({
+			code: OpenGardenErrorCode.STORAGE_NOT_CONFIGURED,
+		});
+	});
+});
+
+describe("OpenGardenClient uploadMedia / uploadMediaBundle", () => {
+	function createMediaClient() {
+		const uploads: Array<Uint8Array | string> = [];
+		let counter = 0;
+		const storage = {
+			upload: vi.fn(async (data: Uint8Array | string) => {
+				uploads.push(data);
+				counter += 1;
+				return `ipfs://Qm-${counter}`;
+			}),
+			download: vi.fn(async () => new Uint8Array()),
+		};
+		const client = createTestClient({ storage });
+		return { client, storage, uploads };
+	}
+
+	it("uploadMedia passes a single blob through the adapter and returns its CID", async () => {
+		const { client, storage } = createMediaClient();
+		const cid = await client.uploadMedia(new Uint8Array([1, 2, 3]));
+		expect(cid).toBe("ipfs://Qm-1");
+		expect(storage.upload).toHaveBeenCalledTimes(1);
+	});
+
+	it("uploadMedia accepts a string payload", async () => {
+		const { client, storage } = createMediaClient();
+		const cid = await client.uploadMedia("raw text payload");
+		expect(cid).toBe("ipfs://Qm-1");
+		expect(storage.upload).toHaveBeenCalledWith("raw text payload");
+	});
+
+	it("uploadMediaBundle uploads each blob and a canonical manifest", async () => {
+		const { client, storage, uploads } = createMediaClient();
+		const cid = await client.uploadMediaBundle([
+			new Uint8Array([1]),
+			new Uint8Array([2]),
+			new Uint8Array([3]),
+		]);
+		// 3 blobs + 1 manifest = 4 calls; manifest CID is returned last.
+		expect(storage.upload).toHaveBeenCalledTimes(4);
+		expect(cid).toBe("ipfs://Qm-4");
+		// Manifest is a canonical JSON string referencing the sorted CIDs.
+		const manifest = uploads[3] as string;
+		expect(JSON.parse(manifest)).toEqual({
+			v: 1,
+			items: ["ipfs://Qm-1", "ipfs://Qm-2", "ipfs://Qm-3"],
+		});
+	});
+
+	it("uploadMediaBundle passes already-uploaded CIDs through without re-upload", async () => {
+		const { client, storage, uploads } = createMediaClient();
+		const cid = await client.uploadMediaBundle([
+			"ipfs://existing-A",
+			new Uint8Array([1]),
+			"ipfs://existing-B",
+		]);
+		// Only 1 blob + 1 manifest uploaded; the two CID strings pass through.
+		expect(storage.upload).toHaveBeenCalledTimes(2);
+		expect(cid).toBe("ipfs://Qm-2");
+		const manifest = uploads[1] as string;
+		expect(JSON.parse(manifest)).toEqual({
+			v: 1,
+			items: ["ipfs://Qm-1", "ipfs://existing-A", "ipfs://existing-B"],
+		});
+	});
+
+	it("uploadMediaBundle sorts manifest items regardless of input order", async () => {
+		const { client, uploads } = createMediaClient();
+		await client.uploadMediaBundle([
+			"ipfs://z",
+			"ipfs://a",
+			"ipfs://m",
+		]);
+		// Input order: z, a, m. Sorted: a, m, z.
+		const manifest = uploads[0] as string;
+		expect(JSON.parse(manifest).items).toEqual([
+			"ipfs://a",
+			"ipfs://m",
+			"ipfs://z",
+		]);
+	});
+
+	it("uploadMediaBundle rejects an empty bundle", async () => {
+		const { client } = createMediaClient();
+		await expect(client.uploadMediaBundle([])).rejects.toMatchObject({
+			code: OpenGardenErrorCode.INVALID_INPUT,
+		});
+	});
 });
 
 // ============================================================================

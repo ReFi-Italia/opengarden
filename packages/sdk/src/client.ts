@@ -770,6 +770,58 @@ export class OpenGardenClient {
 		return this.storage.upload(JSON.stringify(bundle, bundleJsonReplacer));
 	}
 
+	/**
+	 * Upload a single media blob via the configured `StorageAdapter` and
+	 * return the resulting CID, suitable for embedding in a payload's
+	 * `mediaCID` field (`report.mediaCID`, `healthcheck.mediaCID`). Thin
+	 * passthrough over `storage.upload`.
+	 */
+	async uploadMedia(data: Uint8Array | string): Promise<string> {
+		if (!this.storage) {
+			throw new OpenGardenError(
+				OpenGardenErrorCode.STORAGE_NOT_CONFIGURED,
+				"Storage adapter is required to upload media. Pass a StorageAdapter in the config.",
+			);
+		}
+		return this.storage.upload(data);
+	}
+
+	/**
+	 * Upload N media blobs and a canonical manifest (§9.2) referencing them,
+	 * returning the manifest's CID. Use for `report.mediaCID` when a single
+	 * report needs to attest multiple files (before/after pairs, per-task
+	 * evidence, etc.). Items upload in parallel; the manifest lists them in
+	 * JS string-comparison order for determinism.
+	 *
+	 * Accepts already-uploaded CIDs alongside fresh blobs — strings are
+	 * treated as existing CIDs and passed through; `Uint8Array` entries are
+	 * uploaded and replaced with their returned CIDs before manifest
+	 * serialization.
+	 */
+	async uploadMediaBundle(
+		items: ReadonlyArray<Uint8Array | string>,
+	): Promise<string> {
+		if (!this.storage) {
+			throw new OpenGardenError(
+				OpenGardenErrorCode.STORAGE_NOT_CONFIGURED,
+				"Storage adapter is required to upload media. Pass a StorageAdapter in the config.",
+			);
+		}
+		if (items.length === 0) {
+			throw new OpenGardenError(
+				OpenGardenErrorCode.INVALID_INPUT,
+				"Cannot upload an empty media bundle",
+			);
+		}
+		const cids = await Promise.all(
+			items.map((item) =>
+				typeof item === "string" ? Promise.resolve(item) : this.storage!.upload(item),
+			),
+		);
+		const manifest = JSON.stringify({ v: 1, items: [...cids].sort() });
+		return this.storage.upload(manifest);
+	}
+
 	async verifyEvidenceBundle(
 		uid: string,
 		options?: { policy?: VerifyPolicy },
