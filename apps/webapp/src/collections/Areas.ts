@@ -4,11 +4,7 @@ import { APIError } from "payload";
 import { authenticated } from "../access/authenticated";
 import { isAuthoringOrAbove } from "../access/isAuthoringOrAbove";
 
-const AREA_LIFECYCLE_STATUSES = [
-	"draft",
-	"registered",
-	"failed",
-] as const;
+const AREA_LIFECYCLE_STATUSES = ["draft", "registered", "cancelled"] as const;
 
 /**
  * AreaType enum values are stored as string-encoded integers ("0".."4") to
@@ -28,9 +24,9 @@ const AREA_TYPE_OPTIONS = [
 
 /**
  * Once an area is `registered`, the hash-affecting inputs (`coordinates`,
- * `areaType`, `metadataHash`) must not change — they would
+ * `areaType`, `boundary`, `metadata`) must not change — they would
  * orphan the on-chain `AreaRegistration`. Display-only fields (`name`,
- * `municipality`, extended metadata display fields) remain editable.
+ * `municipality`, cover photo, gallery) remain editable.
  *
  * Server actions that populate the chain mirror pass
  * `req.context.skipLifecycleHooks: true` to bypass this guard.
@@ -48,12 +44,16 @@ const freezeRegisteredAreaInputs: CollectionBeforeValidateHook = async ({
 	const frozenFields = [
 		"coordinates",
 		"areaType",
-		"metadataHash",
+		"boundary",
+		"metadata",
 	] as const;
 	for (const field of frozenFields) {
 		const before = (originalDoc as Record<string, unknown>)[field];
 		const after = (data as Record<string, unknown>)[field];
-		if (after !== undefined && after !== before) {
+		if (
+			after !== undefined &&
+			JSON.stringify(after) !== JSON.stringify(before)
+		) {
 			throw new APIError(
 				`Cannot modify "${field}" on a registered area — it would orphan the on-chain AreaRegistration.`,
 				403,
@@ -120,20 +120,28 @@ export const Areas: CollectionConfig = {
 			type: "point",
 		},
 		{
+			name: "boundary",
+			type: "json",
+			label: "Boundary (GeoJSON polygon)",
+			admin: {
+				description:
+					"Optional polygon defining the area's extent. SDK hashes canonical JSON at publish time and commits keccak256 as boundariesHash.",
+			},
+		},
+		{
+			name: "metadata",
+			type: "text",
+			label: "Inline metadata (JSON)",
+			admin: {
+				description:
+					"Optional small JSON string (≤512 bytes) for extras such as surface area, access hours, institutional labels. Signed inline with the attestation.",
+			},
+		},
+		{
 			type: "collapsible",
-			label: "Extended details",
+			label: "Presentation",
 			admin: { initCollapsed: true },
 			fields: [
-				{
-					name: "surfaceAreaSqm",
-					type: "number",
-					label: "Surface area (m²)",
-				},
-				{
-					name: "boundaryGeojson",
-					type: "json",
-					label: "Boundary (GeoJSON)",
-				},
 				{
 					name: "coverPhoto",
 					type: "upload",
@@ -148,17 +156,6 @@ export const Areas: CollectionConfig = {
 					label: "Gallery",
 				},
 			],
-		},
-		{
-			name: "metadataHash",
-			type: "text",
-			label: "Verification fingerprint",
-			index: true,
-			admin: {
-				readOnly: true,
-				hidden: true,
-				description: "Empty when no extended details are set.",
-			},
 		},
 		{
 			name: "attestation",
@@ -196,7 +193,7 @@ export const Areas: CollectionConfig = {
 				},
 				condition: (data) =>
 					data?.lifecycleStatus === "draft" ||
-					data?.lifecycleStatus === "failed",
+					data?.lifecycleStatus === "cancelled",
 			},
 		},
 		{

@@ -6,32 +6,29 @@ import {
 } from "../fields/lifecycleStatus";
 
 /**
- * Transition table copied verbatim from the plan. Any `(from, to)` edge not
- * present here is rejected. The hook is TRANSITION-VALIDITY ONLY — it does
- * not perform snapshots, cross-collection writes, or SDK calls. All side
- * effects live in server action handlers that pass
- * `req.context.skipLifecycleHooks: true` to bypass this guard.
+ * Transition table. Any `(from, to)` edge not present here is rejected.
+ * The hook is TRANSITION-VALIDITY ONLY — it does not perform snapshots,
+ * cross-collection writes, or SDK calls. All side effects live in server
+ * action handlers that pass `req.context.skipLifecycleHooks: true` to
+ * bypass this guard.
  *
- * The transitions from `failed` additionally require the admin role (enforced
- * below). The recovery edge guards that cross-check `revocation.failedFrom`
- * against the target state are enforced in the recovery server actions,
- * which snapshot `failedFrom` and clear it on successful recovery.
+ * Reschedule is not a transition: a cancelled intervention row is terminal,
+ * and a replacement is a new intervention with `supersededBy` pointing back.
  */
 const ALLOWED_TRANSITIONS: Record<
 	InterventionLifecycleStatus,
 	InterventionLifecycleStatus[]
 > = {
-	draft: ["scheduled", "failed"],
-	scheduled: ["in_progress", "draft", "revoked", "failed"],
-	in_progress: ["validated", "failed"],
-	validated: ["published", "failed"],
+	draft: ["scheduled", "cancelled"],
+	scheduled: ["in_progress", "cancelled"],
+	in_progress: ["completed", "cancelled"],
+	completed: ["published", "cancelled"],
 	published: [],
-	revoked: [],
-	failed: ["draft", "scheduled", "in_progress", "validated"],
+	cancelled: [],
 };
 
 export const validateInterventionTransition: CollectionBeforeChangeHook =
-	async ({ data, originalDoc, operation, req, context }) => {
+	async ({ data, originalDoc, operation, context }) => {
 		if (context?.skipLifecycleHooks) return data;
 
 		if (operation === "create") {
@@ -62,15 +59,6 @@ export const validateInterventionTransition: CollectionBeforeChangeHook =
 				`Illegal lifecycleStatus transition: "${from}" → "${next}". Allowed: [${allowed.join(", ") || "none"}].`,
 				400,
 			);
-		}
-
-		if (from === "failed") {
-			if (!req.user?.roles?.includes("admin")) {
-				throw new APIError(
-					'Recovery from "failed" requires the admin role.',
-					403,
-				);
-			}
 		}
 
 		return data;

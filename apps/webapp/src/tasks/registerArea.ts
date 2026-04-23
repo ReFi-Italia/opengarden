@@ -70,7 +70,10 @@ export const registerAreaTask: TaskConfig<{
 			existingAttestation !== null &&
 			(existingAttestation as { uid?: string }).uid
 		) {
-			const att = existingAttestation as { uid: string; timestampTxHash?: string };
+			const att = existingAttestation as {
+				uid: string;
+				timestampTxHash?: string;
+			};
 			return {
 				output: {
 					chainUID: att.uid,
@@ -79,9 +82,12 @@ export const registerAreaTask: TaskConfig<{
 			};
 		}
 
-		if (area.lifecycleStatus !== "draft" && area.lifecycleStatus !== "failed") {
+		if (
+			area.lifecycleStatus !== "draft" &&
+			area.lifecycleStatus !== "cancelled"
+		) {
 			throw new Error(
-				`Area ${areaId} is in lifecycleStatus="${area.lifecycleStatus}"; expected "draft" or "failed".`,
+				`Area ${areaId} is in lifecycleStatus="${area.lifecycleStatus}"; expected "draft" or "cancelled".`,
 			);
 		}
 
@@ -93,9 +99,8 @@ export const registerAreaTask: TaskConfig<{
 			name: area.name,
 			municipality: area.municipality,
 			boundary:
-				(area.boundaryGeojson as Record<string, unknown> | null | undefined) ??
-				null,
-			metadata: "",
+				(area.boundary as Record<string, unknown> | null | undefined) ?? null,
+			metadata: typeof area.metadata === "string" ? area.metadata : "",
 		};
 
 		let context: OpenGardenContext | null = null;
@@ -136,7 +141,7 @@ export const registerAreaTask: TaskConfig<{
 				.update({
 					collection: "areas",
 					id: areaId,
-					data: { lifecycleStatus: "failed" },
+					data: { lifecycleStatus: "cancelled" },
 					overrideAccess: true,
 					context: { skipLifecycleHooks: true },
 					req,

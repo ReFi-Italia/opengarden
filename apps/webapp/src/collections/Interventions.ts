@@ -44,16 +44,16 @@ const INTERVENTION_TYPE_OPTIONS = [
  * (future) revocation server action writes it.
  */
 const STAGE_INPUT_RULES: Record<
-	"scheduling" | "validation",
+	"scheduling" | "completion",
 	{ editableIn: ReadonlyArray<string>; inputFields: ReadonlyArray<string> }
 > = {
 	scheduling: {
-		editableIn: ["draft", "failed"],
-		inputFields: ["scheduledDate", "estimatedMinutes"],
+		editableIn: ["draft"],
+		inputFields: ["scheduledDate", "plannedDuration"],
 	},
-	validation: {
+	completion: {
 		editableIn: ["in_progress"],
-		inputFields: ["validator", "approved", "qualityScore", "feedback"],
+		inputFields: ["reviewer", "approved", "qualityScore", "feedback"],
 	},
 };
 
@@ -75,9 +75,7 @@ const showInUpdateOnly = (
  * them back to their stored values anyway. Keeps the UI and server gates
  * driven by a single table.
  */
-const stageAccess = (
-	stage: keyof typeof STAGE_INPUT_RULES,
-): FieldAccess => {
+const stageAccess = (stage: keyof typeof STAGE_INPUT_RULES): FieldAccess => {
 	const editableIn = STAGE_INPUT_RULES[stage].editableIn;
 	return ({ doc }) => {
 		if (!doc) return true;
@@ -146,7 +144,7 @@ const guardInterventionInvariants: CollectionBeforeValidateHook = async ({
 		guarded[groupName] = merged;
 	}
 
-	guarded.revocation = (originalDoc as Record<string, unknown>).revocation;
+	guarded.cancellation = (originalDoc as Record<string, unknown>).cancellation;
 	return guarded;
 };
 
@@ -171,42 +169,47 @@ const schedulingGroup: Field = {
 			access: { update: stageAccess("scheduling") },
 		},
 		{
-			name: "estimatedMinutes",
+			name: "plannedDuration",
 			type: "number",
-			label: "Estimated minutes",
+			label: "Planned duration (minutes)",
+			min: 0,
 			access: { update: stageAccess("scheduling") },
 		},
 		{
 			name: "attestation",
 			type: "relationship",
 			relationTo: "attestations",
-			label: "Attestation",
-			admin: { readOnly: true },
+			label: "Schedule attestation",
+			admin: {
+				readOnly: true,
+				description:
+					"Attestation row for the schedule Activity. FIXME (spec-refactor): also surface the corresponding activities row once the scheduleIntervention task creates one.",
+			},
 		},
 	],
 };
 
-const validationGroup: Field = {
-	name: "validation",
+const completionGroup: Field = {
+	name: "completion",
 	type: "group",
-	label: "Validation",
+	label: "Completion review",
 	admin: { condition: showInUpdateOnly },
 	fields: [
 		{
-			name: "validator",
+			name: "reviewer",
 			type: "relationship",
 			relationTo: "staff",
-			label: "Validator",
+			label: "Reviewer",
 			filterOptions: {
 				capabilities: { contains: "validator" },
 			},
-			access: { update: stageAccess("validation") },
+			access: { update: stageAccess("completion") },
 		},
 		{
 			name: "approved",
 			type: "checkbox",
 			label: "Approved",
-			access: { update: stageAccess("validation") },
+			access: { update: stageAccess("completion") },
 		},
 		{
 			name: "qualityScore",
@@ -214,53 +217,40 @@ const validationGroup: Field = {
 			label: "Quality score",
 			min: 0,
 			max: 10,
-			access: { update: stageAccess("validation") },
+			access: { update: stageAccess("completion") },
 		},
 		{
 			name: "feedback",
 			type: "textarea",
 			label: "Feedback",
-			access: { update: stageAccess("validation") },
-		},
-		{
-			name: "attestation",
-			type: "relationship",
-			relationTo: "attestations",
-			label: "Attestation",
-			admin: { readOnly: true },
+			access: { update: stageAccess("completion") },
 		},
 	],
 };
 
-
-const revocationGroup: Field = {
-	name: "revocation",
+const cancellationGroup: Field = {
+	name: "cancellation",
 	type: "group",
-	label: "Incidents",
+	label: "Cancellation",
 	admin: {
 		readOnly: true,
 		condition: showInUpdateOnly,
 		description:
-			"Populated when the intervention is revoked or fails mid-lifecycle.",
+			"Populated when the intervention is cancelled. A replacement (if any) is linked via supersededBy.",
 	},
 	fields: [
 		{ name: "reason", type: "textarea", label: "Reason" },
-		{ name: "revokedAt", type: "date", label: "Revoked at" },
+		{ name: "cancelledAt", type: "date", label: "Cancelled at" },
 		{
-			name: "revokedScheduleUID",
-			type: "text",
-			label: "Revoked attestation ID",
-		},
-		{
-			name: "failedFrom",
+			name: "cancelledFrom",
 			type: "select",
-			label: "Failed from stage",
+			label: "Cancelled from stage",
 			options: INTERVENTION_LIFECYCLE_STATUSES.filter(
 				(s) =>
 					s === "draft" ||
 					s === "scheduled" ||
 					s === "in_progress" ||
-					s === "validated",
+					s === "completed",
 			).map((value) => ({ label: value, value })),
 		},
 	],
@@ -381,10 +371,22 @@ export const Interventions: CollectionConfig = {
 			},
 		},
 		schedulingGroup,
-		validationGroup,
+		completionGroup,
 
-		revocationGroup,
+		cancellationGroup,
 		lifecycleStatusField(),
+		{
+			name: "supersededBy",
+			type: "relationship",
+			relationTo: "interventions",
+			label: "Superseded by",
+			admin: {
+				readOnly: true,
+				condition: (data) => data?.lifecycleStatus === "cancelled",
+				description:
+					"Replacement intervention created after this one was cancelled.",
+			},
+		},
 		{
 			name: "scheduleAction",
 			type: "ui",
@@ -393,9 +395,7 @@ export const Interventions: CollectionConfig = {
 				components: {
 					Field: "@/components/buttons/ScheduleButton",
 				},
-				condition: (data) =>
-					data?.lifecycleStatus === "draft" ||
-					data?.lifecycleStatus === "failed",
+				condition: (data) => data?.lifecycleStatus === "draft",
 			},
 		},
 		{
@@ -410,7 +410,7 @@ export const Interventions: CollectionConfig = {
 			},
 		},
 		{
-			name: "validateAction",
+			name: "completeAction",
 			type: "ui",
 			admin: {
 				position: "sidebar",
@@ -428,7 +428,21 @@ export const Interventions: CollectionConfig = {
 				components: {
 					Field: "@/components/buttons/PublishInterventionButton",
 				},
-				condition: (data) => data?.lifecycleStatus === "validated",
+				condition: (data) => data?.lifecycleStatus === "completed",
+			},
+		},
+		{
+			name: "cancelAction",
+			type: "ui",
+			admin: {
+				position: "sidebar",
+				components: {
+					Field: "@/components/buttons/CancelInterventionButton",
+				},
+				condition: (data) =>
+					["draft", "scheduled", "in_progress", "completed"].includes(
+						data?.lifecycleStatus ?? "",
+					),
 			},
 		},
 		{

@@ -373,7 +373,7 @@ await findOrCreate(
 	async () => {
 		const schedAtt = await ensureAttestation(MOCK_SCHED_ATT_UID, {
 			uid: MOCK_SCHED_ATT_UID,
-			schemaName: "ScheduledIntervention",
+			schemaName: "Activity",
 			signedAttestation: {},
 			timestampTxHash: "0xdemo",
 			chainIdSnapshot: 11_155_420,
@@ -397,7 +397,7 @@ await findOrCreate(
 				lifecycleStatus: "scheduled",
 				scheduling: {
 					scheduledDate: "2026-04-19T09:00:00.000Z",
-					estimatedMinutes: 180,
+					plannedDuration: 180,
 					attestation: (schedAtt as { id: string }).id,
 				},
 			},
@@ -417,7 +417,7 @@ const progIntervention = await findOrCreate(
 	async () => {
 		const schedAtt = await ensureAttestation(MOCK_PROG_SCHED_ATT_UID, {
 			uid: MOCK_PROG_SCHED_ATT_UID,
-			schemaName: "ScheduledIntervention",
+			schemaName: "Activity",
 			signedAttestation: {},
 			timestampTxHash: "0xdemo",
 			chainIdSnapshot: 11_155_420,
@@ -450,7 +450,7 @@ const progIntervention = await findOrCreate(
 				lifecycleStatus: "in_progress",
 				scheduling: {
 					scheduledDate: "2026-04-17T08:00:00.000Z",
-					estimatedMinutes: 150,
+					plannedDuration: 150,
 					attestation: (schedAtt as { id: string }).id,
 				},
 			},
@@ -497,7 +497,7 @@ await findOrCreate(
 				intervention: progId,
 				gardener: g3Id,
 				claimedTimestamp: T_CHECKOUT,
-				data: { actualMinutes: 150 },
+				data: {},
 			},
 			overrideAccess: true,
 		}),
@@ -516,12 +516,13 @@ await findOrCreate(
 				gardener: g3Id,
 				claimedTimestamp: T_REPORT,
 				data: {
-					completedTaskCodes: [
+					tasksCompleted: [
 						"BRANCH_CLEAR",
 						"DEBRIS_REMOVE",
 						"FENCE_SECURE",
 						"DRAIN_CLEAR",
 					],
+					reportedEffort: 150,
 					notes:
 						"Storm drain on the south path is still partially restricted — flagged for municipal maintenance. Fence repairs are temporary; permanent fix needed within 2 weeks.",
 				},
@@ -540,12 +541,11 @@ await findOrCreate(
 			data: {
 				type: "healthcheck",
 				intervention: progId,
-				assessor: (staff as { id: string }).id,
 				claimedTimestamp: T_HEALTHCHECK,
 				data: {
 					healthScore: 7,
 					metadata: {
-						version: 1,
+						v: 1,
 						baseline: { score: 4 },
 					},
 				},

@@ -4,10 +4,9 @@ export const INTERVENTION_LIFECYCLE_STATUSES = [
 	"draft",
 	"scheduled",
 	"in_progress",
-	"validated",
+	"completed",
 	"published",
-	"revoked",
-	"failed",
+	"cancelled",
 ] as const;
 
 export type InterventionLifecycleStatus =

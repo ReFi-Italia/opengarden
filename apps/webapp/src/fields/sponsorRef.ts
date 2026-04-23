@@ -1,16 +1,12 @@
 import type { Field } from "payload";
 
 /**
- * Field factory for the `interventions.commissioning` group. Returns the
- * relationship to the sponsor and the snapshot slot for the derived
- * `commissionRef` hash at schedule time.
- *
- * Important constraint: the snapshot + sponsor freeze are NOT performed in a
- * hook. They happen inside the `schedule-intervention` server action handler,
- * in the same Payload transaction as the SDK `client.scheduleIntervention`
- * call. Keeping side effects in handlers (not hooks) guarantees that `Save`
- * on the form can never mint attestations or cascade writes — only a
- * deliberate action-button click can.
+ * Field factory for the `interventions.commissioning` group. Per spec §9.1
+ * the commissionRef hash is derived by the SDK from the sponsor's
+ * `canonicalJson` at schedule time — the webapp does NOT precompute it.
+ * Post-schedule, the authoritative hash lives on the schedule Activity's
+ * on-chain attestation. For sponsor-level UI search, use
+ * `sponsors.commissionRefHash` which is a stable sponsor property.
  */
 export const commissioningFields = (): Field[] => [
 	{
@@ -19,12 +15,5 @@ export const commissioningFields = (): Field[] => [
 		relationTo: "sponsors",
 		label: "Sponsor",
 		required: true,
-	},
-	{
-		name: "commissionRefHashAtSchedule",
-		type: "text",
-		label: "Verification fingerprint (at schedule)",
-		admin: { readOnly: true },
-		index: true,
 	},
 ];

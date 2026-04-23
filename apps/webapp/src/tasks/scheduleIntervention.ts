@@ -1,6 +1,6 @@
 import type {
 	InterventionType,
-	ScheduledInterventionInput,
+	ScheduleActivityInput,
 } from "@refi-italia/opengarden";
 import type { TaskConfig } from "payload";
 
@@ -9,13 +9,11 @@ import {
 	type OpenGardenContext,
 } from "../lib/openGardenClient";
 import {
-	createAttestationRecord,
+	cancelInterventionAndRethrow,
 	createInterventionAttestation,
 	extractCommissionId,
-	failInterventionAndRethrow,
 	requireAreaUID,
 } from "../lib/taskHelpers";
-
 
 type ScheduleInterventionInput = {
 	/** Payload document id of the `interventions` row to schedule. */
@@ -25,13 +23,22 @@ type ScheduleInterventionInput = {
 type ScheduleInterventionOutput = {
 	chainUID: string;
 	timestampTxHash: string;
+	activityId: string;
 };
 
 /**
- * Task that drives an `interventions` row from `draft` / `failed` →
- * `scheduled` by calling `OpenGardenClient.scheduleIntervention`, writing
- * an `attestations` row, and setting `scheduling.attestation`. Idempotent
- * on retry: an already-scheduled row short-circuits to its existing UID.
+ * Drives an `interventions` row from `draft` → `scheduled`:
+ *
+ *   1. Calls `client.scheduleIntervention(...)` — SDK signs an off-chain
+ *      schedule Activity + timestamps its UID on-chain.
+ *   2. Persists the returned attestation in `attestations` (schemaName=Activity).
+ *   3. Creates an `activities` row with `type: "schedule"`, `data` = SDK payload
+ *      (normalized by the SDK, guaranteed to hash back to the signed
+ *      `payloadHash`), and `attestation` linking to the row from step 2.
+ *   4. Points `intervention.scheduling.attestation` at the same attestation.
+ *   5. Flips `intervention.lifecycleStatus` to `scheduled`.
+ *
+ * Idempotent: already-scheduled rows short-circuit to the existing uid.
  */
 export const scheduleInterventionTask: TaskConfig<{
 	input: ScheduleInterventionInput;
@@ -53,6 +60,7 @@ export const scheduleInterventionTask: TaskConfig<{
 	outputSchema: [
 		{ name: "chainUID", type: "text", required: true },
 		{ name: "timestampTxHash", type: "text", required: true },
+		{ name: "activityId", type: "text", required: true },
 	],
 	handler: async ({ input, req }) => {
 		const { payload } = req;
@@ -76,33 +84,49 @@ export const scheduleInterventionTask: TaskConfig<{
 			(existingAtt as { uid?: string }).uid
 		) {
 			const att = existingAtt as { uid: string; timestampTxHash?: string };
+			const existingActivity = await payload
+				.find({
+					collection: "activities",
+					where: {
+						and: [
+							{ intervention: { equals: interventionId } },
+							{ type: { equals: "schedule" } },
+						],
+					},
+					limit: 1,
+					depth: 0,
+					overrideAccess: true,
+					req,
+				})
+				.catch(() => ({ docs: [] as Array<{ id: string | number }> }));
 			return {
 				output: {
 					chainUID: att.uid,
 					timestampTxHash: att.timestampTxHash ?? "",
+					activityId: String(existingActivity.docs[0]?.id ?? ""),
 				},
 			};
 		}
 
-		if (
-			intervention.lifecycleStatus !== "draft" &&
-			intervention.lifecycleStatus !== "failed"
-		) {
+		if (intervention.lifecycleStatus !== "draft") {
 			throw new Error(
-				`Intervention ${interventionId} is in lifecycleStatus="${intervention.lifecycleStatus}"; expected "draft" or "failed".`,
+				`Intervention ${interventionId} is in lifecycleStatus="${intervention.lifecycleStatus}"; expected "draft".`,
 			);
 		}
 
-		const areaUID = requireAreaUID(intervention.area, `Intervention ${interventionId} →`);
+		const areaUID = requireAreaUID(
+			intervention.area,
+			`Intervention ${interventionId} →`,
+		);
 
 		if (!intervention.scheduling?.scheduledDate) {
 			throw new Error(
-				`Intervention ${interventionId} is missing scheduling.scheduledDate; the schedule server action must set it before queuing this task.`,
+				`Intervention ${interventionId} is missing scheduling.scheduledDate.`,
 			);
 		}
-		if (typeof intervention.scheduling.estimatedMinutes !== "number") {
+		if (typeof intervention.scheduling.plannedDuration !== "number") {
 			throw new Error(
-				`Intervention ${interventionId} is missing scheduling.estimatedMinutes.`,
+				`Intervention ${interventionId} is missing scheduling.plannedDuration.`,
 			);
 		}
 
@@ -121,13 +145,21 @@ export const scheduleInterventionTask: TaskConfig<{
 				: null;
 		if (!crewLead) {
 			throw new Error(
-				`Intervention ${interventionId} crew lead has no wallet; gardener wallets are required for scheduling.`,
+				`Intervention ${interventionId} crew lead has no wallet.`,
 			);
 		}
 
 		const commissionId = extractCommissionId(intervention);
 
-		const sdkInput: ScheduledInterventionInput = {
+		const tasksPlanned = Array.isArray(intervention.tasks)
+			? intervention.tasks
+					.map((t) => (t as { code?: string }).code)
+					.filter((c): c is string => typeof c === "string")
+			: [];
+
+		const scheduledDate = new Date(intervention.scheduling.scheduledDate);
+
+		const sdkInput: ScheduleActivityInput = {
 			areaUID,
 			interventionId: intervention.interventionId,
 			interventionType: Number(
@@ -135,8 +167,9 @@ export const scheduleInterventionTask: TaskConfig<{
 			) as InterventionType,
 			crewLead,
 			crewSize: crew.length,
-			scheduledDate: new Date(intervention.scheduling.scheduledDate),
-			estimatedMinutes: intervention.scheduling.estimatedMinutes,
+			scheduledDate,
+			plannedDuration: intervention.scheduling.plannedDuration,
+			tasksPlanned,
 			description: intervention.description,
 			commissionId,
 		};
@@ -151,8 +184,34 @@ export const scheduleInterventionTask: TaskConfig<{
 				context,
 				result,
 				interventionId,
-				"ScheduledIntervention",
+				"Activity",
 			);
+
+			// Find the lead's activities-collection id for the gardener relation.
+			const leadGardenerId =
+				typeof leadGardener === "object" && leadGardener !== null
+					? (leadGardener as { id?: string | number }).id
+					: null;
+
+			const activityRow = await payload.create({
+				collection: "activities",
+				data: {
+					type: "schedule",
+					intervention: interventionId,
+					...(leadGardenerId !== null && leadGardenerId !== undefined
+						? { gardener: String(leadGardenerId) }
+						: {}),
+					data: result.payload as Record<string, unknown>,
+					claimedTimestamp: scheduledDate.toISOString(),
+					attestation: attestationRow.id,
+				},
+				overrideAccess: true,
+				// Activities collection blocks form creates; this is a server-side
+				// write so we bypass the read-only access via overrideAccess.
+				// We also set the attestation immediately, so queueChainCommit is
+				// a no-op (it short-circuits when an attestation is already set).
+				req,
+			});
 
 			await payload.update({
 				collection: "interventions",
@@ -170,10 +229,17 @@ export const scheduleInterventionTask: TaskConfig<{
 				output: {
 					chainUID: result.uid,
 					timestampTxHash: result.timestampTxHash,
+					activityId: String(activityRow.id),
 				},
 			};
 		} catch (err) {
-			return await failInterventionAndRethrow(req, interventionId, "draft", "scheduleIntervention", err);
+			return await cancelInterventionAndRethrow(
+				req,
+				interventionId,
+				"draft",
+				"scheduleIntervention",
+				err,
+			);
 		}
 	},
 };

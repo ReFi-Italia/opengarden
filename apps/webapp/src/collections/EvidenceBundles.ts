@@ -65,6 +65,16 @@ export const EvidenceBundles: CollectionConfig = {
 							index: true,
 						},
 						{
+							name: "bundleBytesBase64",
+							type: "textarea",
+							label: "Bundle bytes (base64)",
+							admin: {
+								readOnly: true,
+								description:
+									"Canonical bundle bytes, base64-encoded. Verifiers fetch these from the webapp's exposed endpoint and recompute keccak256 to confirm against evidenceBundleHash.",
+							},
+						},
+						{
 							name: "offchainCount",
 							type: "number",
 							label: "Off-chain attestation count",
@@ -145,43 +155,51 @@ export const EvidenceBundles: CollectionConfig = {
 									defaultValue: false,
 								},
 								{
-									name: "attestationCount",
-									type: "number",
-									label: "Attestations found",
-								},
-								{
-									name: "expectedCount",
-									type: "number",
-									label: "Attestations expected",
-								},
-								{
-									name: "temporalOrderValid",
+									name: "bundleHashValid",
 									type: "checkbox",
-									label: "Temporal order OK",
+									label: "Bundle hash OK (protocol)",
+									defaultValue: false,
+								},
+								{
+									name: "bundleVersionValid",
+									type: "checkbox",
+									label: "Bundle version OK (protocol)",
+									defaultValue: false,
+								},
+								{
+									name: "signaturesValid",
+									type: "checkbox",
+									label: "Signatures OK (protocol)",
+									defaultValue: false,
+								},
+								{
+									name: "payloadIntegrityValid",
+									type: "checkbox",
+									label: "Payload integrity OK (protocol)",
 									defaultValue: false,
 								},
 								{
 									name: "timestampsVerified",
 									type: "checkbox",
-									label: "Timestamps verified",
+									label: "On-chain timestamps verified (protocol)",
 									defaultValue: false,
 								},
 								{
-									name: "healthcheckOrderValid",
+									name: "interventionScopeValid",
 									type: "checkbox",
-									label: "Healthcheck order OK",
+									label: "Intervention scope OK (policy)",
+									defaultValue: false,
+								},
+								{
+									name: "temporalOrderValid",
+									type: "checkbox",
+									label: "Temporal order OK (policy)",
 									defaultValue: false,
 								},
 								{
 									name: "executionDateBracketed",
 									type: "checkbox",
-									label: "Execution date in range",
-									defaultValue: false,
-								},
-								{
-									name: "validationApproved",
-									type: "checkbox",
-									label: "Validation approved",
+									label: "Execution date bracketed (policy)",
 									defaultValue: false,
 								},
 								{

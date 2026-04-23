@@ -1,55 +1,37 @@
-import type { AdminValidationInput } from "@refi-italia/opengarden";
+// FIXME (spec-refactor): The OpenGarden Protocol has no "AdminValidation"
+// on-chain attestation. Per spec §2.2, internal QA fields (approved flag,
+// quality score, reviewer feedback) live in the organization's database,
+// outside the verifiable envelope. Publication is the quality sign-off.
+//
+// The old SDK method `client.validateIntervention` and the
+// `AdminValidationInput` type have been removed. This task now just flips
+// the intervention's lifecycle state from `in_progress` → `completed`
+// after the completion-review server action has written the reviewer inputs.
+// It performs no on-chain work.
 import type { TaskConfig } from "payload";
 
-import {
-	getOpenGardenContext,
-	type OpenGardenContext,
-} from "../lib/openGardenClient";
-import {
-	createInterventionAttestation,
-	failInterventionAndRethrow,
-} from "../lib/taskHelpers";
+import { cancelInterventionAndRethrow } from "../lib/taskHelpers";
 
-
-type ValidateInterventionInput = {
-	/** Payload document id of the `interventions` row to validate. */
+type CompleteInterventionInput = {
 	interventionId: string;
 };
 
-type ValidateInterventionOutput = {
-	chainUID: string;
-	timestampTxHash: string;
+type CompleteInterventionOutput = {
+	interventionId: string;
 };
 
-/**
- * Task that drives an `interventions` row from `in_progress` →
- * `validated` by calling `OpenGardenClient.validateIntervention`, writing
- * an `attestations` row, and setting `validation.attestation`. Assumes
- * the validation input fields (`approved`, `qualityScore`, `feedback`,
- * `validator`) have already been written by the validate server action
- * via `skipLifecycleHooks: true`.
- */
 export const validateInterventionTask: TaskConfig<{
-	input: ValidateInterventionInput;
-	output: ValidateInterventionOutput;
+	input: CompleteInterventionInput;
+	output: CompleteInterventionOutput;
 }> = {
 	slug: "validateIntervention",
-	label: "Validate Intervention off-chain",
+	label: "Complete intervention review (off-chain state flip)",
 	retries: {
-		attempts: 3,
-		backoff: { type: "exponential", delay: 5_000 },
+		attempts: 2,
+		backoff: { type: "exponential", delay: 2_000 },
 	},
-	inputSchema: [
-		{
-			name: "interventionId",
-			type: "text",
-			required: true,
-		},
-	],
-	outputSchema: [
-		{ name: "chainUID", type: "text", required: true },
-		{ name: "timestampTxHash", type: "text", required: true },
-	],
+	inputSchema: [{ name: "interventionId", type: "text", required: true }],
+	outputSchema: [{ name: "interventionId", type: "text", required: true }],
 	handler: async ({ input, req }) => {
 		const { payload } = req;
 		const { interventionId } = input;
@@ -57,115 +39,47 @@ export const validateInterventionTask: TaskConfig<{
 		const intervention = await payload.findByID({
 			collection: "interventions",
 			id: interventionId,
-			depth: 2,
+			depth: 1,
 			req,
 			overrideAccess: true,
 		});
 
-		const existingValAtt = (
-			intervention.validation as { attestation?: unknown } | undefined
-		)?.attestation;
-		if (
-			intervention.lifecycleStatus === "validated" &&
-			typeof existingValAtt === "object" &&
-			existingValAtt !== null &&
-			(existingValAtt as { uid?: string }).uid
-		) {
-			const att = existingValAtt as { uid: string; timestampTxHash?: string };
-			return {
-				output: {
-					chainUID: att.uid,
-					timestampTxHash: att.timestampTxHash ?? "",
-				},
-			};
+		if (intervention.lifecycleStatus === "completed") {
+			return { output: { interventionId } };
 		}
-
 		if (intervention.lifecycleStatus !== "in_progress") {
 			throw new Error(
 				`Intervention ${interventionId} is in lifecycleStatus="${intervention.lifecycleStatus}"; expected "in_progress".`,
 			);
 		}
 
-		const schedAtt = (
-			intervention.scheduling as { attestation?: unknown } | undefined
-		)?.attestation;
-		const scheduleUID =
-			typeof schedAtt === "object" &&
-			schedAtt !== null &&
-			typeof (schedAtt as { uid?: unknown }).uid === "string"
-				? (schedAtt as { uid: string }).uid
-				: null;
-		if (!scheduleUID) {
+		const completion = (
+			intervention as { completion?: Record<string, unknown> }
+		).completion;
+		if (!completion || typeof completion.approved !== "boolean") {
 			throw new Error(
-				`Intervention ${interventionId} has no scheduling.attestation.uid; schedule it before validating.`,
+				`Intervention ${interventionId} is missing completion.approved.`,
 			);
 		}
 
-		const validation = intervention.validation;
-		if (!validation || typeof validation.approved !== "boolean") {
-			throw new Error(
-				`Intervention ${interventionId} is missing validation.approved; the validate server action must set it before queuing this task.`,
-			);
-		}
-		if (typeof validation.qualityScore !== "number") {
-			throw new Error(
-				`Intervention ${interventionId} is missing validation.qualityScore.`,
-			);
-		}
-		if (typeof validation.feedback !== "string") {
-			throw new Error(
-				`Intervention ${interventionId} is missing validation.feedback.`,
-			);
-		}
-
-		const validator = validation.validator;
-		const validatorId =
-			typeof validator === "object" &&
-			validator !== null &&
-			typeof validator.staffId === "string"
-				? validator.staffId
-				: null;
-		const sdkInput: AdminValidationInput = {
-			scheduleUID,
-			approved: validation.approved,
-			qualityScore: validation.qualityScore,
-			feedback: validation.feedback,
-			validatorId,
-		};
-
-		let context: OpenGardenContext | null = null;
 		try {
-			context = await getOpenGardenContext(payload);
-			const result = await context.client.validateIntervention(sdkInput);
-
-			const attestationRow = await createInterventionAttestation(
-				req,
-				context,
-				result,
-				interventionId,
-				"AdminValidation",
-			);
-
 			await payload.update({
 				collection: "interventions",
 				id: interventionId,
-				data: {
-					lifecycleStatus: "validated",
-					validation: { attestation: attestationRow.id },
-				},
+				data: { lifecycleStatus: "completed" },
 				overrideAccess: true,
 				context: { skipLifecycleHooks: true },
 				req,
 			});
-
-			return {
-				output: {
-					chainUID: result.uid,
-					timestampTxHash: result.timestampTxHash,
-				},
-			};
+			return { output: { interventionId } };
 		} catch (err) {
-			return await failInterventionAndRethrow(req, interventionId, "in_progress", "validateIntervention", err);
+			return await cancelInterventionAndRethrow(
+				req,
+				interventionId,
+				"in_progress",
+				"validateIntervention",
+				err,
+			);
 		}
 	},
 };

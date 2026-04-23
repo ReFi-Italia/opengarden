@@ -31,7 +31,6 @@ type StageTask = {
 function stageTask(status: string): StageTask | null {
 	switch (status) {
 		case "draft":
-		case "failed":
 			return {
 				label: "Schedule",
 				pendingLabel: "Scheduling…",
@@ -47,12 +46,12 @@ function stageTask(status: string): StageTask | null {
 			};
 		case "in_progress":
 			return {
-				label: "Validate",
-				pendingLabel: "Validating…",
-				doneLabel: "Validated ✓",
+				label: "Mark complete",
+				pendingLabel: "Completing…",
+				doneLabel: "Completed ✓",
 				action: validateInterventionAction,
 			};
-		case "validated":
+		case "completed":
 			return {
 				label: "Publish",
 				pendingLabel: "Publishing…",
@@ -93,10 +92,10 @@ export function StageForm(props: StageFormProps) {
 		);
 	}
 
-	if (status === "revoked") {
+	if (status === "cancelled") {
 		return (
 			<div className="iw-form__done iw-form__done--failed">
-				This intervention was <strong>revoked</strong> and cannot be modified.
+				This intervention was <strong>cancelled</strong> and cannot be modified.
 			</div>
 		);
 	}

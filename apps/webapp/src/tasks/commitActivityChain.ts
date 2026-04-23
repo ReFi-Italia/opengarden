@@ -1,14 +1,13 @@
 import {
-	type GardenerCheckinInput,
-	type GardenerCheckoutInput,
-	type GardenerReportInput,
-	type HealthcheckInput,
+	type CheckinActivityInput,
+	type CheckoutActivityInput,
+	type HealthcheckActivityInput,
+	type ReportActivityInput,
 	ZERO_BYTES32,
 } from "@refi-italia/opengarden";
 import type { Payload, PayloadRequest, TaskConfig } from "payload";
 
 import type { ActivityType } from "../collections/Activities";
-import { ATTESTATION_SCHEMAS } from "../collections/Attestations";
 import {
 	getOpenGardenContext,
 	type OpenGardenContext,
@@ -30,18 +29,15 @@ type CommitActivityChainOutput = {
  * Unified chain-commit task for all activity types. Dispatches to the
  * appropriate SDK method based on `activity.type`, writes the signed
  * off-chain attestation into the `attestations` collection, and sets
- * `activity.attestation` to the new row so future lookups go through
- * one relationship instead of the four per-type inline chain groups
- * we used to maintain.
+ * `activity.attestation` to the new row.
  *
  * Idempotent: if `activity.attestation` already points at a committed
  * row, short-circuit.
  *
- * Preconditions by type:
- * - `checkin` — parent intervention must have `scheduling.attestation.uid` (populated by scheduleIntervention task)
- * - `checkout` — `parentActivity` (the checkin) must have a committed attestation
- * - `report` — `parentActivity` (the checkout) must have a committed attestation
- * - `healthcheck` — parent area must have `attestation.uid` (populated by registerArea task)
+ * Spec §3.1: every off-chain Activity is EIP-712 signed and its UID is
+ * timestamped on-chain via `EAS.timestamp(uid)`. Pairing (checkin/checkout/
+ * report per crew member) is resolved by `(signer, refUID=keccak256(interventionId),
+ * type)` at bundle-read time — no `parentActivity` wiring required here.
  */
 export const commitActivityChainTask: TaskConfig<{
 	input: CommitActivityChainInput;
@@ -94,37 +90,43 @@ export const commitActivityChainTask: TaskConfig<{
 
 		try {
 			context = await getOpenGardenContext(payload);
-			const photoHash = await resolvePhotoHash(activity.photo, payload, req);
+			const mediaHash = await resolveMediaHash(activity.media, payload, req);
 
-			const { result, schemaName } = await dispatchSdkCall(
+			const result = await dispatchSdkCall(
 				type,
 				activity as unknown as Record<string, unknown>,
 				context,
-				photoHash,
+				mediaHash,
 			);
 
-			// Persist the signed attestation as its own row
+			// Persist the signed attestation as its own row. All off-chain
+			// Activity types share the single EAS `Activity` schema per spec §3.1.
+			// The `payload` field carries the SDK-normalized plaintext so
+			// finalizeIntervention can rehydrate a TimestampedOffChainResult
+			// from DB rows without re-hitting the SDK.
 			const attestationRow = await createAttestationRecord(req, {
 				uid: result.uid,
-				schemaName,
+				schemaName: "Activity",
 				signedAttestation: serializeBigInts(
 					result.signedAttestation,
 				) as unknown as Record<string, unknown>,
+				payload: result.payload,
 				timestampTxHash: result.timestampTxHash,
 				onchainTimestamp: Number(result.onchainTimestamp),
 				chainIdSnapshot: context.chainId,
-				attesterWallet: context.attesterWallet,
+				attesterWallet: result.attester ?? context.attesterWallet,
 				relatedCollection: "activities",
 				relatedId: activityId,
 			});
 
-			// Link the activity to its attestation + snapshot the photoHash
+			// Link the activity to its attestation and sync the SDK-normalized
+			// payload back onto activity.data (source of truth for reads).
 			await payload.update({
 				collection: "activities",
 				id: activityId,
 				data: {
 					attestation: attestationRow.id,
-					photoHash,
+					data: result.payload as Record<string, unknown>,
 				},
 				overrideAccess: true,
 				req,
@@ -144,7 +146,7 @@ export const commitActivityChainTask: TaskConfig<{
 					collection: "attestations",
 					data: {
 						uid: `failed-${activityId}-${Date.now()}`,
-						schemaName: schemaNameFor(type),
+						schemaName: "Activity",
 						signedAttestation: {} as unknown as Record<string, unknown>,
 						status: "failed",
 						error: message,
@@ -177,192 +179,132 @@ export const commitActivityChainTask: TaskConfig<{
 
 // ─── helpers ─────────────────────────────────────────────────────────
 
-async function resolvePhotoHash(
-	photo: unknown,
+async function resolveMediaHash(
+	media: unknown,
 	payload: Payload,
 	req: PayloadRequest,
 ): Promise<string> {
-	if (!photo) return "";
+	if (!media) return ZERO_BYTES32;
 	if (
-		typeof photo === "object" &&
-		photo !== null &&
-		"storageHash" in photo &&
-		typeof (photo as { storageHash?: unknown }).storageHash === "string"
+		typeof media === "object" &&
+		media !== null &&
+		"storageHash" in media &&
+		typeof (media as { storageHash?: unknown }).storageHash === "string"
 	) {
-		return (photo as { storageHash: string }).storageHash;
+		return (media as { storageHash: string }).storageHash;
 	}
-	const photoId =
-		typeof photo === "object" && photo !== null
-			? (photo as { id?: string | number }).id
-			: photo;
-	if (photoId === undefined || photoId === null) return "";
-	const media = await payload
+	const mediaId =
+		typeof media === "object" && media !== null
+			? (media as { id?: string | number }).id
+			: media;
+	if (mediaId === undefined || mediaId === null) return ZERO_BYTES32;
+	const row = await payload
 		.findByID({
 			collection: "media",
-			id: photoId as string | number,
+			id: mediaId as string | number,
 			depth: 0,
 			req,
 			overrideAccess: true,
 		})
 		.catch(() => null);
-	return (media as { storageHash?: string } | null)?.storageHash ?? "";
-}
-
-type AttestationSchemaName = (typeof ATTESTATION_SCHEMAS)[number];
-function schemaNameFor(type: ActivityType): AttestationSchemaName {
-	switch (type) {
-		case "checkin":
-			return "GardenerCheckin";
-		case "checkout":
-			return "GardenerCheckout";
-		case "report":
-			return "GardenerReport";
-		case "healthcheck":
-			return "Healthcheck";
-	}
+	return (row as { storageHash?: string } | null)?.storageHash ?? ZERO_BYTES32;
 }
 
 type SdkResult = {
-	result: {
-		uid: string;
-		attester?: string;
-		timestampTxHash: string;
-		onchainTimestamp: number | bigint;
-		signedAttestation: unknown;
-	};
-	schemaName: AttestationSchemaName;
+	uid: string;
+	attester?: string;
+	payload: Record<string, unknown>;
+	timestampTxHash: string;
+	onchainTimestamp: number | bigint;
+	signedAttestation: unknown;
 };
+
+function requireInterventionId(intervention: unknown): string {
+	if (typeof intervention !== "object" || intervention === null) {
+		throw new Error("Activity has no resolved intervention.");
+	}
+	const id = (intervention as { interventionId?: unknown }).interventionId;
+	if (typeof id !== "string" || !id) {
+		throw new Error("Intervention is missing interventionId.");
+	}
+	return id;
+}
 
 async function dispatchSdkCall(
 	type: ActivityType,
 	activity: Record<string, unknown>,
 	context: OpenGardenContext,
-	photoHash: string,
+	mediaHash: string,
 ): Promise<SdkResult> {
 	const claimedTimestamp = activity.claimedTimestamp;
 	if (!claimedTimestamp || typeof claimedTimestamp !== "string") {
 		throw new Error("Activity is missing claimedTimestamp.");
 	}
-	const timestamp = new Date(claimedTimestamp);
+	const time = new Date(claimedTimestamp);
 	const data = (activity.data ?? {}) as Record<string, unknown>;
 
 	switch (type) {
+		case "schedule":
+			// FIXME (spec-refactor): schedule activities are created by
+			// `tasks/scheduleIntervention.ts` which calls the SDK directly.
+			// This branch should not be reachable — a schedule row is written
+			// with its attestation already linked. Throwing makes the bug loud
+			// if the scheduling task ever queues this one by mistake.
+			throw new Error(
+				"commitActivityChain must not be queued for schedule activities — the scheduleIntervention task owns that SDK call.",
+			);
+
 		case "checkin": {
-			const intervention = activity.intervention;
-			if (typeof intervention !== "object" || intervention === null) {
-				throw new Error("Checkin activity has no resolved intervention.");
-			}
-			const schedAtt = (
-				intervention as { scheduling?: { attestation?: unknown } }
-			).scheduling?.attestation;
-			const interventionUID =
-				typeof schedAtt === "object" &&
-				schedAtt !== null &&
-				typeof (schedAtt as { uid?: unknown }).uid === "string"
-					? (schedAtt as { uid: string }).uid
-					: null;
-			if (!interventionUID) {
-				throw new Error(
-					`Intervention ${(intervention as { id: string }).id} has no scheduling.attestation.uid; schedule it first.`,
-				);
-			}
-			if (
-				typeof data.latitude !== "number" ||
-				typeof data.longitude !== "number"
-			) {
-				throw new Error("Checkin is missing data.latitude/data.longitude.");
-			}
-			const sdkInput: GardenerCheckinInput = {
-				interventionUID,
-				latitude: data.latitude,
-				longitude: data.longitude,
-				timestamp,
-				photoHash,
+			const interventionId = requireInterventionId(activity.intervention);
+			const sdkInput: CheckinActivityInput = {
+				interventionId,
+				time,
+				...(typeof data.latitude === "number" &&
+				typeof data.longitude === "number"
+					? { latitude: data.latitude, longitude: data.longitude }
+					: {}),
 			};
-			const result = await context.client.checkin(sdkInput);
-			return { result, schemaName: "GardenerCheckin" };
+			return await context.client.checkin(sdkInput);
 		}
 
 		case "checkout": {
-			const parent = activity.parentActivity;
-			if (typeof parent !== "object" || parent === null) {
-				throw new Error("Checkout activity has no resolved parent checkin.");
-			}
-			const parentAttestation = (parent as { attestation?: unknown })
-				.attestation;
-			if (typeof parentAttestation !== "object" || parentAttestation === null) {
-				throw new Error(
-					"Checkout's parent checkin has no attestation row yet. Wait for the checkin task to drain before recording the checkout.",
-				);
-			}
-			const checkinUID = (parentAttestation as { uid?: string }).uid;
-			if (!checkinUID) {
-				throw new Error("Parent checkin attestation has no uid.");
-			}
-			if (typeof data.actualMinutes !== "number") {
-				throw new Error("Checkout is missing data.actualMinutes.");
-			}
-			const sdkInput: GardenerCheckoutInput = {
-				checkinUID,
-				timestamp,
-				actualMinutes: data.actualMinutes,
+			const interventionId = requireInterventionId(activity.intervention);
+			const sdkInput: CheckoutActivityInput = {
+				interventionId,
+				time,
+				...(typeof data.latitude === "number" &&
+				typeof data.longitude === "number"
+					? { latitude: data.latitude, longitude: data.longitude }
+					: {}),
 			};
-			const result = await context.client.checkout(sdkInput);
-			return { result, schemaName: "GardenerCheckout" };
+			return await context.client.checkout(sdkInput);
 		}
 
 		case "report": {
-			const intervention = activity.intervention;
-			if (typeof intervention !== "object" || intervention === null) {
-				throw new Error("Report activity has no resolved intervention.");
+			const interventionId = requireInterventionId(activity.intervention);
+			if (!Array.isArray(data.tasksCompleted)) {
+				throw new Error("Report is missing data.tasksCompleted.");
 			}
-			const schedAtt2 = (
-				intervention as { scheduling?: { attestation?: unknown } }
-			).scheduling?.attestation;
-			const interventionUID =
-				typeof schedAtt2 === "object" &&
-				schedAtt2 !== null &&
-				typeof (schedAtt2 as { uid?: unknown }).uid === "string"
-					? (schedAtt2 as { uid: string }).uid
-					: null;
-			if (!interventionUID) {
-				throw new Error("Intervention has no scheduling.attestation.uid.");
+			if (typeof data.reportedEffort !== "number") {
+				throw new Error("Report is missing data.reportedEffort.");
 			}
-			const parent = activity.parentActivity;
-			if (typeof parent !== "object" || parent === null) {
-				throw new Error("Report activity has no resolved parent checkout.");
-			}
-			const parentAttestation = (parent as { attestation?: unknown })
-				.attestation;
-			const checkoutUID =
-				typeof parentAttestation === "object" && parentAttestation !== null
-					? (parentAttestation as { uid?: string }).uid
-					: undefined;
-			if (!checkoutUID) {
-				throw new Error("Report's parent checkout has no attestation uid yet.");
-			}
-			const sdkInput: GardenerReportInput = {
-				interventionUID,
-				checkoutUID,
-				tasksCompleted: Array.isArray(data.completedTaskCodes)
-					? (data.completedTaskCodes as string[]).join(",")
-					: String(data.tasksCompleted ?? ""),
-				taskCount: Array.isArray(data.completedTaskCodes)
-					? (data.completedTaskCodes as string[]).length
-					: Number(data.taskCount ?? 0),
-				photosHash: photoHash,
-				notes: String(data.notes ?? ""),
+			const sdkInput: ReportActivityInput = {
+				interventionId,
+				time,
+				tasksCompleted: data.tasksCompleted as string[],
+				reportedEffort: data.reportedEffort,
+				mediaHash,
+				notes: typeof data.notes === "string" ? data.notes : "",
 			};
-			const result = await context.client.submitReport(sdkInput);
-			return { result, schemaName: "GardenerReport" };
+			return await context.client.submitReport(sdkInput);
 		}
 
 		case "healthcheck": {
 			const area =
 				activity.area && typeof activity.area === "object"
 					? activity.area
-					: (activity.intervention as { area?: unknown } | undefined)?.area;
-			if (typeof area !== "object" || area === null) {
+					: null;
+			if (!area) {
 				throw new Error("Healthcheck activity has no resolved area.");
 			}
 			const areaAtt = (area as { attestation?: unknown }).attestation;
@@ -379,36 +321,18 @@ async function dispatchSdkCall(
 				throw new Error("Healthcheck is missing data.healthScore.");
 			}
 
-			const intervention = activity.intervention;
-			const schedAtt =
-				typeof intervention === "object" && intervention !== null
-					? (intervention as { scheduling?: { attestation?: unknown } })
-							.scheduling?.attestation
-					: undefined;
-			const interventionUID =
-				(typeof schedAtt === "object" &&
-				schedAtt !== null &&
-				typeof (schedAtt as { uid?: unknown }).uid === "string"
-					? (schedAtt as { uid: string }).uid
-					: undefined) ?? ZERO_BYTES32;
-
-			const assessor = activity.assessor;
-			const assessorId =
-				typeof assessor === "object" &&
-				assessor !== null &&
-				typeof (assessor as { staffId?: unknown }).staffId === "string"
-					? (assessor as { staffId: string }).staffId
-					: null;
-
-			const sdkInput: HealthcheckInput = {
-				interventionUID,
+			const sdkInput: HealthcheckActivityInput = {
+				areaUID,
+				time,
 				healthScore: data.healthScore,
-				photoHash,
-				assessorId,
-				metadataHash: (data.metadataHash as string | null) ?? null,
+				mediaHash,
+				notes: typeof data.notes === "string" ? data.notes : "",
+				metadata:
+					data.metadata && typeof data.metadata === "object"
+						? (data.metadata as Record<string, unknown>)
+						: null,
 			};
-			const result = await context.client.recordHealthcheck(areaUID, sdkInput);
-			return { result, schemaName: "Healthcheck" };
+			return await context.client.recordHealthcheck(sdkInput);
 		}
 	}
 }

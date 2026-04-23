@@ -5,11 +5,11 @@ import type {
 	CollectionConfig,
 } from "payload";
 import { APIError } from "payload";
-import { keccak256, toUtf8Bytes } from "ethers";
 import { after } from "next/server";
 import { authenticated } from "../access/authenticated";
 
 export const ACTIVITY_TYPES = [
+	"schedule",
 	"checkin",
 	"checkout",
 	"report",
@@ -19,6 +19,7 @@ export const ACTIVITY_TYPES = [
 export type ActivityType = (typeof ACTIVITY_TYPES)[number];
 
 const INTERVENTION_SCOPED_TYPES: readonly ActivityType[] = [
+	"schedule",
 	"checkin",
 	"checkout",
 	"report",
@@ -29,163 +30,37 @@ const TYPES_REQUIRING_GARDENER: readonly ActivityType[] = [
 	"checkout",
 	"report",
 ];
-const TYPES_REQUIRING_PARENT: readonly ActivityType[] = ["checkout", "report"];
-const TYPES_REQUIRING_GEOLOCATION: readonly ActivityType[] = ["checkin"];
-const TYPES_REQUIRING_DURATION: readonly ActivityType[] = ["checkout"];
+
 const TYPES_REQUIRING_HEALTHSCORE: readonly ActivityType[] = ["healthcheck"];
 
-const toIdStr = (field: unknown): string => {
-	if (field && typeof field === "object" && "id" in field)
-		return String((field as { id?: string | number }).id ?? "");
-	return String(field ?? "");
-};
-
-// Runs before guardActivityInvariants so the "parentActivity required" guard sees the resolved value.
-const autoLinkParentActivity: CollectionBeforeValidateHook = async ({
+// Healthchecks can omit `area` when a linked intervention resolves one.
+// Spec §3.2.5 makes healthchecks area-scoped — the area UID is the refUID.
+// Running before the invariants guard so the missing-area check passes when
+// an intervention was provided.
+const deriveHealthcheckArea: CollectionBeforeValidateHook = async ({
 	data,
 	req,
 }) => {
 	if (!data) return data;
-	const type = data.type as ActivityType | undefined;
+	if (data.type !== "healthcheck") return data;
+	if (data.area || !data.intervention) return data;
 
-	if (type === "healthcheck" && !data.area && data.intervention) {
-		const intervention = await req.payload
-			.findByID({
-				collection: "interventions",
-				id: data.intervention as string | number,
-				depth: 1,
-				req,
-				overrideAccess: true,
-			})
-			.catch(() => null);
-		const areaRef = (intervention as { area?: unknown } | null)?.area;
-		if (areaRef) {
-			data.area =
-				typeof areaRef === "object" && areaRef !== null && "id" in areaRef
-					? (areaRef as { id: unknown }).id
-					: areaRef;
-		}
-		return data;
+	const intervention = await req.payload
+		.findByID({
+			collection: "interventions",
+			id: data.intervention as string | number,
+			depth: 1,
+			req,
+			overrideAccess: true,
+		})
+		.catch(() => null);
+	const areaRef = (intervention as { area?: unknown } | null)?.area;
+	if (areaRef) {
+		data.area =
+			typeof areaRef === "object" && areaRef !== null && "id" in areaRef
+				? (areaRef as { id: unknown }).id
+				: areaRef;
 	}
-
-	if (type !== "checkout" && type !== "report") return data;
-	if (data.parentActivity) return data; // already supplied
-
-	const interventionId = data.intervention as string | number | undefined;
-	if (!interventionId) return data;
-
-	const idStr = String(interventionId);
-
-	if (type === "checkout") {
-		const gardenerId = data.gardener as string | number | undefined;
-
-		const [checkins, checkouts] = await Promise.all([
-			req.payload
-				.find({
-					collection: "activities",
-					where: {
-						and: [
-							{ intervention: { equals: idStr } },
-							{ type: { equals: "checkin" } },
-							...(gardenerId
-								? [{ gardener: { equals: String(gardenerId) } }]
-								: []),
-						],
-					},
-					sort: "-claimedTimestamp",
-					limit: 50,
-					depth: 0,
-					overrideAccess: true,
-				})
-				.catch(() => ({ docs: [] as Array<{ id: string | number }> })),
-			req.payload
-				.find({
-					collection: "activities",
-					where: {
-						and: [
-							{ intervention: { equals: idStr } },
-							{ type: { equals: "checkout" } },
-							...(gardenerId
-								? [{ gardener: { equals: String(gardenerId) } }]
-								: []),
-						],
-					},
-					limit: 50,
-					depth: 0,
-					overrideAccess: true,
-				})
-				.catch(() => ({
-					docs: [] as Array<{
-						parentActivity?: string | number | { id?: string | number };
-					}>,
-				})),
-		]);
-
-		const usedCheckinIds = new Set(
-			checkouts.docs.map((co) =>
-				toIdStr((co as { parentActivity?: unknown }).parentActivity),
-			),
-		);
-
-		const openCheckin = checkins.docs.find(
-			(ci) => !usedCheckinIds.has(String(ci.id)),
-		);
-		if (openCheckin) {
-			data.parentActivity = openCheckin.id;
-		}
-	}
-
-	if (type === "report") {
-		const [checkouts, reports] = await Promise.all([
-			req.payload
-				.find({
-					collection: "activities",
-					where: {
-						and: [
-							{ intervention: { equals: idStr } },
-							{ type: { equals: "checkout" } },
-						],
-					},
-					sort: "-claimedTimestamp",
-					limit: 50,
-					depth: 0,
-					overrideAccess: true,
-				})
-				.catch(() => ({ docs: [] as Array<{ id: string | number }> })),
-			req.payload
-				.find({
-					collection: "activities",
-					where: {
-						and: [
-							{ intervention: { equals: idStr } },
-							{ type: { equals: "report" } },
-						],
-					},
-					limit: 50,
-					depth: 0,
-					overrideAccess: true,
-				})
-				.catch(() => ({
-					docs: [] as Array<{
-						parentActivity?: string | number | { id?: string | number };
-					}>,
-				})),
-		]);
-
-		const usedCheckoutIds = new Set(
-			reports.docs.map((r) =>
-				toIdStr((r as { parentActivity?: unknown }).parentActivity),
-			),
-		);
-
-		const openCheckout = checkouts.docs.find(
-			(co) => !usedCheckoutIds.has(String(co.id)),
-		);
-		if (openCheckout) {
-			data.parentActivity = openCheckout.id;
-		}
-	}
-
 	return data;
 };
 
@@ -222,7 +97,18 @@ const guardActivityInvariants: CollectionBeforeValidateHook = async ({
 		});
 		const state = (intervention as { lifecycleStatus?: string })
 			.lifecycleStatus;
-		if (state !== "scheduled" && state !== "in_progress") {
+
+		// schedule is created exactly when transitioning draft → scheduled.
+		// checkin/checkout/report require the intervention to be in the active
+		// window (scheduled or in_progress).
+		if (type === "schedule") {
+			if (state !== "draft" && state !== "scheduled") {
+				throw new APIError(
+					`Cannot record a "schedule" activity against an intervention in state "${state}".`,
+					409,
+				);
+			}
+		} else if (state !== "scheduled" && state !== "in_progress") {
 			throw new APIError(
 				`Cannot record a "${type}" against an intervention in state "${state}".`,
 				409,
@@ -255,10 +141,16 @@ const guardActivityInvariants: CollectionBeforeValidateHook = async ({
 		}
 
 		if (type === "report") {
-			const completedTaskCodes = dataObj.completedTaskCodes;
-			if (!Array.isArray(completedTaskCodes)) {
+			const tasksCompleted = dataObj.tasksCompleted;
+			if (!Array.isArray(tasksCompleted)) {
 				throw new APIError(
-					'Activity type "report" requires data.completedTaskCodes (array of task codes).',
+					'Activity type "report" requires data.tasksCompleted (array of task codes).',
+					400,
+				);
+			}
+			if (typeof dataObj.reportedEffort !== "number") {
+				throw new APIError(
+					'Activity type "report" requires data.reportedEffort (minutes).',
 					400,
 				);
 			}
@@ -267,7 +159,7 @@ const guardActivityInvariants: CollectionBeforeValidateHook = async ({
 					.map((t) => t.code)
 					.filter((c): c is string => typeof c === "string"),
 			);
-			for (const code of completedTaskCodes as string[]) {
+			for (const code of tasksCompleted as string[]) {
 				if (!validCodes.has(code)) {
 					throw new APIError(
 						`Task code "${code}" does not exist on this intervention.`,
@@ -275,8 +167,27 @@ const guardActivityInvariants: CollectionBeforeValidateHook = async ({
 					);
 				}
 			}
-			dataObj.taskCount = (completedTaskCodes as string[]).length;
-			data.data = dataObj;
+		}
+
+		if (type === "schedule") {
+			if (!Array.isArray(dataObj.tasksPlanned)) {
+				throw new APIError(
+					'Activity type "schedule" requires data.tasksPlanned (array of task codes).',
+					400,
+				);
+			}
+			if (typeof dataObj.plannedDuration !== "number") {
+				throw new APIError(
+					'Activity type "schedule" requires data.plannedDuration (minutes).',
+					400,
+				);
+			}
+			if (typeof dataObj.crewSize !== "number") {
+				throw new APIError(
+					'Activity type "schedule" requires data.crewSize.',
+					400,
+				);
+			}
 		}
 	}
 
@@ -292,32 +203,22 @@ const guardActivityInvariants: CollectionBeforeValidateHook = async ({
 	if (TYPES_REQUIRING_GARDENER.includes(type) && !data.gardener) {
 		throw new APIError(`Activity type "${type}" requires a gardener.`, 400);
 	}
-	if (TYPES_REQUIRING_PARENT.includes(type) && !data.parentActivity) {
-		throw new APIError(
-			`Activity type "${type}" requires a parentActivity (its checkin / checkout).`,
-			400,
-		);
+
+	if (type === "checkin" || type === "checkout") {
+		const { latitude, longitude } = dataObj as {
+			latitude?: unknown;
+			longitude?: unknown;
+		};
+		const hasLat = typeof latitude === "number";
+		const hasLng = typeof longitude === "number";
+		if (hasLat !== hasLng) {
+			throw new APIError(
+				`Activity type "${type}" requires both latitude and longitude, or neither.`,
+				400,
+			);
+		}
 	}
 
-	if (TYPES_REQUIRING_GEOLOCATION.includes(type)) {
-		if (
-			typeof dataObj.latitude !== "number" ||
-			typeof dataObj.longitude !== "number"
-		) {
-			throw new APIError(
-				`Activity type "${type}" requires data.latitude and data.longitude.`,
-				400,
-			);
-		}
-	}
-	if (TYPES_REQUIRING_DURATION.includes(type)) {
-		if (typeof dataObj.actualMinutes !== "number") {
-			throw new APIError(
-				`Activity type "${type}" requires data.actualMinutes.`,
-				400,
-			);
-		}
-	}
 	if (TYPES_REQUIRING_HEALTHSCORE.includes(type)) {
 		if (typeof dataObj.healthScore !== "number") {
 			throw new APIError(
@@ -328,28 +229,6 @@ const guardActivityInvariants: CollectionBeforeValidateHook = async ({
 	}
 
 	return data;
-};
-
-const computeHealthcheckMetadataHash: CollectionBeforeChangeHook = async ({
-	data,
-}) => {
-	if (!data) return data;
-	if (data.type !== "healthcheck") return data;
-
-	const dataObj = (data.data ?? {}) as Record<string, unknown>;
-	const metadata = dataObj.metadata as
-		| Record<string, unknown>
-		| null
-		| undefined;
-	const metaKeys = metadata ? Object.keys(metadata) : [];
-	if (!metaKeys.length) {
-		return { ...data, data: { ...dataObj, metadataHash: null } };
-	}
-
-	metaKeys.sort();
-	const canonical = JSON.stringify(metadata, metaKeys);
-	const hash = keccak256(toUtf8Bytes(canonical));
-	return { ...data, data: { ...dataObj, metadataHash: hash } };
 };
 
 // Best-effort drain via Next's `after()` to commit immediately; cron fallback if drain fails.
@@ -462,6 +341,13 @@ const computeLabelBeforeChange: CollectionBeforeChangeHook = async ({
 
 	let label: string;
 	switch (type) {
+		case "schedule":
+			label = parts(
+				"Scheduled",
+				interventionRef ? `(${interventionRef})` : null,
+				areaName ? `· ${areaName}` : null,
+			);
+			break;
 		case "checkin":
 			label = parts(
 				firstName ?? "Gardener",
@@ -471,29 +357,27 @@ const computeLabelBeforeChange: CollectionBeforeChangeHook = async ({
 			);
 			break;
 		case "checkout": {
-			const mins =
-				typeof actData.actualMinutes === "number"
-					? actData.actualMinutes
-					: null;
 			label = parts(
 				firstName ?? "Gardener",
 				"checked out",
-				mins != null ? `(${mins} min)` : null,
 				areaName ? `· ${areaName}` : null,
 				interventionRef ? `(${interventionRef})` : null,
 			);
 			break;
 		}
 		case "report": {
-			const taskCount = Array.isArray(actData.completedTaskCodes)
-				? (actData.completedTaskCodes as string[]).length
-				: typeof actData.taskCount === "number"
-					? actData.taskCount
+			const taskCount = Array.isArray(actData.tasksCompleted)
+				? (actData.tasksCompleted as string[]).length
+				: null;
+			const effort =
+				typeof actData.reportedEffort === "number"
+					? actData.reportedEffort
 					: null;
 			label = parts(
 				firstName ?? "Gardener",
 				"submitted report",
 				taskCount != null ? `(${taskCount} tasks)` : null,
+				effort != null ? `· ${effort} min` : null,
 				areaName ? `· ${areaName}` : null,
 				interventionRef ? `(${interventionRef})` : null,
 			);
@@ -537,8 +421,8 @@ export const Activities: CollectionConfig = {
 		delete: () => false,
 	},
 	hooks: {
-		beforeValidate: [autoLinkParentActivity, guardActivityInvariants],
-		beforeChange: [computeHealthcheckMetadataHash, computeLabelBeforeChange],
+		beforeValidate: [deriveHealthcheckArea, guardActivityInvariants],
+		beforeChange: [computeLabelBeforeChange],
 		afterChange: [queueChainCommit],
 	},
 	fields: [
@@ -569,22 +453,10 @@ export const Activities: CollectionConfig = {
 			admin: { condition: showWhenType(["healthcheck"]) },
 		},
 		{
-			name: "parentActivity",
-			type: "relationship",
-			relationTo: "activities",
-			admin: { condition: showWhenType(TYPES_REQUIRING_PARENT) },
-		},
-		{
 			name: "gardener",
 			type: "relationship",
 			relationTo: "gardeners",
 			admin: { condition: showWhenType(TYPES_REQUIRING_GARDENER) },
-		},
-		{
-			name: "assessor",
-			type: "relationship",
-			relationTo: "staff",
-			admin: { condition: showWhenType(TYPES_REQUIRING_HEALTHSCORE) },
 		},
 		{
 			name: "data",
@@ -602,14 +474,13 @@ export const Activities: CollectionConfig = {
 			required: true,
 		},
 		{
-			name: "photo",
+			name: "media",
 			type: "upload",
 			relationTo: "media",
-		},
-		{
-			name: "photoHash",
-			type: "text",
-			admin: { readOnly: true, hidden: true },
+			admin: {
+				description:
+					"Optional evidence media. Hashed into payload.mediaHash at publish time.",
+			},
 		},
 		{
 			name: "attestation",

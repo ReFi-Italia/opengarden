@@ -63,7 +63,7 @@ describe("Referential integrity walkthrough", () => {
 					intervention: intervention.id,
 					gardener: g.id,
 					claimedTimestamp: t1.toISOString(),
-					data: { actualMinutes: 210 },
+					data: {},
 				},
 			});
 			checkouts.push(checkout);
@@ -73,8 +73,8 @@ describe("Referential integrity walkthrough", () => {
 			collection: "interventions",
 			id: intervention.id,
 			data: {
-				validation: {
-					validator: validatorStaff.id,
+				completion: {
+					reviewer: validatorStaff.id,
 					approved: true,
 					qualityScore: 9,
 				},
@@ -120,8 +120,8 @@ describe("Referential integrity walkthrough", () => {
 		});
 		expect(checkoutActivities.totalDocs).toBe(2);
 
-		expect(reloaded.validation?.approved).toBe(true);
-		expect(reloaded.validation?.qualityScore).toBe(9);
+		expect(reloaded.completion?.approved).toBe(true);
+		expect(reloaded.completion?.qualityScore).toBe(9);
 	});
 
 	it("healthcheck with explicit area persists", async () => {
@@ -182,7 +182,7 @@ describe("Referential integrity walkthrough", () => {
 		).rejects.toThrow(/requires an area/i);
 	});
 
-	it("report with valid completedTaskCodes succeeds and derives taskCount", async () => {
+	it("report with valid tasksCompleted succeeds", async () => {
 		const sponsor = await createSponsor(payload);
 		const area = await createArea(payload, { name: "Report test area" });
 		const gardener = await createGardener(payload, { displayName: "Report Gardener" });
@@ -219,10 +219,10 @@ describe("Referential integrity walkthrough", () => {
 				intervention: intervention.id,
 				gardener: gardener.id,
 				claimedTimestamp: t1.toISOString(),
-				data: { actualMinutes: 120 },
+				data: {},
 			},
 		});
-		expect(checkout.parentActivity).toBeTruthy();
+		expect(checkout.id).toBeTruthy();
 
 		const report = await payload.create({
 			collection: "activities",
@@ -231,15 +231,18 @@ describe("Referential integrity walkthrough", () => {
 				intervention: intervention.id,
 				gardener: gardener.id,
 				claimedTimestamp: t2.toISOString(),
-				data: { completedTaskCodes: ["PRUNE", "CLEAN"], notes: "All done" },
+				data: {
+					tasksCompleted: ["PRUNE", "CLEAN"],
+					reportedEffort: 90,
+					notes: "All done",
+				},
 			},
 		});
 
 		expect(report.id).toBeTruthy();
 		const reportData = report.data as Record<string, unknown>;
-		expect(reportData.completedTaskCodes).toEqual(["PRUNE", "CLEAN"]);
-		expect(reportData.taskCount).toBe(2);
-		expect(report.parentActivity).toBeTruthy();
+		expect(reportData.tasksCompleted).toEqual(["PRUNE", "CLEAN"]);
+		expect(reportData.reportedEffort).toBe(90);
 		expect(report.label).toMatch(/report/i);
 		expect(report.label).toContain("(2 tasks)");
 	});
@@ -278,7 +281,7 @@ describe("Referential integrity walkthrough", () => {
 				intervention: intervention.id,
 				gardener: gardener.id,
 				claimedTimestamp: t1.toISOString(),
-				data: { actualMinutes: 120 },
+				data: {},
 			},
 		});
 
@@ -290,13 +293,13 @@ describe("Referential integrity walkthrough", () => {
 					intervention: intervention.id,
 					gardener: gardener.id,
 					claimedTimestamp: t2.toISOString(),
-					data: { completedTaskCodes: ["PRUNE", "NONEXISTENT"], notes: "" },
+					data: { tasksCompleted: ["PRUNE", "NONEXISTENT"], reportedEffort: 30, notes: "" },
 				},
 			}),
 		).rejects.toThrow(/task code "NONEXISTENT"/i);
 	});
 
-	it("report without completedTaskCodes is rejected", async () => {
+	it("report without tasksCompleted is rejected", async () => {
 		const sponsor = await createSponsor(payload, { displayName: "Test Sponsor C" });
 		const area = await createArea(payload, { name: "Missing codes area" });
 		const gardener = await createGardener(payload, { displayName: "No Codes Gardener" });
@@ -330,7 +333,7 @@ describe("Referential integrity walkthrough", () => {
 				intervention: intervention.id,
 				gardener: gardener.id,
 				claimedTimestamp: t1.toISOString(),
-				data: { actualMinutes: 120 },
+				data: {},
 			},
 		});
 
@@ -345,7 +348,7 @@ describe("Referential integrity walkthrough", () => {
 					data: { notes: "forgot to include codes" },
 				},
 			}),
-		).rejects.toThrow(/completedTaskCodes/i);
+		).rejects.toThrow(/tasksCompleted/i);
 	});
 
 	it("rejects more than one crew lead", async () => {

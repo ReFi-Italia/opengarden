@@ -74,13 +74,13 @@ describe("Intervention lifecycle transitions", () => {
 		});
 		expect(inProgress.lifecycleStatus).toBe("in_progress");
 
-		const validated = await payload.update({
+		const completed = await payload.update({
 			collection: "interventions",
 			id: intervention.id,
-			data: { lifecycleStatus: "validated" },
+			data: { lifecycleStatus: "completed" },
 			context: { skipLifecycleHooks: true },
 		});
-		expect(validated.lifecycleStatus).toBe("validated");
+		expect((completed as { lifecycleStatus: string }).lifecycleStatus).toBe("completed");
 
 		const published = await payload.update({
 			collection: "interventions",
@@ -94,7 +94,7 @@ describe("Intervention lifecycle transitions", () => {
 			payload.update({
 				collection: "interventions",
 				id: intervention.id,
-				data: { lifecycleStatus: "revoked" },
+				data: { lifecycleStatus: "cancelled" },
 				context: { skipLifecycleHooks: false },
 			}),
 		).rejects.toThrow(/Illegal lifecycleStatus transition/i);
@@ -116,7 +116,7 @@ describe("Intervention lifecycle transitions", () => {
 			data: {
 				scheduling: {
 					scheduledDate: new Date("2026-05-01").toISOString(),
-					estimatedMinutes: 120,
+					plannedDuration: 120,
 				},
 			},
 			context: { skipLifecycleHooks: true },
@@ -127,11 +127,11 @@ describe("Intervention lifecycle transitions", () => {
 			id: intervention.id,
 			data: {
 				description: "updated description",
-				scheduling: { estimatedMinutes: 999 },
+				scheduling: { plannedDuration: 999 },
 			},
 		});
 		expect(formAttempt.description).toBe("updated description");
-		expect(formAttempt.scheduling?.estimatedMinutes).toBe(120);
+		expect(formAttempt.scheduling?.plannedDuration).toBe(120);
 	});
 });
 

@@ -315,8 +315,10 @@ export interface Area {
    * @maxItems 2
    */
   coordinates?: [number, number] | null;
-  surfaceAreaSqm?: number | null;
-  boundaryGeojson?:
+  /**
+   * Optional polygon defining the area's extent. SDK hashes canonical JSON at publish time and commits keccak256 as boundariesHash.
+   */
+  boundary?:
     | {
         [k: string]: unknown;
       }
@@ -325,17 +327,17 @@ export interface Area {
     | number
     | boolean
     | null;
+  /**
+   * Optional small JSON string (≤512 bytes) for extras such as surface area, access hours, institutional labels. Signed inline with the attestation.
+   */
+  metadata?: string | null;
   coverPhoto?: (string | null) | Media;
   gallery?: (string | Media)[] | null;
-  /**
-   * Empty when no extended details are set.
-   */
-  metadataHash?: string | null;
   /**
    * Populated on registration — inspect only.
    */
   attestation?: (string | null) | Attestation;
-  lifecycleStatus: 'draft' | 'registering' | 'registered' | 'failed';
+  lifecycleStatus: 'draft' | 'registered' | 'cancelled';
   activities?: {
     docs?: (string | Activity)[];
     hasNextPage?: boolean;
@@ -352,16 +354,20 @@ export interface Area {
 export interface Attestation {
   id: string;
   uid: string;
-  schemaName:
-    | 'ScheduledIntervention'
-    | 'AdminValidation'
-    | 'PublishedIntervention'
-    | 'AreaRegistration'
-    | 'GardenerCheckin'
-    | 'GardenerCheckout'
-    | 'GardenerReport'
-    | 'Healthcheck';
+  schemaName: 'AreaRegistration' | 'Intervention' | 'GardenerMilestone' | 'Activity';
   signedAttestation:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  /**
+   * Plaintext payload for off-chain Activity attestations. Empty for on-chain schemas (AreaRegistration, Intervention, GardenerMilestone).
+   */
+  payload?:
     | {
         [k: string]: unknown;
       }
@@ -388,12 +394,10 @@ export interface Attestation {
 export interface Activity {
   id: string;
   label?: string | null;
-  type: 'checkin' | 'checkout' | 'report' | 'healthcheck';
+  type: 'schedule' | 'checkin' | 'checkout' | 'report' | 'healthcheck';
   intervention?: (string | null) | Intervention;
   area?: (string | null) | Area;
-  parentActivity?: (string | null) | Activity;
   gardener?: (string | null) | Gardener;
-  assessor?: (string | null) | Staff;
   data?:
     | {
         [k: string]: unknown;
@@ -404,8 +408,10 @@ export interface Activity {
     | boolean
     | null;
   claimedTimestamp: string;
-  photo?: (string | null) | Media;
-  photoHash?: string | null;
+  /**
+   * Optional evidence media. Hashed into payload.mediaHash at publish time.
+   */
+  media?: (string | null) | Media;
   attestation?: (string | null) | Attestation;
   updatedAt: string;
   createdAt: string;
@@ -429,7 +435,6 @@ export interface Intervention {
     | null;
   commissioning: {
     sponsor: string | Sponsor;
-    commissionRefHashAtSchedule?: string | null;
   };
   crew?:
     | {
@@ -441,26 +446,31 @@ export interface Intervention {
   crewSize?: number | null;
   scheduling?: {
     scheduledDate?: string | null;
-    estimatedMinutes?: number | null;
+    plannedDuration?: number | null;
+    /**
+     * Attestation row for the schedule Activity. FIXME (spec-refactor): also surface the corresponding activities row once the scheduleIntervention task creates one.
+     */
     attestation?: (string | null) | Attestation;
   };
-  validation?: {
-    validator?: (string | null) | Staff;
+  completion?: {
+    reviewer?: (string | null) | Staff;
     approved?: boolean | null;
     qualityScore?: number | null;
     feedback?: string | null;
-    attestation?: (string | null) | Attestation;
   };
   /**
-   * Populated when the intervention is revoked or fails mid-lifecycle.
+   * Populated when the intervention is cancelled. A replacement (if any) is linked via supersededBy.
    */
-  revocation?: {
+  cancellation?: {
     reason?: string | null;
-    revokedAt?: string | null;
-    revokedScheduleUID?: string | null;
-    failedFrom?: ('draft' | 'scheduled' | 'in_progress' | 'validated') | null;
+    cancelledAt?: string | null;
+    cancelledFrom?: ('draft' | 'scheduled' | 'in_progress' | 'completed') | null;
   };
-  lifecycleStatus: 'draft' | 'scheduled' | 'in_progress' | 'validated' | 'published' | 'revoked' | 'failed';
+  lifecycleStatus: 'draft' | 'scheduled' | 'in_progress' | 'completed' | 'published' | 'cancelled';
+  /**
+   * Replacement intervention created after this one was cancelled.
+   */
+  supersededBy?: (string | null) | Intervention;
   publishAttestation?: (string | null) | Attestation;
   activities?: {
     docs?: (string | Activity)[];
@@ -484,6 +494,10 @@ export interface EvidenceBundle {
   areaUIDSnapshot?: string | null;
   bundleVersion?: string | null;
   evidenceBundleHash?: string | null;
+  /**
+   * Canonical bundle bytes, base64-encoded. Verifiers fetch these from the webapp's exposed endpoint and recompute keccak256 to confirm against evidenceBundleHash.
+   */
+  bundleBytesBase64?: string | null;
   offchainCount?: number | null;
   crewMembers?:
     | {
@@ -500,13 +514,14 @@ export interface EvidenceBundle {
   healthcheckActivity?: (string | null) | Activity;
   verification?: {
     valid?: boolean | null;
-    attestationCount?: number | null;
-    expectedCount?: number | null;
-    temporalOrderValid?: boolean | null;
+    bundleHashValid?: boolean | null;
+    bundleVersionValid?: boolean | null;
+    signaturesValid?: boolean | null;
+    payloadIntegrityValid?: boolean | null;
     timestampsVerified?: boolean | null;
-    healthcheckOrderValid?: boolean | null;
+    interventionScopeValid?: boolean | null;
+    temporalOrderValid?: boolean | null;
     executionDateBracketed?: boolean | null;
-    validationApproved?: boolean | null;
     lastVerifiedAt?: string | null;
     checksJson?:
       | {
@@ -867,11 +882,10 @@ export interface AreasSelect<T extends boolean = true> {
   municipality?: T;
   areaType?: T;
   coordinates?: T;
-  surfaceAreaSqm?: T;
-  boundaryGeojson?: T;
+  boundary?: T;
+  metadata?: T;
   coverPhoto?: T;
   gallery?: T;
-  metadataHash?: T;
   attestation?: T;
   lifecycleStatus?: T;
   activities?: T;
@@ -899,7 +913,6 @@ export interface InterventionsSelect<T extends boolean = true> {
     | T
     | {
         sponsor?: T;
-        commissionRefHashAtSchedule?: T;
       };
   crew?:
     | T
@@ -913,27 +926,26 @@ export interface InterventionsSelect<T extends boolean = true> {
     | T
     | {
         scheduledDate?: T;
-        estimatedMinutes?: T;
+        plannedDuration?: T;
         attestation?: T;
       };
-  validation?:
+  completion?:
     | T
     | {
-        validator?: T;
+        reviewer?: T;
         approved?: T;
         qualityScore?: T;
         feedback?: T;
-        attestation?: T;
       };
-  revocation?:
+  cancellation?:
     | T
     | {
         reason?: T;
-        revokedAt?: T;
-        revokedScheduleUID?: T;
-        failedFrom?: T;
+        cancelledAt?: T;
+        cancelledFrom?: T;
       };
   lifecycleStatus?: T;
+  supersededBy?: T;
   publishAttestation?: T;
   activities?: T;
   updatedAt?: T;
@@ -948,13 +960,10 @@ export interface ActivitiesSelect<T extends boolean = true> {
   type?: T;
   intervention?: T;
   area?: T;
-  parentActivity?: T;
   gardener?: T;
-  assessor?: T;
   data?: T;
   claimedTimestamp?: T;
-  photo?: T;
-  photoHash?: T;
+  media?: T;
   attestation?: T;
   updatedAt?: T;
   createdAt?: T;
@@ -969,6 +978,7 @@ export interface EvidenceBundlesSelect<T extends boolean = true> {
   areaUIDSnapshot?: T;
   bundleVersion?: T;
   evidenceBundleHash?: T;
+  bundleBytesBase64?: T;
   offchainCount?: T;
   crewMembers?:
     | T
@@ -987,13 +997,14 @@ export interface EvidenceBundlesSelect<T extends boolean = true> {
     | T
     | {
         valid?: T;
-        attestationCount?: T;
-        expectedCount?: T;
-        temporalOrderValid?: T;
+        bundleHashValid?: T;
+        bundleVersionValid?: T;
+        signaturesValid?: T;
+        payloadIntegrityValid?: T;
         timestampsVerified?: T;
-        healthcheckOrderValid?: T;
+        interventionScopeValid?: T;
+        temporalOrderValid?: T;
         executionDateBracketed?: T;
-        validationApproved?: T;
         lastVerifiedAt?: T;
         checksJson?: T;
       };
@@ -1012,6 +1023,7 @@ export interface AttestationsSelect<T extends boolean = true> {
   uid?: T;
   schemaName?: T;
   signedAttestation?: T;
+  payload?: T;
   timestampTxHash?: T;
   onchainTimestamp?: T;
   chainIdSnapshot?: T;
@@ -1192,6 +1204,7 @@ export interface TaskScheduleIntervention {
   output: {
     chainUID: string;
     timestampTxHash: string;
+    activityId: string;
   };
 }
 /**
@@ -1216,8 +1229,7 @@ export interface TaskValidateIntervention {
     interventionId: string;
   };
   output: {
-    chainUID: string;
-    timestampTxHash: string;
+    interventionId: string;
   };
 }
 /**
@@ -1231,6 +1243,8 @@ export interface TaskPublishIntervention {
   output: {
     chainUID: string;
     txHash: string;
+    evidenceBundleHash: string;
+    indexedCount: number;
   };
 }
 /**
@@ -1242,8 +1256,7 @@ export interface TaskBuildBundle {
     bundleId: string;
   };
   output: {
-    evidenceBundleHash: string;
-    attestationCount: number;
+    deprecated: boolean;
   };
 }
 /**
@@ -1256,8 +1269,6 @@ export interface TaskVerifyBundle {
   };
   output: {
     valid: boolean;
-    attestationCount: number;
-    expectedCount: number;
   };
 }
 /**

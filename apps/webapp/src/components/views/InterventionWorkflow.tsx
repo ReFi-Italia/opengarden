@@ -46,8 +46,8 @@ const HEALTHCHECK_FORM_FIELDS: readonly string[] = [
 // `STAGE_INPUT_RULES` in the Interventions collection so the custom form only
 // exposes fields the server-side guard will actually accept.
 const STAGE_INPUTS: Record<string, readonly string[]> = {
-	scheduling: ["scheduledDate", "estimatedMinutes"],
-	validation: ["validator", "approved", "qualityScore", "feedback"],
+	scheduling: ["scheduledDate", "plannedDuration"],
+	completion: ["reviewer", "approved", "qualityScore", "feedback"],
 };
 
 async function findLatestHealthcheckActivity(
@@ -104,12 +104,11 @@ function findGroupFields(
 
 const STAGE_FORM_TITLES: Record<string, string> = {
 	draft: "Scheduling",
-	failed: "Re-scheduling",
 	scheduled: "Ready to start",
-	in_progress: "Execution & validation",
-	validated: "Ready to publish",
+	in_progress: "Execution & completion review",
+	completed: "Ready to publish",
 	published: "Lifecycle complete",
-	revoked: "Revoked",
+	cancelled: "Cancelled",
 };
 
 const INTERVENTION_TYPE_LABELS: Record<string, string> = {
@@ -125,7 +124,7 @@ const MAIN_PATH = [
 	"draft",
 	"scheduled",
 	"in_progress",
-	"validated",
+	"completed",
 	"published",
 ] as const;
 
@@ -133,10 +132,9 @@ const STAGE_LABELS: Record<string, string> = {
 	draft: "Drafted",
 	scheduled: "Scheduled",
 	in_progress: "In progress",
-	validated: "Validated",
+	completed: "Completed",
 	published: "Published",
-	revoked: "Revoked",
-	failed: "Failed",
+	cancelled: "Cancelled",
 };
 
 async function InterventionWorkflow(props: DocumentViewServerProps) {
@@ -203,7 +201,7 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 
 	const crew = Array.isArray(inv?.crew) ? inv.crew : [];
 	const currentIdx = (MAIN_PATH as readonly string[]).indexOf(status);
-	const isTerminal = status === "failed" || status === "revoked";
+	const isTerminal = status === "cancelled";
 
 	// Extract the editable ClientField[] for each stage group. We pass the group
 	// children directly (not the wrapping group) so the group's readOnly admin
@@ -227,11 +225,10 @@ async function InterventionWorkflow(props: DocumentViewServerProps) {
 
 	const stageFieldsByGroup: Record<string, ClientField[]> = {
 		scheduling: buildStageFields("scheduling"),
-		validation: buildStageFields("validation"),
+		completion: buildStageFields("completion"),
 	};
 
-	const stageParentPath =
-		status === "draft" || status === "failed" ? "scheduling" : "";
+	const stageParentPath = status === "draft" ? "scheduling" : "";
 
 	const stageClientFields = stageParentPath
 		? (stageFieldsByGroup[stageParentPath] ?? [])

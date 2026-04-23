@@ -4,14 +4,10 @@ import { authenticated } from "../access/authenticated";
 const ATTESTATION_STATUS = ["committed", "failed"] as const;
 
 export const ATTESTATION_SCHEMAS = [
-	"ScheduledIntervention",
-	"AdminValidation",
-	"PublishedIntervention",
 	"AreaRegistration",
-	"GardenerCheckin",
-	"GardenerCheckout",
-	"GardenerReport",
-	"Healthcheck",
+	"Intervention",
+	"GardenerMilestone",
+	"Activity",
 ] as const;
 
 // relatedCollection + relatedId are back-references — query all attestations for entity X without joining through activities.
@@ -55,6 +51,14 @@ export const Attestations: CollectionConfig = {
 			name: "signedAttestation",
 			type: "json",
 			required: true,
+		},
+		{
+			name: "payload",
+			type: "json",
+			admin: {
+				description:
+					"Plaintext payload for off-chain Activity attestations. Empty for on-chain schemas (AreaRegistration, Intervention, GardenerMilestone).",
+			},
 		},
 		{
 			name: "timestampTxHash",
