@@ -45,7 +45,7 @@ export const verifyBundleTask: TaskConfig<{
 		const bundle = await payload.findByID({
 			collection: "evidenceBundles",
 			id: bundleId,
-			depth: 1,
+			depth: 2,
 			req,
 			overrideAccess: true,
 		});

@@ -16,6 +16,24 @@ export type OpenGardenContext = {
 
 let verifiedChainId: bigint | null = null;
 
+let contextOverride: OpenGardenContext | null = null;
+
+/**
+ * Test-only seam: inject a pre-built OpenGardenContext (typically with a
+ * mock OpenGardenClient) so task handlers can be exercised without env
+ * vars, signer keys, or RPC connections. Pass `null` to reset.
+ *
+ * Lives in production code (not a test file) so the singleton
+ * `getOpenGardenContext` lookup picks it up uniformly across every task.
+ * The override is process-local — the singleFork vitest pool ensures one
+ * process per test run.
+ */
+export function setOpenGardenContextOverride(
+	override: OpenGardenContext | null,
+): void {
+	contextOverride = override;
+}
+
 async function verifyChainConsistency(
 	payload: Payload,
 	chainId: bigint,
@@ -39,6 +57,8 @@ async function verifyChainConsistency(
 export async function getOpenGardenContext(
 	payload: Payload,
 ): Promise<OpenGardenContext> {
+	if (contextOverride) return contextOverride;
+
 	const privateKey = process.env.OPENGARDEN_SIGNER_PRIVATE_KEY;
 	if (!privateKey) {
 		throw new Error(

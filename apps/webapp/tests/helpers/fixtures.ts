@@ -18,6 +18,40 @@ export const createArea = (payload: Payload, overrides: Record<string, unknown> 
 		} as never,
 	});
 
+/**
+ * Creates a registered area with an `attestation` row already linked, so
+ * task handlers that read `area.attestation.uid` can find one without
+ * actually calling the SDK.
+ */
+export const createRegisteredAreaWithAttestation = async (
+	payload: Payload,
+	overrides: Record<string, unknown> = {},
+) => {
+	const area = await createArea(payload, overrides);
+	const attestation = await payload.create({
+		collection: "attestations",
+		data: {
+			uid: `0x${"a".repeat(64).slice(0, 60)}${Date.now().toString(16).padStart(4, "0").slice(-4)}`,
+			schemaName: "AreaRegistration",
+			signedAttestation: {},
+			timestampTxHash: `0x${"f".repeat(60)}${Date.now().toString(16).padStart(4, "0").slice(-4)}`,
+			chainIdSnapshot: 11_155_420,
+			attesterWallet: `0x${"a".repeat(40)}`,
+			status: "committed",
+			relatedCollection: "areas",
+			relatedId: String(area.id),
+		},
+		overrideAccess: true,
+	});
+	return payload.update({
+		collection: "areas",
+		id: area.id,
+		data: { attestation: attestation.id },
+		overrideAccess: true,
+		context: { skipLifecycleHooks: true },
+	});
+};
+
 export const createSponsor = (payload: Payload, overrides: Record<string, unknown> = {}) =>
 	payload.create({
 		collection: "sponsors",
@@ -35,6 +69,10 @@ export const createGardener = (payload: Payload, overrides: Record<string, unkno
 		data: {
 			displayName: "Test Gardener",
 			status: "active",
+			wallet: `0x${Date.now().toString(16).padStart(16, "0")}${Math.random()
+				.toString(16)
+				.slice(2, 26)
+				.padEnd(24, "0")}`.slice(0, 42),
 			...overrides,
 		} as never,
 	});

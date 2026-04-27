@@ -125,6 +125,44 @@ export async function supersedeInterventionAction(input: {
 			overrideAccess: true,
 		});
 
+		// Strip payload-generated row IDs from nested arrays so the new
+		// intervention gets fresh task / crew row IDs. Keeping them would
+		// collide with the source's rows at INSERT time.
+		const cleanTasks = Array.isArray(source.tasks)
+			? source.tasks.map((t) => {
+					const { id: _id, ...rest } = t as { id?: unknown } & Record<
+						string,
+						unknown
+					>;
+					return rest;
+				})
+			: [];
+		const cleanCrew = Array.isArray(source.crew)
+			? source.crew.map((c) => {
+					const { id: _id, ...rest } = c as { id?: unknown } & Record<
+						string,
+						unknown
+					>;
+					return {
+						...rest,
+						gardener:
+							typeof rest.gardener === "object" && rest.gardener !== null
+								? String(
+										(rest.gardener as { id: string | number }).id,
+									)
+								: rest.gardener,
+					};
+				})
+			: [];
+
+		const sponsor = (
+			source.commissioning as { sponsor?: unknown } | undefined
+		)?.sponsor;
+		const sponsorId =
+			typeof sponsor === "object" && sponsor !== null
+				? String((sponsor as { id: string | number }).id)
+				: sponsor;
+
 		const newIntervention = await payload.create({
 			collection: "interventions",
 			data: {
@@ -135,11 +173,13 @@ export async function supersedeInterventionAction(input: {
 						: String(source.area ?? ""),
 				interventionType: source.interventionType,
 				description: source.description,
-				tasks: source.tasks,
-				commissioning: source.commissioning,
-				crew: source.crew,
+				tasks: cleanTasks,
+				commissioning: sponsorId
+					? { sponsor: sponsorId as string }
+					: undefined,
+				crew: cleanCrew,
 				lifecycleStatus: "draft",
-			},
+			} as never,
 			overrideAccess: true,
 		});
 
