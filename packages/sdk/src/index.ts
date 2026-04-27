@@ -1,14 +1,20 @@
-// Types
-
 // Client
 export { OpenGardenClient } from "./client";
+// Lazy DX helper
+export {
+	type CreateOpenGardenClientConfig,
+	createOpenGardenClient,
+} from "./connect";
 // Constants
+export type { ChainName } from "./constants";
 export {
 	BASE_MAINNET,
 	BASE_SEPOLIA,
 	CELO_ALFAJORES,
 	CELO_MAINNET,
+	CHAIN_CONFIGS,
 	EVIDENCE_BUNDLE_VERSION,
+	getChainConfig,
 	OPTIMISM_MAINNET,
 	OPTIMISM_SEPOLIA,
 	SCHEMA_NAME_UID,
@@ -18,9 +24,25 @@ export {
 // Errors
 export { OpenGardenError, OpenGardenErrorCode } from "./errors";
 // Evidence bundle builder
-export { buildEvidenceBundle } from "./evidence";
+export {
+	buildEvidenceBundle,
+	bundleJsonReplacer,
+	restoreBundleBigInts,
+	serializeEvidenceBundle,
+} from "./evidence";
 // Indexer
 export { getGraphqlUrl, getStoreUrl, submitToIndexer } from "./indexer";
+// Policies — verifier-side decisions as data (see spec §7)
+export type { FinalizePolicy, VerifyPolicy } from "./policy";
+export {
+	finalizePolicy,
+	LENIENT_FINALIZE_POLICY,
+	MINIMAL_FINALIZE_POLICY,
+	PROTOCOL_ONLY_VERIFY_POLICY,
+	STRICT_FINALIZE_POLICY,
+	STRICT_VERIFY_POLICY,
+	verifyPolicy,
+} from "./policy";
 // Preflight validation & inspection helpers
 export type {
 	AttestationMetadata,
@@ -34,80 +56,124 @@ export {
 	validateFinalizeInput,
 } from "./preflight";
 export type { SchemaDefinition } from "./schemas/definitions";
+// Schema definitions
+export { SCHEMA_DEFINITIONS, SCHEMA_STRINGS } from "./schemas/definitions";
+// Schema encoder runtime (advanced — most consumers should use createOpenGardenClient)
+export {
+	buildCheckinPayload,
+	buildCheckoutPayload,
+	buildHealthcheckPayload,
+	buildReportPayload,
+	buildSchedulePayload,
+	decodeActivityData,
+	encodeActivityData,
+	encodeActivityFromPayload,
+	initEncoders,
+	parseActivityDecodedDataJson,
+} from "./schemas/encoders";
 // Sponsor reference helpers
 export type { SponsorRef } from "./sponsor";
 export { serializeSponsorRef } from "./sponsor";
-// Schema definitions
-export { SCHEMA_DEFINITIONS, SCHEMA_STRINGS } from "./schemas/definitions";
 export type {
+	Activity,
 	Area,
-	CitizenFeedback,
+	CheckinActivity,
+	CheckinActivityPayload,
+	CheckoutActivity,
+	CheckoutActivityPayload,
 	EvidenceBundleVerification,
-	Healthcheck,
+	HealthcheckActivity,
+	HealthcheckActivityPayload,
 	Intervention,
+	LifecycleActivity,
 	Milestone,
-	ScheduledIntervention,
+	ReportActivity,
+	ReportActivityPayload,
+	ScheduleActivity,
+	ScheduleActivityPayload,
+} from "./types/attestation";
+export {
+	isCheckinActivity,
+	isCheckoutActivity,
+	isHealthcheckActivity,
+	isReportActivity,
+	isScheduleActivity,
 } from "./types/attestation";
 export type {
 	ChainConfig,
 	OpenGardenConfig,
 	SchemaUIDs,
-	StorageAdapter,
 } from "./types/config";
-export type { SchemaName } from "./types/enums";
-export { AreaType, InterventionType, MilestoneLevel } from "./types/enums";
+export type { ActivityTypeName, SchemaName } from "./types/enums";
+export {
+	ACTIVITY_TYPE_NAMES,
+	ActivityType,
+	AreaType,
+	activityTypeFromName,
+	InterventionType,
+	MilestoneLevel,
+} from "./types/enums";
 export type {
+	BundleActivity,
+	CheckinBundleActivity,
+	CheckoutBundleActivity,
 	EvidenceBundle,
-	EvidenceBundleAttestation,
 	EvidenceBundleBuilderInput,
-	EvidenceBundleGardenerAttestation,
-	EvidenceBundleHealthcheck,
-	EvidenceBundleValidation,
 	FinalizeInterventionInput,
 	FinalizeInterventionResult,
+	ReportBundleActivity,
+	ScheduleBundleActivity,
+	SignedOffchainAttestation,
 } from "./types/evidence";
 export type {
 	BundleIndexingResult,
 	BundleIndexingRole,
 	IndexerSubmissionResult,
-	OffChainAttestationResult,
 	OnChainAttestationResult,
 	SchemaRegistrationResult,
 	TimestampedOffChainResult,
 } from "./types/results";
+export type {
+	ActivityPayloadInput,
+	AreaRegistrationInput,
+	CheckinActivityInput,
+	CheckoutActivityInput,
+	GardenerMilestoneInput,
+	HealthcheckActivityInput,
+	InterventionInput,
+	ReportActivityInput,
+	ScheduleActivityInput,
+} from "./types/schemas";
+// Utilities
+export type { MediaManifestItem } from "./utils";
+export {
+	buildMediaManifest,
+	canonicalJSON,
+	fromMicrodegrees,
+	hashActivityPayload,
+	hashBoundary,
+	hashIdentifier,
+	hashInterventionScope,
+	hashMediaFile,
+	toMicrodegrees,
+	toUnixSeconds,
+} from "./utils";
 // Verification helpers
 export type {
-	CompletenessCheck,
 	TimestampFetcher,
 	VerificationCheck,
 } from "./verification";
 export {
 	VerificationCheckCode,
-	verifyBundleCompleteness,
+	verifyBundleCrewConsistency,
+	verifyBundleCrewDistinctness,
+	verifyBundleCrewSize,
 	verifyBundleExecutionDateBracket,
-	verifyBundleHealthcheckBracket,
+	verifyBundleInterventionScope,
 	verifyBundleOnChainTimestamps,
+	verifyBundlePayloadIntegrity,
+	verifyBundleScheduleUniqueness,
+	verifyBundleSignatures,
 	verifyBundleTemporalOrder,
-	verifyBundleValidationApproved,
 	verifyBundleVersion,
 } from "./verification";
-export type {
-	AdminValidationInput,
-	AreaRegistrationInput,
-	CitizenFeedbackInput,
-	GardenerCheckinInput,
-	GardenerCheckoutInput,
-	GardenerMilestoneInput,
-	GardenerReportInput,
-	HealthcheckInput,
-	PublishedInterventionInput,
-	ScheduledInterventionInput,
-} from "./types/schemas";
-// Utilities
-export {
-	fromMicrodegrees,
-	hashIdentifier,
-	hashPhotoBundle,
-	toMicrodegrees,
-	toUnixSeconds,
-} from "./utils";

@@ -1,0 +1,1061 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>INT-2026-0412-MIL-0034 — Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #fafaf8;
+    --bg-1:      #f4f4f1;
+    --bg-card:   #ffffff;
+    --rule:      #e8e8e4;
+    --rule-2:    #d6d6d1;
+    --ink:       #1a1c19;
+    --ink-1:     #3a3d38;
+    --ink-2:     #5d605a;
+    --ink-3:     #82857f;
+    --ink-4:     #a8aba4;
+    --accent:    #2d5240;
+    --accent-hi: #3a6650;
+    --accent-soft: #e3ece7;
+    --ok:        #2d5240;
+    --warn:      #a8530c;
+    --warn-soft: #f4e6d6;
+    --fail:      #8a2424;
+
+    --sans: "DM Sans", system-ui, -apple-system, sans-serif;
+    --mono: "JetBrains Mono", "SF Mono", monospace;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { font-size: 15px; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-weight: 400;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "ss01", "cv11";
+  }
+
+  /* ─── top bar ─── */
+  .topbar {
+    height: 60px;
+    border-bottom: 1px solid var(--rule);
+    display: flex;
+    align-items: center;
+    padding: 0 36px;
+    gap: 36px;
+    background: var(--bg);
+    position: sticky; top: 0; z-index: 20;
+    backdrop-filter: blur(8px);
+  }
+  .brand {
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .brand::before {
+    content: "";
+    width: 18px; height: 18px;
+    background: var(--accent);
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .breadcrumb {
+    flex: 1;
+    font-size: 13px;
+    color: var(--ink-3);
+  }
+  .breadcrumb a { color: var(--ink-2); text-decoration: none; transition: color .15s; }
+  .breadcrumb a:hover { color: var(--ink); }
+  .breadcrumb .sep { margin: 0 8px; color: var(--ink-4); }
+  .breadcrumb .here { color: var(--ink); font-weight: 500; }
+  .topbar-right { display: flex; gap: 8px; align-items: center; }
+  .pill-btn {
+    border: 1px solid var(--rule);
+    background: transparent;
+    padding: 8px 14px;
+    font-family: var(--sans);
+    font-size: 12px;
+    color: var(--ink-2);
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all .15s;
+  }
+  .pill-btn:hover { background: var(--bg-1); color: var(--ink); }
+  .user-chip {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 14px 6px 6px;
+    background: var(--bg-1);
+    border-radius: 999px;
+    margin-left: 4px;
+  }
+  .user-chip .av {
+    width: 24px; height: 24px;
+    background: var(--accent);
+    color: white;
+    font-size: 11px;
+    font-weight: 600;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+  }
+  .user-chip .name { font-size: 12px; color: var(--ink-1); }
+
+  /* ─── page wrapper ─── */
+  .page {
+    max-width: 1480px;
+    margin: 0 auto;
+    padding: 48px 48px 96px;
+  }
+
+  /* ─── page header ─── */
+  .page-header {
+    margin-bottom: 56px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 48px;
+    align-items: end;
+    padding-bottom: 36px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .ph-meta {
+    font-size: 12px;
+    color: var(--ink-3);
+    margin-bottom: 18px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .ph-meta .dot {
+    width: 5px; height: 5px;
+    background: var(--ink-4);
+    border-radius: 50%;
+  }
+  .ph-id-mono {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-3);
+    margin-bottom: 12px;
+    letter-spacing: 0.02em;
+  }
+  .ph-name {
+    font-family: var(--sans);
+    font-size: 38px;
+    font-weight: 500;
+    letter-spacing: -0.025em;
+    line-height: 1.1;
+    color: var(--ink);
+    max-width: 22ch;
+  }
+  .ph-status {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 18px;
+    justify-content: flex-end;
+  }
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 14px;
+    background: var(--warn-soft);
+    color: var(--warn);
+    font-size: 12px;
+    font-weight: 500;
+    border-radius: 999px;
+  }
+  .status-pill::before {
+    content: "";
+    width: 7px; height: 7px;
+    background: var(--warn);
+    border-radius: 50%;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse { 50% { opacity: 0.4; } }
+
+  .ph-stats {
+    display: grid;
+    grid-template-columns: repeat(4, auto);
+    gap: 36px;
+  }
+  .ph-stat {
+    text-align: right;
+  }
+  .ph-stat .k {
+    font-size: 11px;
+    color: var(--ink-3);
+    margin-bottom: 4px;
+  }
+  .ph-stat .v {
+    font-size: 16px;
+    color: var(--ink);
+    font-weight: 500;
+    letter-spacing: -0.01em;
+  }
+
+  /* ─── stage rail ─── */
+  .stage-rail-wrap {
+    margin-bottom: 48px;
+  }
+  .section-label {
+    font-size: 11px;
+    color: var(--ink-3);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 18px;
+    font-weight: 500;
+  }
+  .stage-rail {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+  }
+  .stage {
+    background: var(--bg-card);
+    border: 1px solid var(--rule);
+    border-radius: 12px;
+    padding: 22px 22px 24px;
+    position: relative;
+    transition: all .2s;
+  }
+  .stage-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .stage-num {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-3);
+    letter-spacing: 0.04em;
+  }
+  .stage-flag {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+  }
+  .stage.done .stage-flag { background: var(--ok); }
+  .stage.active .stage-flag {
+    background: var(--warn);
+    box-shadow: 0 0 0 4px var(--warn-soft);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  .stage.future .stage-flag {
+    background: transparent;
+    border: 1px solid var(--ink-4);
+  }
+
+  .stage-name {
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--ink);
+    margin-bottom: 4px;
+    letter-spacing: -0.005em;
+  }
+  .stage.future .stage-name { color: var(--ink-3); }
+  .stage-date {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-3);
+    margin-bottom: 3px;
+  }
+  .stage-actor {
+    font-size: 12px;
+    color: var(--ink-3);
+  }
+  .stage-chain {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--rule);
+    font-size: 11px;
+    color: var(--ok);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .stage-chain::before {
+    content: "";
+    width: 5px; height: 5px;
+    background: var(--ok);
+    border-radius: 50%;
+  }
+  .stage.future .stage-chain { color: var(--ink-4); }
+  .stage.future .stage-chain::before {
+    background: transparent;
+    border: 1px solid var(--ink-4);
+  }
+  .stage.active {
+    border-color: var(--warn);
+    box-shadow: 0 4px 16px -4px rgba(168, 83, 12, 0.12);
+  }
+  .stage.active .stage-chain { color: var(--warn); }
+  .stage.active .stage-chain::before { background: var(--warn); }
+
+  /* ─── action card ─── */
+  .action-card {
+    background: var(--accent);
+    color: white;
+    padding: 36px 40px;
+    border-radius: 16px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 36px;
+    align-items: center;
+    margin-bottom: 56px;
+    position: relative;
+    overflow: hidden;
+  }
+  .action-card::before {
+    content: "";
+    position: absolute;
+    top: -50%; right: -10%;
+    width: 60%; height: 200%;
+    background: radial-gradient(ellipse, rgba(255,255,255,0.08), transparent 60%);
+    pointer-events: none;
+  }
+  .action-card > * { position: relative; }
+  .action-meta {
+    font-size: 12px;
+    color: rgba(255,255,255,0.65);
+    margin-bottom: 8px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .action-title {
+    font-size: 26px;
+    font-weight: 500;
+    margin-bottom: 8px;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+  }
+  .action-sub {
+    font-size: 14px;
+    color: rgba(255,255,255,0.7);
+    max-width: 56ch;
+    line-height: 1.5;
+  }
+  .action-btns { display: flex; gap: 12px; }
+  .btn-primary {
+    padding: 14px 26px;
+    background: white;
+    color: var(--accent);
+    border: none;
+    border-radius: 10px;
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform .15s;
+  }
+  .btn-primary:hover { transform: translateY(-1px); }
+  .btn-primary::after { content: " →"; }
+  .btn-secondary {
+    padding: 14px 22px;
+    background: transparent;
+    color: rgba(255,255,255,0.8);
+    border: 1px solid rgba(255,255,255,0.25);
+    border-radius: 10px;
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .btn-secondary:hover { color: white; border-color: rgba(255,255,255,0.5); }
+
+  /* ─── main grid ─── */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 260px 1fr 300px;
+    gap: 56px;
+    align-items: start;
+  }
+
+  /* ─── identity column ─── */
+  .identity-col {
+    position: sticky;
+    top: 84px;
+  }
+  .identity-block {
+    margin-bottom: 32px;
+  }
+  .identity-block:last-child { margin-bottom: 0; }
+  .block-label {
+    font-size: 11px;
+    color: var(--ink-3);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 10px;
+    font-weight: 500;
+  }
+  .kv-val {
+    font-size: 14px;
+    color: var(--ink-1);
+    line-height: 1.55;
+  }
+  .kv-val .strong {
+    color: var(--ink);
+    font-weight: 500;
+    display: block;
+    font-size: 15px;
+    margin-bottom: 2px;
+  }
+  .kv-val.prose {
+    color: var(--ink-2);
+    font-size: 13px;
+    line-height: 1.65;
+  }
+
+  .crew-list { list-style: none; display: flex; flex-direction: column; gap: 12px; }
+  .crew-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+  }
+  .crew-av {
+    width: 30px; height: 30px;
+    background: var(--bg-1);
+    color: var(--ink-2);
+    font-size: 11px;
+    font-weight: 600;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+  }
+  .crew-row.lead .crew-av {
+    background: var(--accent);
+    color: white;
+  }
+  .crew-name { flex: 1; color: var(--ink); }
+  .crew-role {
+    font-size: 11px;
+    color: var(--ink-3);
+  }
+  .crew-row.lead .crew-role { color: var(--accent); font-weight: 500; }
+
+  /* ─── main column ─── */
+  .main-col { min-width: 0; }
+
+  .panel {
+    background: var(--bg-card);
+    border: 1px solid var(--rule);
+    border-radius: 16px;
+    padding: 32px 36px;
+    margin-bottom: 28px;
+  }
+  .panel-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 28px;
+  }
+  .panel-title {
+    font-size: 20px;
+    font-weight: 500;
+    color: var(--ink);
+    letter-spacing: -0.015em;
+  }
+  .panel-meta {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-3);
+  }
+  .panel-meta .ok { color: var(--ok); font-weight: 500; }
+
+  /* ─── form ─── */
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 22px 28px;
+  }
+  .form-field { display: flex; flex-direction: column; gap: 8px; }
+  .form-field.full { grid-column: 1 / -1; }
+  .form-label {
+    font-size: 12px;
+    color: var(--ink-3);
+    font-weight: 500;
+  }
+  .form-input, .form-select, .form-textarea {
+    border: 1px solid var(--rule);
+    background: var(--bg);
+    padding: 12px 14px;
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--ink);
+    outline: none;
+    width: 100%;
+    border-radius: 8px;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .form-input:focus, .form-select:focus, .form-textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .form-input[readonly] {
+    background: var(--bg-1);
+    color: var(--ink-3);
+  }
+  .form-textarea {
+    line-height: 1.6;
+    resize: vertical;
+    min-height: 100px;
+  }
+
+  .toggle-group {
+    display: inline-flex;
+    background: var(--bg-1);
+    border-radius: 8px;
+    padding: 3px;
+    width: fit-content;
+  }
+  .toggle-opt {
+    padding: 9px 18px;
+    background: transparent;
+    border: none;
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink-2);
+    cursor: pointer;
+    border-radius: 6px;
+  }
+  .toggle-opt.active.approve { background: var(--ok); color: white; }
+  .toggle-opt.active.reject { background: var(--fail); color: white; }
+
+  .score-bar { display: flex; align-items: center; gap: 14px; }
+  .score-cells {
+    display: flex;
+    flex: 1;
+    gap: 4px;
+  }
+  .score-cell {
+    flex: 1;
+    height: 26px;
+    background: var(--bg-1);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  .score-cell:hover { background: var(--accent-soft); }
+  .score-cell.filled { background: var(--accent); }
+  .score-readout {
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--ink);
+    min-width: 48px;
+    text-align: right;
+  }
+  .score-readout em { color: var(--ink-3); font-style: normal; font-weight: 400; font-size: 13px; }
+
+  /* ─── evidence ─── */
+  .evidence-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+  .evidence-photo {
+    aspect-ratio: 4 / 3;
+    border-radius: 10px;
+    overflow: hidden;
+    cursor: pointer;
+    position: relative;
+    transition: transform .2s;
+  }
+  .evidence-photo:hover { transform: translateY(-2px); }
+  .photo-img { width: 100%; height: 100%; }
+  .photo-img.p1 { background: linear-gradient(170deg, #2a4a2a 0%, #5a7a4a 50%, #7a9a6a 100%); }
+  .photo-img.p2 { background: linear-gradient(135deg, #4a3a1a 0%, #7a5a2a 100%); }
+  .photo-img.p3 { background: linear-gradient(200deg, #2a4a2a 0%, #5a7a4a 100%); }
+  .photo-img.p4 { background: linear-gradient(160deg, #6a8a5a 0%, #a5b59a 100%); }
+  .photo-meta {
+    position: absolute;
+    bottom: 10px; left: 10px; right: 10px;
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 9px;
+    color: white;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.6);
+    letter-spacing: 0.04em;
+  }
+
+  .checks-grid {
+    margin-top: 26px;
+    padding-top: 24px;
+    border-top: 1px solid var(--rule);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px 32px;
+  }
+  .check-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--ink-1);
+  }
+  .check-mark {
+    width: 16px; height: 16px;
+    background: var(--ok);
+    color: white;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-size: 9px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .check-row.pending { color: var(--ink-3); }
+  .check-row.pending .check-mark {
+    background: transparent;
+    border: 1px dashed var(--warn);
+    color: var(--warn);
+  }
+
+  /* ─── ledger ─── */
+  .ledger-col {
+    position: sticky;
+    top: 84px;
+  }
+  .ledger-card {
+    background: var(--bg-card);
+    border: 1px solid var(--rule);
+    border-radius: 16px;
+    padding: 28px 28px 24px;
+  }
+  .ledger-header {
+    margin-bottom: 24px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .ledger-title {
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--ink);
+    margin-bottom: 4px;
+  }
+  .ledger-sub {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-3);
+  }
+
+  .ledger-list { list-style: none; }
+  .ledger-row {
+    padding: 12px 0 14px 22px;
+    position: relative;
+    border-left: 1px solid var(--rule);
+    margin-left: 5px;
+  }
+  .ledger-row:last-child { border-left-color: transparent; padding-bottom: 0; }
+  .ledger-row::before {
+    content: "";
+    position: absolute;
+    left: -5px; top: 16px;
+    width: 9px; height: 9px;
+    background: var(--ok);
+    border-radius: 50%;
+    box-shadow: 0 0 0 3px var(--bg-card);
+  }
+  .ledger-row.pending::before {
+    background: var(--bg-card);
+    border: 1px dashed var(--ink-4);
+  }
+  .ledger-stage {
+    font-size: 13px;
+    color: var(--ink);
+    font-weight: 500;
+    margin-bottom: 2px;
+  }
+  .ledger-time {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-3);
+    margin-bottom: 6px;
+  }
+  .ledger-hash {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-2);
+    background: var(--bg);
+    padding: 3px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: inline-block;
+  }
+  .ledger-hash:hover { background: var(--bg-1); color: var(--ink); }
+  .ledger-row.pending .ledger-stage { color: var(--ink-3); }
+  .ledger-row.pending .ledger-time { color: var(--ink-4); }
+  .ledger-row.pending .ledger-hash {
+    background: transparent;
+    border: 1px dashed var(--rule-2);
+    color: var(--ink-4);
+    font-style: italic;
+  }
+
+  .ledger-stats {
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid var(--rule);
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--ink-3);
+  }
+  .ledger-stats .v { color: var(--ink); font-weight: 600; }
+
+  @media (max-width: 1280px) {
+    .main-grid { grid-template-columns: 240px 1fr; gap: 36px; }
+    .ledger-col { grid-column: 1 / -1; position: static; margin-top: 12px; }
+  }
+  @media (max-width: 900px) {
+    .page { padding: 28px 20px 64px; }
+    .page-header { grid-template-columns: 1fr; }
+    .ph-name { font-size: 30px; }
+    .stage-rail { grid-template-columns: 1fr; }
+    .main-grid { grid-template-columns: 1fr; }
+    .identity-col { position: static; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="topbar">
+    <div class="brand">Ridaje</div>
+    <nav class="breadcrumb">
+      <a href="#">Lifecycle</a>
+      <span class="sep">/</span>
+      <a href="#">Interventions</a>
+      <span class="sep">/</span>
+      <span class="here">INT-2026-0412-MIL-0034</span>
+    </nav>
+    <div class="topbar-right">
+      <button class="pill-btn">History</button>
+      <button class="pill-btn">Export</button>
+      <div class="user-chip">
+        <div class="av">RB</div>
+        <div class="name">Raffaele</div>
+      </div>
+    </div>
+  </div>
+
+  <main class="page">
+
+    <header class="page-header">
+      <div>
+        <div class="ph-meta">
+          <span>Restoration</span>
+          <span class="dot"></span>
+          <span>Parco Sempione</span>
+          <span class="dot"></span>
+          <span>Milano</span>
+        </div>
+        <div class="ph-id-mono">INT-2026-0412-MIL-0034</div>
+        <h1 class="ph-name">Restoration of centennial holm oak on the western lawn</h1>
+      </div>
+      <div>
+        <div class="ph-status">
+          <span class="status-pill">In progress · awaiting validation</span>
+        </div>
+        <div class="ph-stats">
+          <div class="ph-stat">
+            <div class="k">Type</div>
+            <div class="v">Restoration</div>
+          </div>
+          <div class="ph-stat">
+            <div class="k">Crew</div>
+            <div class="v">3</div>
+          </div>
+          <div class="ph-stat">
+            <div class="k">Window</div>
+            <div class="v">12 Apr · 180m</div>
+          </div>
+          <div class="ph-stat">
+            <div class="k">Health</div>
+            <div class="v">7 → 9</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <section class="stage-rail-wrap">
+      <div class="section-label">Lifecycle</div>
+      <div class="stage-rail">
+        <div class="stage done">
+          <div class="stage-header">
+            <span class="stage-num">01</span>
+            <span class="stage-flag"></span>
+          </div>
+          <div class="stage-name">Drafted</div>
+          <div class="stage-date">07 APR · 14:22</div>
+          <div class="stage-actor">G. Marchetti</div>
+          <div class="stage-chain">on chain</div>
+        </div>
+        <div class="stage done">
+          <div class="stage-header">
+            <span class="stage-num">02</span>
+            <span class="stage-flag"></span>
+          </div>
+          <div class="stage-name">Scheduled</div>
+          <div class="stage-date">09 APR · 09:04</div>
+          <div class="stage-actor">area lead</div>
+          <div class="stage-chain">on chain</div>
+        </div>
+        <div class="stage active">
+          <div class="stage-header">
+            <span class="stage-num">03</span>
+            <span class="stage-flag"></span>
+          </div>
+          <div class="stage-name">In progress</div>
+          <div class="stage-date">12 APR · 08:30</div>
+          <div class="stage-actor">crew on site</div>
+          <div class="stage-chain">awaiting validation</div>
+        </div>
+        <div class="stage future">
+          <div class="stage-header">
+            <span class="stage-num">04</span>
+            <span class="stage-flag"></span>
+          </div>
+          <div class="stage-name">Validated</div>
+          <div class="stage-date">—</div>
+          <div class="stage-actor">M. Conti (assigned)</div>
+          <div class="stage-chain">pending</div>
+        </div>
+        <div class="stage future">
+          <div class="stage-header">
+            <span class="stage-num">05</span>
+            <span class="stage-flag"></span>
+          </div>
+          <div class="stage-name">Published</div>
+          <div class="stage-date">—</div>
+          <div class="stage-actor">auto</div>
+          <div class="stage-chain">pending</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="action-card">
+      <div>
+        <div class="action-meta">Awaiting your input · stage 03 → 04</div>
+        <h2 class="action-title">Review the crew's report and validate the work</h2>
+        <p class="action-sub">Execution complete — 4 photos, 2 health checks, 3 gardener attestations. Approving here seals the evidence bundle and queues the validation attestation for publication.</p>
+      </div>
+      <div class="action-btns">
+        <button class="btn-secondary">Flag failed</button>
+        <button class="btn-primary">Open validation</button>
+      </div>
+    </section>
+
+    <div class="main-grid">
+
+      <aside class="identity-col">
+        <div class="identity-block">
+          <div class="block-label">Site</div>
+          <div class="kv-val">
+            <span class="strong">Parco Sempione</span>
+            Western lawn, plot W-14
+          </div>
+        </div>
+        <div class="identity-block">
+          <div class="block-label">Brief</div>
+          <div class="kv-val prose">Structural pruning and root aeration for a declining Quercus ilex, planted c. 1912. Soil decompaction around trunk base, removal of competing saplings, two protective stakes.</div>
+        </div>
+        <div class="identity-block">
+          <div class="block-label">Sponsor</div>
+          <div class="kv-val">
+            <span class="strong">Fondazione Verde Milano</span>
+            Restoration grant — Q2 2026
+          </div>
+        </div>
+        <div class="identity-block">
+          <div class="block-label">Crew</div>
+          <ul class="crew-list">
+            <li class="crew-row lead">
+              <div class="crew-av">GM</div>
+              <div class="crew-name">Giulia Marchetti</div>
+              <div class="crew-role">Lead</div>
+            </li>
+            <li class="crew-row">
+              <div class="crew-av">LB</div>
+              <div class="crew-name">Luca Bianchi</div>
+              <div class="crew-role">Gardener</div>
+            </li>
+            <li class="crew-row">
+              <div class="crew-av">AR</div>
+              <div class="crew-name">Anna Rossi</div>
+              <div class="crew-role">Gardener</div>
+            </li>
+          </ul>
+        </div>
+      </aside>
+
+      <div class="main-col">
+
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Validation</div>
+            <div class="panel-meta">Stage 03/05 · editable</div>
+          </div>
+          <div class="form-grid">
+            <div class="form-field">
+              <label class="form-label">Validator</label>
+              <select class="form-select">
+                <option>Marco Conti — Senior arborist</option>
+                <option>Elena Rinaldi — Agronomist</option>
+                <option>Paolo Greco — Urban forester</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label class="form-label">Decision</label>
+              <div class="toggle-group">
+                <button class="toggle-opt active approve">Approve</button>
+                <button class="toggle-opt">Reject</button>
+              </div>
+            </div>
+            <div class="form-field full">
+              <label class="form-label">Quality score</label>
+              <div class="score-bar">
+                <div class="score-cells">
+                  <div class="score-cell filled"></div>
+                  <div class="score-cell filled"></div>
+                  <div class="score-cell filled"></div>
+                  <div class="score-cell filled"></div>
+                  <div class="score-cell filled"></div>
+                  <div class="score-cell filled"></div>
+                  <div class="score-cell filled"></div>
+                  <div class="score-cell filled"></div>
+                  <div class="score-cell"></div>
+                  <div class="score-cell"></div>
+                </div>
+                <div class="score-readout">8<em>/10</em></div>
+              </div>
+            </div>
+            <div class="form-field">
+              <label class="form-label">Validated at</label>
+              <input class="form-input" value="14 Apr 2026 · 10:42">
+            </div>
+            <div class="form-field">
+              <label class="form-label">Execution date · locked</label>
+              <input class="form-input" value="12 Apr 2026" readonly>
+            </div>
+            <div class="form-field full">
+              <label class="form-label">Feedback — visible in the public attestation</label>
+              <textarea class="form-textarea">The holm oak responded well to the root aeration. Crown thinning was measured and conservative, and the two protective stakes were installed without disturbing the adjacent root system. Recommend a follow-up health check in 90 days to monitor regrowth of the affected scaffold branches.</textarea>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Evidence bundle</div>
+            <div class="panel-meta">v0.1.0 · 0x7c4e···b82f · <span class="ok">valid</span></div>
+          </div>
+          <div class="evidence-grid">
+            <div class="evidence-photo">
+              <div class="photo-img p1"></div>
+              <div class="photo-meta"><span>01/04</span><span>before · crown w</span></div>
+            </div>
+            <div class="evidence-photo">
+              <div class="photo-img p2"></div>
+              <div class="photo-meta"><span>02/04</span><span>root collar</span></div>
+            </div>
+            <div class="evidence-photo">
+              <div class="photo-img p3"></div>
+              <div class="photo-meta"><span>03/04</span><span>after · crown w</span></div>
+            </div>
+            <div class="evidence-photo">
+              <div class="photo-img p4"></div>
+              <div class="photo-meta"><span>04/04</span><span>stake install</span></div>
+            </div>
+          </div>
+          <div class="checks-grid">
+            <div class="check-row"><span class="check-mark">✓</span> 3 / 3 crew attestations</div>
+            <div class="check-row"><span class="check-mark">✓</span> Check-ins temporally ordered</div>
+            <div class="check-row"><span class="check-mark">✓</span> Health check before & after</div>
+            <div class="check-row"><span class="check-mark">✓</span> Execution within scheduled window</div>
+            <div class="check-row"><span class="check-mark">✓</span> Timestamps RFC 3161 verified</div>
+            <div class="check-row pending"><span class="check-mark">○</span> Validation attestation (pending)</div>
+          </div>
+        </div>
+
+      </div>
+
+      <aside class="ledger-col">
+        <div class="ledger-card">
+          <div class="ledger-header">
+            <div class="ledger-title">Chain ledger</div>
+            <div class="ledger-sub">Base Sepolia · EAS schema v2</div>
+          </div>
+          <ul class="ledger-list">
+            <li class="ledger-row">
+              <div class="ledger-stage">Draft attestation</div>
+              <div class="ledger-time">07 APR · 14:22 UTC</div>
+              <div class="ledger-hash">0x4a1e···9b42</div>
+            </li>
+            <li class="ledger-row">
+              <div class="ledger-stage">Schedule published</div>
+              <div class="ledger-time">09 APR · 09:04 UTC</div>
+              <div class="ledger-hash">0xf8c2···31a0</div>
+            </li>
+            <li class="ledger-row">
+              <div class="ledger-stage">Crew check-in ×3</div>
+              <div class="ledger-time">12 APR · 08:30 UTC</div>
+              <div class="ledger-hash">0x2d5b···7e91</div>
+            </li>
+            <li class="ledger-row">
+              <div class="ledger-stage">Health check before</div>
+              <div class="ledger-time">12 APR · 08:42 UTC</div>
+              <div class="ledger-hash">0x6a87···4c20</div>
+            </li>
+            <li class="ledger-row">
+              <div class="ledger-stage">Gardener report ×3</div>
+              <div class="ledger-time">12 APR · 17:15 UTC</div>
+              <div class="ledger-hash">0xb194···d8f3</div>
+            </li>
+            <li class="ledger-row">
+              <div class="ledger-stage">Health check after</div>
+              <div class="ledger-time">12 APR · 17:48 UTC</div>
+              <div class="ledger-hash">0x3fd0···a29c</div>
+            </li>
+            <li class="ledger-row pending">
+              <div class="ledger-stage">Validation attestation</div>
+              <div class="ledger-time">pending</div>
+              <div class="ledger-hash">awaiting signature</div>
+            </li>
+            <li class="ledger-row pending">
+              <div class="ledger-stage">Bundle publication</div>
+              <div class="ledger-time">pending</div>
+              <div class="ledger-hash">awaiting validation</div>
+            </li>
+          </ul>
+          <div class="ledger-stats">
+            <span><span class="v">8</span> events</span>
+            <span><span class="v">6</span> confirmed</span>
+            <span><span class="v">2</span> queued</span>
+          </div>
+        </div>
+      </aside>
+
+    </div>
+
+  </main>
+
+</body>
+</html>

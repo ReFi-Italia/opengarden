@@ -1,7 +1,15 @@
 import { OpenGardenError, OpenGardenErrorCode } from "./errors";
+import { decodeActivityData } from "./schemas/encoders";
+import type { ScheduleActivityPayload } from "./types/attestation";
 import type { FinalizeInterventionInput } from "./types/evidence";
 import type { TimestampedOffChainResult } from "./types/results";
-import { toUnixSeconds } from "./utils";
+import {
+	hashActivityPayload,
+	hashInterventionScope,
+	sameAddress,
+	sameBytes32,
+	toUnixSeconds,
+} from "./utils";
 
 // --- Shared metadata helpers ---
 
@@ -25,6 +33,7 @@ export function extractAttestationMetadata(
 	const attester =
 		(sig.signer as string | undefined) ??
 		(message.attester as string | undefined) ??
+		result.attester ??
 		"";
 	const refUID = (message.refUID as string | undefined) ?? "";
 	return {
@@ -36,25 +45,17 @@ export function extractAttestationMetadata(
 	};
 }
 
-function sameAddress(a: string, b: string): boolean {
-	return a.toLowerCase() === b.toLowerCase();
-}
-
-function sameBytes32(a: string, b: string): boolean {
-	return a.toLowerCase() === b.toLowerCase();
-}
-
-// --- Per-step pre-flight primitives (Finding B) ---
+// --- Per-step pre-flight primitives ---
 
 /**
- * Asserts that a persisted attestation's signer matches an expected wallet
- * address. Use before issuing a follow-up attestation (checkout, report) to
+ * Asserts that a persisted activity's signer matches an expected wallet
+ * address. Use before issuing a follow-up activity (checkout, report) to
  * prove the same wallet is about to sign a continuation of the same session.
  */
 export function assertAttesterMatches(
 	result: TimestampedOffChainResult,
 	expectedAttester: string,
-	descriptor = "attestation",
+	descriptor = "activity",
 ): void {
 	const { attester, uid } = extractAttestationMetadata(result);
 	if (!attester) {
@@ -72,15 +73,13 @@ export function assertAttesterMatches(
 }
 
 /**
- * Asserts that a persisted attestation's refUID points at the expected parent
- * attestation. Use before signing a downstream attestation whose lifecycle
- * depends on the parent (e.g. confirming a checkin points at the right
- * scheduled intervention before issuing a checkout for it).
+ * Asserts that a persisted activity's refUID points at the expected parent
+ * (intervention scope hash or Area UID depending on activity type).
  */
 export function assertRefUIDMatches(
 	result: TimestampedOffChainResult,
 	expectedRefUID: string,
-	descriptor = "attestation",
+	descriptor = "activity",
 ): void {
 	const { refUID, uid } = extractAttestationMetadata(result);
 	if (!refUID) {
@@ -97,217 +96,245 @@ export function assertRefUIDMatches(
 	}
 }
 
-// --- FinalizeInterventionInput validator (Finding A) ---
+// --- FinalizeInterventionInput validator ---
 
 export enum FinalizeInputIssueCode {
 	EMPTY_CREW = "EMPTY_CREW",
 	EXECUTION_DATE_BEFORE_SCHEDULE = "EXECUTION_DATE_BEFORE_SCHEDULE",
-	SCHEDULE_REFUID_MISMATCH = "SCHEDULE_REFUID_MISMATCH",
-	CHECKIN_REFUID_MISMATCH = "CHECKIN_REFUID_MISMATCH",
-	CHECKOUT_REFUID_MISMATCH = "CHECKOUT_REFUID_MISMATCH",
-	REPORT_REFUID_MISMATCH = "REPORT_REFUID_MISMATCH",
-	VALIDATION_REFUID_MISMATCH = "VALIDATION_REFUID_MISMATCH",
-	HEALTHCHECK_BEFORE_REFUID_MISMATCH = "HEALTHCHECK_BEFORE_REFUID_MISMATCH",
-	HEALTHCHECK_AFTER_REFUID_MISMATCH = "HEALTHCHECK_AFTER_REFUID_MISMATCH",
-	CREW_ATTESTER_MISMATCH = "CREW_ATTESTER_MISMATCH",
+	SCHEDULE_SCOPE_MISMATCH = "SCHEDULE_SCOPE_MISMATCH",
+	ACTIVITY_SCOPE_MISMATCH = "ACTIVITY_SCOPE_MISMATCH",
+	SCHEDULE_AREA_MISMATCH = "SCHEDULE_AREA_MISMATCH",
+	CREW_CHAIN_INCOMPLETE = "CREW_CHAIN_INCOMPLETE",
 	TEMPORAL_ORDER_VIOLATION = "TEMPORAL_ORDER_VIOLATION",
-	HEALTHCHECK_BEFORE_OUT_OF_BRACKET = "HEALTHCHECK_BEFORE_OUT_OF_BRACKET",
-	HEALTHCHECK_AFTER_OUT_OF_BRACKET = "HEALTHCHECK_AFTER_OUT_OF_BRACKET",
-	VALIDATION_NOT_APPROVED = "VALIDATION_NOT_APPROVED",
+	PAYLOAD_HASH_MISMATCH = "PAYLOAD_HASH_MISMATCH",
 }
 
 export interface FinalizeInputIssue {
 	code: FinalizeInputIssueCode;
 	message: string;
-	/** Crew member index (0-based) if the issue is member-specific. */
-	crewIndex?: number;
-	/** Attestation UID where the issue was detected, when applicable. */
+	/** Signer wallet address when the issue is signer-specific. */
+	signer?: string;
+	/** Activity UID where the issue was detected, when applicable. */
 	uid?: string;
 }
 
+interface CrewChain {
+	signer: string;
+	checkin?: TimestampedOffChainResult;
+	checkout?: TimestampedOffChainResult;
+	report?: TimestampedOffChainResult;
+	extras: TimestampedOffChainResult[];
+}
+
+function groupCrewActivities(
+	activities: readonly TimestampedOffChainResult[],
+): Map<string, CrewChain> {
+	const groups = new Map<string, CrewChain>();
+	for (const a of activities) {
+		if (a.type !== "checkin" && a.type !== "checkout" && a.type !== "report") {
+			continue;
+		}
+		const key = a.attester.toLowerCase();
+		let g = groups.get(key);
+		if (!g) {
+			g = { signer: a.attester, extras: [] };
+			groups.set(key, g);
+		}
+		if (a.type === "checkin") {
+			if (g.checkin) g.extras.push(a);
+			else g.checkin = a;
+		} else if (a.type === "checkout") {
+			if (g.checkout) g.extras.push(a);
+			else g.checkout = a;
+		} else {
+			if (g.report) g.extras.push(a);
+			else g.report = a;
+		}
+	}
+	return groups;
+}
+
 /**
- * Pure, side-effect-free validator for a `FinalizeInterventionInput`. Runs the
- * full spec §4.2 temporal-integrity check plus wiring checks (refUIDs, same
- * attester per crew member, validation.approved). Returns a flat list of
- * issues — empty means the input is ready to finalize.
- *
- * This is the same check `finalizeIntervention` runs internally, exposed as a
- * standalone function so UIs can preview readiness and surface problems without
- * attempting to upload the evidence bundle or publish on-chain.
+ * Pure, side-effect-free validator for a `FinalizeInterventionInput`. Runs
+ * the full spec §4.2 temporal-integrity check plus wiring / payload-integrity
+ * checks. Returns a flat list of issues — empty means the input is ready to
+ * finalize.
  */
 export function validateFinalizeInput(
 	input: FinalizeInterventionInput,
 ): FinalizeInputIssue[] {
 	const issues: FinalizeInputIssue[] = [];
 
-	if (input.crew.length === 0) {
+	if (input.schedule.type !== "schedule") {
 		issues.push({
-			code: FinalizeInputIssueCode.EMPTY_CREW,
-			message: "Intervention has no crew members",
+			code: FinalizeInputIssueCode.SCHEDULE_SCOPE_MISMATCH,
+			message: `Expected schedule activity, got type="${input.schedule.type}"`,
+			uid: input.schedule.uid,
 		});
 		return issues;
 	}
 
-	const scheduled = extractAttestationMetadata(input.scheduled);
-	const validation = extractAttestationMetadata(input.validation);
-	const executionDate = toUnixSeconds(input.executionDate);
-	const scheduledTs = BigInt(scheduled.onchainTimestamp);
+	if (input.crewActivities.length === 0) {
+		issues.push({
+			code: FinalizeInputIssueCode.EMPTY_CREW,
+			message: "Intervention has no crew activities",
+		});
+		return issues;
+	}
 
-	if (scheduledTs > executionDate) {
+	const expectedScope = hashInterventionScope(input.interventionId);
+	const scheduleMeta = extractAttestationMetadata(input.schedule);
+	const executionDate = toUnixSeconds(input.executionDate);
+	const scheduleTs = BigInt(scheduleMeta.onchainTimestamp);
+
+	if (scheduleTs > executionDate) {
 		issues.push({
 			code: FinalizeInputIssueCode.EXECUTION_DATE_BEFORE_SCHEDULE,
-			message: `Execution date (${executionDate}) must not be before the scheduled on-chain timestamp (${scheduledTs})`,
-			uid: input.scheduled.uid,
+			message: `Execution date (${executionDate}) must not be before the schedule's on-chain timestamp (${scheduleTs})`,
+			uid: input.schedule.uid,
 		});
 	}
 
-	if (scheduled.refUID && !sameBytes32(scheduled.refUID, input.areaUID)) {
+	if (scheduleMeta.refUID && !sameBytes32(scheduleMeta.refUID, expectedScope)) {
 		issues.push({
-			code: FinalizeInputIssueCode.SCHEDULE_REFUID_MISMATCH,
-			message: `Scheduled attestation refUID (${scheduled.refUID}) does not match areaUID (${input.areaUID.toLowerCase()})`,
-			uid: input.scheduled.uid,
+			code: FinalizeInputIssueCode.SCHEDULE_SCOPE_MISMATCH,
+			message: `Schedule activity refUID (${scheduleMeta.refUID}) does not match interventionScopeHash (${expectedScope})`,
+			uid: input.schedule.uid,
 		});
 	}
 
-	const checkinTimestamps: number[] = [];
-	const checkoutTimestamps: number[] = [];
-	const reportTimestamps: number[] = [];
+	const schedulePayload = input.schedule.payload as unknown as
+		| ScheduleActivityPayload
+		| undefined;
+	if (
+		schedulePayload?.areaUID &&
+		!sameBytes32(schedulePayload.areaUID, input.areaUID)
+	) {
+		issues.push({
+			code: FinalizeInputIssueCode.SCHEDULE_AREA_MISMATCH,
+			message: `Schedule payload areaUID (${schedulePayload.areaUID}) does not match input.areaUID (${input.areaUID.toLowerCase()})`,
+			uid: input.schedule.uid,
+		});
+	}
 
-	for (let i = 0; i < input.crew.length; i++) {
-		const member = input.crew[i];
-		const ci = extractAttestationMetadata(member.checkin);
-		const co = extractAttestationMetadata(member.checkout);
-		const rp = extractAttestationMetadata(member.report);
+	// Payload hash integrity — recompute keccak256(canonicalJSON(payload))
+	// and compare against payloadHash decoded from the signed data. This
+	// ensures the writer hasn't drifted between the payload object and the
+	// hash committed on-chain.
+	assertPayloadHash(input.schedule, issues);
 
-		if (ci.attester && co.attester && ci.attester !== co.attester) {
-			issues.push({
-				code: FinalizeInputIssueCode.CREW_ATTESTER_MISMATCH,
-				message: `Crew member ${i}: checkin attester ${ci.attester} does not match checkout attester ${co.attester}`,
-				crewIndex: i,
-			});
-		}
-		if (ci.attester && rp.attester && ci.attester !== rp.attester) {
-			issues.push({
-				code: FinalizeInputIssueCode.CREW_ATTESTER_MISMATCH,
-				message: `Crew member ${i}: checkin attester ${ci.attester} does not match report attester ${rp.attester}`,
-				crewIndex: i,
-			});
-		}
-
-		if (ci.refUID && !sameBytes32(ci.refUID, input.scheduled.uid)) {
-			issues.push({
-				code: FinalizeInputIssueCode.CHECKIN_REFUID_MISMATCH,
-				message: `Crew member ${i}: checkin refUID (${ci.refUID}) does not match scheduled UID (${input.scheduled.uid.toLowerCase()})`,
-				crewIndex: i,
-				uid: ci.uid,
-			});
-		}
-		if (co.refUID && !sameBytes32(co.refUID, ci.uid)) {
-			issues.push({
-				code: FinalizeInputIssueCode.CHECKOUT_REFUID_MISMATCH,
-				message: `Crew member ${i}: checkout refUID (${co.refUID}) does not match this member's checkin UID (${ci.uid.toLowerCase()})`,
-				crewIndex: i,
-				uid: co.uid,
-			});
-		}
-		if (rp.refUID && !sameBytes32(rp.refUID, input.scheduled.uid)) {
-			issues.push({
-				code: FinalizeInputIssueCode.REPORT_REFUID_MISMATCH,
-				message: `Crew member ${i}: report refUID (${rp.refUID}) does not match scheduled UID (${input.scheduled.uid.toLowerCase()})`,
-				crewIndex: i,
-				uid: rp.uid,
-			});
-		}
-
+	// Walk every crew activity: scope match + payload integrity.
+	for (const activity of input.crewActivities) {
 		if (
-			!(
-				ci.onchainTimestamp < co.onchainTimestamp &&
-				co.onchainTimestamp < rp.onchainTimestamp
-			)
+			activity.type !== "checkin" &&
+			activity.type !== "checkout" &&
+			activity.type !== "report"
 		) {
 			issues.push({
-				code: FinalizeInputIssueCode.TEMPORAL_ORDER_VIOLATION,
-				message: `Crew member ${i}: on-chain timestamps must satisfy checkin < checkout < report, got ${ci.onchainTimestamp} / ${co.onchainTimestamp} / ${rp.onchainTimestamp}`,
-				crewIndex: i,
+				code: FinalizeInputIssueCode.ACTIVITY_SCOPE_MISMATCH,
+				message: `Crew activity has unexpected type "${activity.type}"`,
+				uid: activity.uid,
+				signer: activity.attester,
+			});
+			continue;
+		}
+		const meta = extractAttestationMetadata(activity);
+		if (meta.refUID && !sameBytes32(meta.refUID, expectedScope)) {
+			issues.push({
+				code: FinalizeInputIssueCode.ACTIVITY_SCOPE_MISMATCH,
+				message: `${activity.type} (uid=${activity.uid}) refUID ${meta.refUID} does not match interventionScopeHash ${expectedScope}`,
+				uid: activity.uid,
+				signer: activity.attester,
 			});
 		}
-
-		checkinTimestamps.push(ci.onchainTimestamp);
-		checkoutTimestamps.push(co.onchainTimestamp);
-		reportTimestamps.push(rp.onchainTimestamp);
+		assertPayloadHash(activity, issues);
 	}
 
-	const minCheckin = Math.min(...checkinTimestamps);
-	const maxCheckout = Math.max(...checkoutTimestamps);
-	const maxReport = Math.max(...reportTimestamps);
-
-	if (scheduled.onchainTimestamp >= minCheckin) {
+	// Per-signer crew chain completeness + temporal order.
+	const crew = groupCrewActivities(input.crewActivities);
+	if (crew.size === 0) {
 		issues.push({
-			code: FinalizeInputIssueCode.TEMPORAL_ORDER_VIOLATION,
-			message: `Scheduled on-chain timestamp (${scheduled.onchainTimestamp}) must precede the earliest checkin (${minCheckin})`,
-			uid: input.scheduled.uid,
+			code: FinalizeInputIssueCode.CREW_CHAIN_INCOMPLETE,
+			message:
+				"No crew members found (need at least one checkin/checkout/report triple)",
 		});
 	}
-
-	if (maxReport >= validation.onchainTimestamp) {
-		issues.push({
-			code: FinalizeInputIssueCode.TEMPORAL_ORDER_VIOLATION,
-			message: `Latest report timestamp (${maxReport}) must precede validation timestamp (${validation.onchainTimestamp})`,
-			uid: input.validation.uid,
-		});
-	}
-
-	if (validation.refUID && !sameBytes32(validation.refUID, input.scheduled.uid)) {
-		issues.push({
-			code: FinalizeInputIssueCode.VALIDATION_REFUID_MISMATCH,
-			message: `Validation refUID (${validation.refUID}) does not match scheduled UID (${input.scheduled.uid.toLowerCase()})`,
-			uid: input.validation.uid,
-		});
-	}
-
-	if (!input.validation.approved) {
-		issues.push({
-			code: FinalizeInputIssueCode.VALIDATION_NOT_APPROVED,
-			message: "Cannot finalize an intervention whose validation is not approved",
-			uid: input.validation.uid,
-		});
-	}
-
-	if (input.healthcheckBefore) {
-		const hb = extractAttestationMetadata(input.healthcheckBefore);
-		if (hb.refUID && !sameBytes32(hb.refUID, input.areaUID)) {
+	for (const [signerKey, group] of crew) {
+		if (!group.checkin) {
 			issues.push({
-				code: FinalizeInputIssueCode.HEALTHCHECK_BEFORE_REFUID_MISMATCH,
-				message: `Healthcheck-before refUID (${hb.refUID}) does not match areaUID (${input.areaUID.toLowerCase()})`,
-				uid: input.healthcheckBefore.uid,
+				code: FinalizeInputIssueCode.CREW_CHAIN_INCOMPLETE,
+				message: `Signer ${signerKey} has no checkin`,
+				signer: signerKey,
 			});
 		}
-		if (hb.onchainTimestamp >= minCheckin) {
+		if (!group.checkout) {
 			issues.push({
-				code: FinalizeInputIssueCode.HEALTHCHECK_BEFORE_OUT_OF_BRACKET,
-				message: `Healthcheck-before timestamp (${hb.onchainTimestamp}) must precede the earliest checkin (${minCheckin})`,
-				uid: input.healthcheckBefore.uid,
+				code: FinalizeInputIssueCode.CREW_CHAIN_INCOMPLETE,
+				message: `Signer ${signerKey} has no checkout`,
+				signer: signerKey,
 			});
 		}
-	}
-
-	if (input.healthcheckAfter) {
-		const ha = extractAttestationMetadata(input.healthcheckAfter);
-		if (ha.refUID && !sameBytes32(ha.refUID, input.areaUID)) {
+		if (!group.report) {
 			issues.push({
-				code: FinalizeInputIssueCode.HEALTHCHECK_AFTER_REFUID_MISMATCH,
-				message: `Healthcheck-after refUID (${ha.refUID}) does not match areaUID (${input.areaUID.toLowerCase()})`,
-				uid: input.healthcheckAfter.uid,
+				code: FinalizeInputIssueCode.CREW_CHAIN_INCOMPLETE,
+				message: `Signer ${signerKey} has no report`,
+				signer: signerKey,
 			});
 		}
-		if (ha.onchainTimestamp <= maxCheckout) {
-			issues.push({
-				code: FinalizeInputIssueCode.HEALTHCHECK_AFTER_OUT_OF_BRACKET,
-				message: `Healthcheck-after timestamp (${ha.onchainTimestamp}) must be after the latest checkout (${maxCheckout})`,
-				uid: input.healthcheckAfter.uid,
-			});
+		if (group.checkin && group.checkout && group.report) {
+			const ci = Number(group.checkin.onchainTimestamp);
+			const co = Number(group.checkout.onchainTimestamp);
+			const rp = Number(group.report.onchainTimestamp);
+			if (!(ci < co && co < rp)) {
+				issues.push({
+					code: FinalizeInputIssueCode.TEMPORAL_ORDER_VIOLATION,
+					message: `Signer ${signerKey}: on-chain timestamps must satisfy checkin < checkout < report, got ${ci} / ${co} / ${rp}`,
+					signer: signerKey,
+				});
+			}
+			if (!(scheduleMeta.onchainTimestamp < ci)) {
+				issues.push({
+					code: FinalizeInputIssueCode.TEMPORAL_ORDER_VIOLATION,
+					message: `Schedule on-chain timestamp (${scheduleMeta.onchainTimestamp}) must precede signer ${signerKey}'s checkin (${ci})`,
+					signer: signerKey,
+				});
+			}
 		}
 	}
 
 	return issues;
+}
+
+function assertPayloadHash(
+	result: TimestampedOffChainResult,
+	issues: FinalizeInputIssue[],
+): void {
+	// Compare the caller-supplied payload against the payloadHash embedded in
+	// the signed ABI data. A mismatch means the writer mutated the payload
+	// object after signing — the bundle would fail read-side verification.
+	const message = result.signedAttestation.message as
+		| Record<string, unknown>
+		| undefined;
+	const data = message?.data as string | undefined;
+	if (!data) return;
+
+	let committedHash: string;
+	try {
+		committedHash = decodeActivityData(data).payloadHash;
+	} catch {
+		// If the data field isn't decodable as an Activity (truncated, wrong
+		// schema, etc.) we skip the integrity check — a later stage would catch
+		// this anyway.
+		return;
+	}
+
+	const computed = hashActivityPayload(result.payload);
+	if (committedHash.toLowerCase() !== computed.toLowerCase()) {
+		issues.push({
+			code: FinalizeInputIssueCode.PAYLOAD_HASH_MISMATCH,
+			message: `${result.type} activity (uid=${result.uid}) payload hashes to ${computed}, signed data commits to ${committedHash}`,
+			uid: result.uid,
+			signer: result.attester,
+		});
+	}
 }

@@ -1,47 +1,5 @@
-import type { AreaType, InterventionType, MilestoneLevel } from "./enums";
 import type { VerificationCheck } from "../verification";
-
-export interface ScheduledIntervention {
-	uid: string;
-	areaUID: string;
-	interventionId: string;
-	interventionType: InterventionType;
-	scheduledDate: bigint;
-	estimatedMinutes: number;
-	description: string;
-	/** On-chain bytes32 hash of the commissioning identifier (or ZERO_BYTES32 for volunteer work). */
-	commissionRef: string;
-	crewSize: number;
-	attester: string;
-	/** Crew lead wallet (or ZERO_ADDRESS for unassigned schedules). */
-	recipient: string;
-	time: bigint;
-}
-
-export interface Healthcheck {
-	uid: string;
-	areaUID: string;
-	/** UID of the linked ScheduledIntervention, or ZERO_BYTES32 for standalone monitoring. */
-	interventionUID: string;
-	healthScore: number;
-	photoHash: string;
-	assessorNotes: string;
-	interventionNeeded: boolean;
-	/** On-chain bytes32 hash of the assessor staff identifier (or ZERO_BYTES32 for organizational attribution). */
-	assessorId: string;
-	attester: string;
-	time: bigint;
-}
-
-export interface CitizenFeedback {
-	uid: string;
-	areaUID: string;
-	rating: number;
-	comment: string;
-	photoHash: string;
-	attester: string;
-	time: bigint;
-}
+import type { AreaType, InterventionType, MilestoneLevel } from "./enums";
 
 export interface Area {
 	uid: string;
@@ -51,23 +9,23 @@ export interface Area {
 	areaType: AreaType;
 	name: string;
 	municipality: string;
-	metadataHash: string;
+	/** Content-addressable hash of the area's boundary payload (ZERO_BYTES32 if none). */
+	boundariesHash: string;
+	/** Inline JSON escape hatch for small extras (empty string if none). See spec §9.6. */
+	metadata: string;
 	attester: string;
 	time: bigint;
 }
 
 export interface Intervention {
 	uid: string;
+	/** Sourced from the EAS `refUID` slot of the on-chain attestation, not from schema data. */
 	areaUID: string;
 	interventionId: string;
 	interventionType: InterventionType;
 	executionDate: bigint;
-	healthBefore: number;
-	healthAfter: number;
 	commissionRef: string;
 	evidenceBundleHash: string;
-	offchainCount: number;
-	crewSize: number;
 	attester: string;
 	recipient: string;
 	time: bigint;
@@ -79,7 +37,6 @@ export interface Milestone {
 	totalInterventions: number;
 	totalValidated: number;
 	avgHealthImprovement: number;
-	skillTier: string;
 	achievedAt: bigint;
 	evidenceRoot: string;
 	recipient: string;
@@ -87,15 +44,148 @@ export interface Milestone {
 	time: bigint;
 }
 
+// --- Activity payload shapes (spec §3.2) ---
+
+export interface ScheduleActivityPayload {
+	interventionId: string;
+	/** UID of the AreaRegistration this schedule belongs to. Carried in payload because the Activity's refUID slot holds the intervention scope hash. */
+	areaUID: string;
+	interventionType: InterventionType;
+	/** Planned execution date, Unix seconds. */
+	scheduledDate: number;
+	/** Wall-clock duration in minutes including planned breaks (crew-level). `0` = unspecified. */
+	plannedDuration: number;
+	/** Planned task codes. Union of crew `report.tasksCompleted` is expected to cover this set. */
+	tasksPlanned: string[];
+	description: string;
+	/** Bytes32 hash of commissioning entity ID (`hashIdentifier` from §9.1). `ZERO_BYTES32` = volunteer. */
+	commissionRef: string;
+	crewSize: number;
+}
+
+export interface CheckinActivityPayload {
+	/** Microdegrees (int32) — GPS latitude at check-in. Optional. Both latitude and longitude MUST be present together or both absent. */
+	latitude?: number;
+	/** Microdegrees (int32) — GPS longitude at check-in. Optional. */
+	longitude?: number;
+}
+
+export interface CheckoutActivityPayload {
+	/** Microdegrees (int32) — GPS latitude at check-out. Optional. Both latitude and longitude MUST be present together or both absent. */
+	latitude?: number;
+	/** Microdegrees (int32) — GPS longitude at check-out. Optional. */
+	longitude?: number;
+}
+
+export interface ReportActivityPayload {
+	/** Per-gardener completed task codes. Empty array if none. */
+	tasksCompleted: string[];
+	/** Per-gardener active work time in minutes, excluding breaks. `0` if unreported. */
+	reportedEffort: number;
+	/** keccak256 bytes32 hex of the after-work evidence bytes (single file or canonical manifest per §9.2). `ZERO_BYTES32` if none. */
+	mediaHash: string;
+	notes: string;
+}
+
+export interface HealthcheckActivityPayload {
+	/** 1-10 scale, 10 is best. */
+	healthScore: number;
+	/** keccak256 bytes32 hex of the condition-documentation bytes (single file or canonical manifest per §9.2). `ZERO_BYTES32` if none. */
+	mediaHash: string;
+	notes: string;
+	/** App-specific extras (weather, annotations, seasonal context). Omit for none. SHOULD carry a `v` key for shape versioning. */
+	metadata?: Record<string, unknown> | null;
+}
+
+// --- Decoded Activity shape (as returned by reads / stored in bundles) ---
+
+interface BaseActivity {
+	uid: string;
+	/** Ethereum address of the wallet that signed this activity. Authoritative identity claim. */
+	signer: string;
+	/** Self-reported Unix seconds from the EIP-712 envelope's `message.time`. */
+	claimedTimestamp: number;
+	/** Authoritative on-chain block timestamp (Unix seconds). */
+	onchainTimestamp: number;
+	/** Full EIP-712 signed attestation, verbatim. See §5.2. */
+	signedAttestation: Record<string, unknown>;
+}
+
+export type ScheduleActivity = BaseActivity & {
+	type: "schedule";
+	payload: ScheduleActivityPayload;
+};
+
+export type CheckinActivity = BaseActivity & {
+	type: "checkin";
+	payload: CheckinActivityPayload;
+};
+
+export type CheckoutActivity = BaseActivity & {
+	type: "checkout";
+	payload: CheckoutActivityPayload;
+};
+
+export type ReportActivity = BaseActivity & {
+	type: "report";
+	payload: ReportActivityPayload;
+};
+
+export type HealthcheckActivity = BaseActivity & {
+	type: "healthcheck";
+	payload: HealthcheckActivityPayload;
+};
+
+/** Lifecycle activities that appear inside an intervention evidence bundle (§5.2). */
+export type LifecycleActivity =
+	| ScheduleActivity
+	| CheckinActivity
+	| CheckoutActivity
+	| ReportActivity;
+
+/** Any activity type — lifecycle plus healthcheck. Healthcheck is area-scoped and does NOT appear in intervention bundles. */
+export type Activity = LifecycleActivity | HealthcheckActivity;
+
 export interface EvidenceBundleVerification {
 	valid: boolean;
-	attestationCount: number;
-	expectedCount: number;
-	temporalOrderValid: boolean;
+	/** Protocol tier — `keccak256(bundleBytes)` matches the on-chain `evidenceBundleHash`. Caller-supplied bytes are authentic for this Intervention. */
+	bundleHashValid: boolean;
+	/** Protocol tier — bundle version is understood. */
+	bundleVersionValid: boolean;
+	/** Protocol tier — every signed attestation's EIP-712 signature recovers to its claimed signer. */
+	signaturesValid: boolean;
+	/** Protocol tier — every activity's `payload` canonicalizes to the signed `payloadHash`. */
+	payloadIntegrityValid: boolean;
+	/** Protocol tier — bundle's on-chain timestamps match `EAS.getTimestamp`. */
 	timestampsVerified: boolean;
-	healthcheckOrderValid: boolean;
+	/** Policy tier — every lifecycle entry's `refUID` equals `keccak256(interventionId)`. */
+	interventionScopeValid: boolean;
+	/** Policy tier — strict `T_schedule < T_checkin < T_checkout < T_report` per crew signer. */
+	temporalOrderValid: boolean;
+	/** Policy tier — `executionDate` sits between schedule and publication timestamps. */
 	executionDateBracketed: boolean;
-	validationApproved: boolean;
-	/** Flat per-check breakdown, in the order the SDK runs them. Useful for rendering "X of N integrity checks passed" UX. */
+	/** Flat per-check breakdown, in the order the SDK runs them. */
 	checks: VerificationCheck[];
+}
+
+// --- Type guards ---
+
+export function isScheduleActivity(a: Activity): a is ScheduleActivity {
+	return a.type === "schedule";
+}
+
+export function isCheckinActivity(a: Activity): a is CheckinActivity {
+	return a.type === "checkin";
+}
+
+export function isCheckoutActivity(a: Activity): a is CheckoutActivity {
+	return a.type === "checkout";
+}
+
+export function isReportActivity(a: Activity): a is ReportActivity {
+	return a.type === "report";
+}
+
+export function isHealthcheckActivity(a: Activity): a is HealthcheckActivity {
+	return a.type === "healthcheck";
 }

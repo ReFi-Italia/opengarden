@@ -6,7 +6,13 @@
 		"useIgnoreFile": true
 	},
 	"files": {
-		"ignoreUnknown": false
+		"ignoreUnknown": false,
+		"includes": [
+			"**",
+			"!**/payload-types.ts",
+			"!**/payload-generated-schema.ts",
+			"!**/app/(payload)/**/importMap.js"
+		]
 	},
 	"formatter": {
 		"enabled": true,

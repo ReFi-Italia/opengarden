@@ -1,32 +1,43 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { ZERO_BYTES32 } from "../src/constants";
 import { OpenGardenError, OpenGardenErrorCode } from "../src/errors";
 import {
-	encodeAdminValidation,
+	buildCheckinPayload,
+	buildCheckoutPayload,
+	buildHealthcheckPayload,
+	buildReportPayload,
+	buildSchedulePayload,
 	encodeAreaRegistration,
-	encodeCitizenFeedback,
-	encodeGardenerCheckin,
-	encodeGardenerCheckout,
 	encodeGardenerMilestone,
-	encodeGardenerReport,
-	encodeHealthcheck,
-	encodePublishedIntervention,
-	encodeScheduledIntervention,
+	encodeIntervention,
+	initEncoders,
 } from "../src/schemas/encoders";
-import { AreaType, InterventionType, MilestoneLevel } from "../src/types/enums";
+import {
+	AreaType,
+	InterventionType,
+	MilestoneLevel,
+} from "../src/types/enums";
 import { MOCK_SIGNER_ADDRESS } from "./_helpers";
+
+beforeAll(async () => {
+	await initEncoders();
+});
 
 function expectInvalidInput(fn: () => unknown, fieldName: string) {
 	try {
 		fn();
 	} catch (err) {
 		expect(err).toBeInstanceOf(OpenGardenError);
-		expect((err as OpenGardenError).code).toBe(OpenGardenErrorCode.INVALID_INPUT);
+		expect((err as OpenGardenError).code).toBe(
+			OpenGardenErrorCode.INVALID_INPUT,
+		);
 		expect((err as OpenGardenError).message).toContain(fieldName);
 		return;
 	}
-	throw new Error("Expected encoder to throw INVALID_INPUT");
+	throw new Error(`Expected function to throw INVALID_INPUT for "${fieldName}"`);
 }
+
+// --- On-chain schemas ---
 
 const validArea = {
 	areaId: "RM-PIGN-042",
@@ -35,33 +46,128 @@ const validArea = {
 	areaType: AreaType.PublicGreenSpace,
 	name: "Test",
 	municipality: "RM-I",
-	metadataHash: null,
+	boundary: null,
+	metadata: "",
 };
 
-const validPublished = {
+describe("AreaRegistration validator", () => {
+	it("accepts the valid fixture", () => {
+		expect(() => encodeAreaRegistration(validArea)).not.toThrow();
+	});
+
+	it("rejects areaType outside the enum", () => {
+		expectInvalidInput(
+			() => encodeAreaRegistration({ ...validArea, areaType: 99 as AreaType }),
+			"areaType",
+		);
+	});
+
+	it("rejects negative areaType", () => {
+		expectInvalidInput(
+			() => encodeAreaRegistration({ ...validArea, areaType: -1 as AreaType }),
+			"areaType",
+		);
+	});
+
+	it("accepts latitude at the boundary (±90)", () => {
+		expect(() =>
+			encodeAreaRegistration({ ...validArea, latitude: 90 }),
+		).not.toThrow();
+		expect(() =>
+			encodeAreaRegistration({ ...validArea, latitude: -90 }),
+		).not.toThrow();
+	});
+
+	it("rejects latitude just past the boundary", () => {
+		expectInvalidInput(
+			() => encodeAreaRegistration({ ...validArea, latitude: 91 }),
+			"latitude",
+		);
+		expectInvalidInput(
+			() => encodeAreaRegistration({ ...validArea, latitude: -91 }),
+			"latitude",
+		);
+	});
+
+	it("accepts longitude at the boundary (±180)", () => {
+		expect(() =>
+			encodeAreaRegistration({ ...validArea, longitude: 180 }),
+		).not.toThrow();
+		expect(() =>
+			encodeAreaRegistration({ ...validArea, longitude: -180 }),
+		).not.toThrow();
+	});
+
+	it("rejects longitude just past the boundary", () => {
+		expectInvalidInput(
+			() => encodeAreaRegistration({ ...validArea, longitude: 181 }),
+			"longitude",
+		);
+		expectInvalidInput(
+			() => encodeAreaRegistration({ ...validArea, longitude: -181 }),
+			"longitude",
+		);
+	});
+
+	it("rejects non-finite latitude (NaN, Infinity)", () => {
+		expectInvalidInput(
+			() => encodeAreaRegistration({ ...validArea, latitude: Number.NaN }),
+			"latitude",
+		);
+		expectInvalidInput(
+			() => encodeAreaRegistration({ ...validArea, latitude: Infinity }),
+			"latitude",
+		);
+	});
+});
+
+const validIntervention = {
 	areaUID: ZERO_BYTES32,
 	interventionId: "INT-001",
 	interventionType: InterventionType.RoutineMaintenance,
 	executionDate: 1709251200n,
-	healthBefore: 3,
-	healthAfter: 8,
 	commissionId: null,
 	evidenceBundleHash: ZERO_BYTES32,
-	offchainCount: 5,
-	crewSize: 1,
 };
 
-const validScheduled = {
-	areaUID: ZERO_BYTES32,
-	interventionId: "INT-001",
-	interventionType: InterventionType.RoutineMaintenance,
-	crewLead: MOCK_SIGNER_ADDRESS,
-	crewSize: 2,
-	scheduledDate: 1709251200n,
-	estimatedMinutes: 90,
-	description: "Test",
-	commissionId: null,
-};
+describe("Intervention validator", () => {
+	it("accepts the valid fixture", () => {
+		expect(() => encodeIntervention(validIntervention)).not.toThrow();
+	});
+
+	it("rejects interventionType outside the enum", () => {
+		expectInvalidInput(
+			() =>
+				encodeIntervention({
+					...validIntervention,
+					interventionType: 99 as InterventionType,
+				}),
+			"interventionType",
+		);
+	});
+
+	it("rejects empty interventionId", () => {
+		expectInvalidInput(
+			() => encodeIntervention({ ...validIntervention, interventionId: "" }),
+			"interventionId",
+		);
+	});
+
+	it("accepts every valid interventionType enum value", () => {
+		for (const type of [
+			InterventionType.Unspecified,
+			InterventionType.RoutineMaintenance,
+			InterventionType.Restoration,
+			InterventionType.Emergency,
+			InterventionType.Seasonal,
+			InterventionType.NewPlanting,
+		]) {
+			expect(() =>
+				encodeIntervention({ ...validIntervention, interventionType: type }),
+			).not.toThrow();
+		}
+	});
+});
 
 const validMilestone = {
 	recipient: MOCK_SIGNER_ADDRESS,
@@ -69,139 +175,32 @@ const validMilestone = {
 	totalInterventions: 5,
 	totalValidated: 5,
 	avgHealthImprovement: 4,
-	skillTier: "Apprentice",
 	achievedAt: 1709424000n,
 	evidenceRoot: ZERO_BYTES32,
 };
 
-const validCheckin = {
-	interventionUID: ZERO_BYTES32,
-	latitude: 41.89,
-	longitude: 12.4964,
-	timestamp: 1709337600n,
-	photoHash: ZERO_BYTES32,
-};
-
-const validCheckout = {
-	checkinUID: ZERO_BYTES32,
-	timestamp: 1709344800n,
-	actualMinutes: 60,
-};
-
-const validReport = {
-	interventionUID: ZERO_BYTES32,
-	checkoutUID: ZERO_BYTES32,
-	tasksCompleted: "PRUNE,CLEAN",
-	taskCount: 2,
-	photosHash: ZERO_BYTES32,
-	notes: "done",
-};
-
-const validAdminValidation = {
-	scheduleUID: ZERO_BYTES32,
-	approved: true,
-	qualityScore: 8,
-	feedback: "ok",
-	validatorId: null,
-};
-
-const validFeedback = {
-	areaUID: ZERO_BYTES32,
-	rating: 4,
-	comment: "great",
-	photoHash: ZERO_BYTES32,
-};
-
-const validHealthcheck = {
-	areaUID: ZERO_BYTES32,
-	interventionUID: ZERO_BYTES32,
-	healthScore: 6,
-	photoHash: ZERO_BYTES32,
-	assessorNotes: "ok",
-	interventionNeeded: false,
-	assessorId: null,
-};
-
-describe("AreaRegistration validator", () => {
-	it("rejects an areaType outside the enum", () => {
-		expectInvalidInput(
-			() => encodeAreaRegistration({ ...validArea, areaType: 99 as AreaType }),
-			"areaType",
-		);
-	});
-
-	it("rejects latitude out of range", () => {
-		expectInvalidInput(
-			() => encodeAreaRegistration({ ...validArea, latitude: 91 }),
-			"latitude",
-		);
-	});
-
-	it("rejects longitude out of range", () => {
-		expectInvalidInput(
-			() => encodeAreaRegistration({ ...validArea, longitude: 181 }),
-			"longitude",
-		);
-	});
-});
-
-describe("PublishedIntervention validator", () => {
-	it("rejects interventionType outside the enum", () => {
-		expectInvalidInput(
-			() =>
-				encodePublishedIntervention({
-					...validPublished,
-					interventionType: 99 as InterventionType,
-				}),
-			"interventionType",
-		);
-	});
-
-	it("rejects healthBefore above 10", () => {
-		expectInvalidInput(
-			() =>
-				encodePublishedIntervention({ ...validPublished, healthBefore: 11 }),
-			"healthBefore",
-		);
-	});
-
-	it("rejects healthAfter below 0", () => {
-		expectInvalidInput(
-			() =>
-				encodePublishedIntervention({ ...validPublished, healthAfter: -1 }),
-			"healthAfter",
-		);
-	});
-
-	it("rejects non-integer crewSize", () => {
-		expectInvalidInput(
-			() => encodePublishedIntervention({ ...validPublished, crewSize: 1.5 }),
-			"crewSize",
-		);
-	});
-
-	it("rejects offchainCount above uint8 max", () => {
-		expectInvalidInput(
-			() =>
-				encodePublishedIntervention({ ...validPublished, offchainCount: 256 }),
-			"offchainCount",
-		);
-	});
-
-	it("accepts healthBefore=0 (unmeasured sentinel)", () => {
-		expect(() =>
-			encodePublishedIntervention({ ...validPublished, healthBefore: 0 }),
-		).not.toThrow();
-	});
-});
-
 describe("GardenerMilestone validator", () => {
-	it("rejects milestoneLevel outside the enum", () => {
+	it("accepts the valid fixture", () => {
+		expect(() => encodeGardenerMilestone(validMilestone)).not.toThrow();
+	});
+
+	it("rejects milestoneLevel=0 (not in the enum)", () => {
 		expectInvalidInput(
 			() =>
 				encodeGardenerMilestone({
 					...validMilestone,
 					milestoneLevel: 0 as MilestoneLevel,
+				}),
+			"milestoneLevel",
+		);
+	});
+
+	it("rejects milestoneLevel above the enum max", () => {
+		expectInvalidInput(
+			() =>
+				encodeGardenerMilestone({
+					...validMilestone,
+					milestoneLevel: 99 as MilestoneLevel,
 				}),
 			"milestoneLevel",
 		);
@@ -217,99 +216,326 @@ describe("GardenerMilestone validator", () => {
 			"totalInterventions",
 		);
 	});
-});
 
-describe("ScheduledIntervention validator", () => {
-	it("rejects estimatedMinutes above uint16 max", () => {
+	it("rejects totalValidated above uint16 max", () => {
 		expectInvalidInput(
 			() =>
-				encodeScheduledIntervention({
-					...validScheduled,
-					estimatedMinutes: 70_000,
+				encodeGardenerMilestone({
+					...validMilestone,
+					totalValidated: 70_000,
 				}),
-			"estimatedMinutes",
+			"totalValidated",
 		);
 	});
 
-	it("accepts estimatedMinutes=0 (unspecified sentinel)", () => {
+	it("rejects avgHealthImprovement above uint8 max", () => {
+		expectInvalidInput(
+			() =>
+				encodeGardenerMilestone({
+					...validMilestone,
+					avgHealthImprovement: 256,
+				}),
+			"avgHealthImprovement",
+		);
+	});
+
+	it("rejects non-integer counts (float)", () => {
+		expectInvalidInput(
+			() =>
+				encodeGardenerMilestone({
+					...validMilestone,
+					totalInterventions: 5.5,
+				}),
+			"totalInterventions",
+		);
+	});
+
+	it("accepts zero counts (edge of uint range)", () => {
 		expect(() =>
-			encodeScheduledIntervention({
-				...validScheduled,
-				estimatedMinutes: 0,
+			encodeGardenerMilestone({
+				...validMilestone,
+				totalInterventions: 0,
+				totalValidated: 0,
+				avgHealthImprovement: 0,
 			}),
 		).not.toThrow();
 	});
 });
 
-describe("GardenerCheckin validator", () => {
+// --- Activity payload validators (via buildXxxPayload) ---
+
+const validSchedule = {
+	interventionId: "INT-2026-0001",
+	areaUID:
+		"0x00000000000000000000000000000000000000000000000000000000000000a1",
+	interventionType: InterventionType.RoutineMaintenance,
+	crewLead: MOCK_SIGNER_ADDRESS,
+	crewSize: 2,
+	scheduledDate: 1709251200n,
+	plannedDuration: 90,
+	tasksPlanned: ["PRUNE"],
+	description: "Test",
+	commissionId: null,
+};
+
+describe("Schedule activity validator", () => {
+	it("accepts the valid fixture", () => {
+		expect(() => buildSchedulePayload(validSchedule)).not.toThrow();
+	});
+
+	it("rejects empty interventionId", () => {
+		expectInvalidInput(
+			() => buildSchedulePayload({ ...validSchedule, interventionId: "" }),
+			"interventionId",
+		);
+	});
+
+	it("rejects interventionType outside the enum", () => {
+		expectInvalidInput(
+			() =>
+				buildSchedulePayload({
+					...validSchedule,
+					interventionType: 99 as InterventionType,
+				}),
+			"interventionType",
+		);
+	});
+
+	it("rejects crewSize above uint8 max", () => {
+		expectInvalidInput(
+			() => buildSchedulePayload({ ...validSchedule, crewSize: 256 }),
+			"crewSize",
+		);
+	});
+
+	it("rejects negative crewSize", () => {
+		expectInvalidInput(
+			() => buildSchedulePayload({ ...validSchedule, crewSize: -1 }),
+			"crewSize",
+		);
+	});
+
+	it("rejects plannedDuration above uint16 max", () => {
+		expectInvalidInput(
+			() =>
+				buildSchedulePayload({
+					...validSchedule,
+					plannedDuration: 70_000,
+				}),
+			"plannedDuration",
+		);
+	});
+
+	it("accepts plannedDuration=0 (unspecified sentinel)", () => {
+		expect(() =>
+			buildSchedulePayload({ ...validSchedule, plannedDuration: 0 }),
+		).not.toThrow();
+	});
+
+	it("rejects non-array tasksPlanned", () => {
+		expectInvalidInput(
+			() =>
+				buildSchedulePayload({
+					...validSchedule,
+					// biome-ignore lint/suspicious/noExplicitAny: intentional bad input
+					tasksPlanned: "PRUNE" as any,
+				}),
+			"tasksPlanned",
+		);
+	});
+
+	it("accepts crewSize=1 for solo jobs", () => {
+		expect(() =>
+			buildSchedulePayload({ ...validSchedule, crewSize: 1 }),
+		).not.toThrow();
+	});
+});
+
+const validCheckin = {
+	interventionId: "INT-2026-0001",
+	latitude: 41.89,
+	longitude: 12.4964,
+};
+
+describe("Checkin activity validator", () => {
+	it("accepts the valid fixture with lat/lng", () => {
+		expect(() => buildCheckinPayload(validCheckin)).not.toThrow();
+	});
+
+	it("accepts omitted lat/lng (both absent)", () => {
+		expect(() =>
+			buildCheckinPayload({ interventionId: "INT-2026-0001" }),
+		).not.toThrow();
+	});
+
+	it("rejects empty interventionId", () => {
+		expectInvalidInput(
+			() => buildCheckinPayload({ ...validCheckin, interventionId: "" }),
+			"interventionId",
+		);
+	});
+
+	it("rejects lat without lng", () => {
+		expectInvalidInput(
+			() =>
+				buildCheckinPayload({ interventionId: "INT-2026-0001", latitude: 1 }),
+			"longitude",
+		);
+	});
+
+	it("rejects lng without lat", () => {
+		expectInvalidInput(
+			() =>
+				buildCheckinPayload({ interventionId: "INT-2026-0001", longitude: 1 }),
+			"latitude",
+		);
+	});
+
 	it("rejects out-of-range latitude", () => {
 		expectInvalidInput(
-			() => encodeGardenerCheckin({ ...validCheckin, latitude: -91 }),
+			() => buildCheckinPayload({ ...validCheckin, latitude: -91 }),
+			"latitude",
+		);
+	});
+
+	it("rejects out-of-range longitude", () => {
+		expectInvalidInput(
+			() => buildCheckinPayload({ ...validCheckin, longitude: 181 }),
+			"longitude",
+		);
+	});
+
+	it("rejects non-finite latitude", () => {
+		expectInvalidInput(
+			() => buildCheckinPayload({ ...validCheckin, latitude: Number.NaN }),
 			"latitude",
 		);
 	});
 });
 
-describe("GardenerCheckout validator", () => {
-	it("rejects actualMinutes above uint16 max", () => {
+const validCheckout = {
+	interventionId: "INT-2026-0001",
+	latitude: 41.89,
+	longitude: 12.4964,
+};
+
+describe("Checkout activity validator", () => {
+	it("accepts the valid fixture with lat/lng", () => {
+		expect(() => buildCheckoutPayload(validCheckout)).not.toThrow();
+	});
+
+	it("accepts omitted lat/lng (both absent)", () => {
+		expect(() =>
+			buildCheckoutPayload({ interventionId: "INT-2026-0001" }),
+		).not.toThrow();
+	});
+
+	it("rejects empty interventionId", () => {
 		expectInvalidInput(
-			() => encodeGardenerCheckout({ ...validCheckout, actualMinutes: 70_000 }),
-			"actualMinutes",
+			() => buildCheckoutPayload({ ...validCheckout, interventionId: "" }),
+			"interventionId",
 		);
 	});
-});
 
-describe("GardenerReport validator", () => {
-	it("rejects taskCount above uint8 max", () => {
-		expectInvalidInput(
-			() => encodeGardenerReport({ ...validReport, taskCount: 256 }),
-			"taskCount",
-		);
-	});
-});
-
-describe("AdminValidation validator", () => {
-	it("rejects qualityScore above 10", () => {
+	it("rejects lat without lng", () => {
 		expectInvalidInput(
 			() =>
-				encodeAdminValidation({ ...validAdminValidation, qualityScore: 11 }),
-			"qualityScore",
+				buildCheckoutPayload({ interventionId: "INT-2026-0001", latitude: 1 }),
+			"longitude",
+		);
+	});
+});
+
+const validReport = {
+	interventionId: "INT-2026-0001",
+	tasksCompleted: ["PRUNE", "CLEAN"],
+	reportedEffort: 120,
+	mediaHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
+	notes: "",
+};
+
+describe("Report activity validator", () => {
+	it("accepts the valid fixture", () => {
+		expect(() => buildReportPayload(validReport)).not.toThrow();
+	});
+
+	it("rejects empty interventionId", () => {
+		expectInvalidInput(
+			() => buildReportPayload({ ...validReport, interventionId: "" }),
+			"interventionId",
 		);
 	});
 
-	it("accepts qualityScore=0 (unscored sentinel)", () => {
+	it("rejects non-array tasksCompleted", () => {
+		expectInvalidInput(
+			() =>
+				buildReportPayload({
+					...validReport,
+					// biome-ignore lint/suspicious/noExplicitAny: intentional bad input
+					tasksCompleted: "PRUNE,CLEAN" as any,
+				}),
+			"tasksCompleted",
+		);
+	});
+
+	it("accepts an empty tasksCompleted array", () => {
 		expect(() =>
-			encodeAdminValidation({ ...validAdminValidation, qualityScore: 0 }),
+			buildReportPayload({ ...validReport, tasksCompleted: [] }),
+		).not.toThrow();
+	});
+
+	it("rejects reportedEffort above uint16 max", () => {
+		expectInvalidInput(
+			() => buildReportPayload({ ...validReport, reportedEffort: 70_000 }),
+			"reportedEffort",
+		);
+	});
+
+	it("accepts reportedEffort=0 (unreported sentinel)", () => {
+		expect(() =>
+			buildReportPayload({ ...validReport, reportedEffort: 0 }),
 		).not.toThrow();
 	});
 });
 
-describe("CitizenFeedback validator", () => {
-	it("rejects rating above 5", () => {
-		expectInvalidInput(
-			() => encodeCitizenFeedback({ ...validFeedback, rating: 6 }),
-			"rating",
-		);
+const validHealthcheck = {
+	areaUID: ZERO_BYTES32,
+	healthScore: 6,
+	mediaHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
+	notes: "",
+};
+
+describe("Healthcheck activity validator", () => {
+	it("accepts the valid fixture", () => {
+		expect(() => buildHealthcheckPayload(validHealthcheck)).not.toThrow();
 	});
 
-	it("accepts rating=0 (no rating sentinel)", () => {
-		expect(() =>
-			encodeCitizenFeedback({ ...validFeedback, rating: 0 }),
-		).not.toThrow();
-	});
-});
-
-describe("Healthcheck validator", () => {
-	it("rejects healthScore=0 (spec range is 1..10, no sentinel)", () => {
+	it("rejects healthScore=0 (spec range is 1..10)", () => {
 		expectInvalidInput(
-			() => encodeHealthcheck({ ...validHealthcheck, healthScore: 0 }),
+			() => buildHealthcheckPayload({ ...validHealthcheck, healthScore: 0 }),
 			"healthScore",
 		);
 	});
 
 	it("rejects healthScore above 10", () => {
 		expectInvalidInput(
-			() => encodeHealthcheck({ ...validHealthcheck, healthScore: 11 }),
+			() => buildHealthcheckPayload({ ...validHealthcheck, healthScore: 11 }),
+			"healthScore",
+		);
+	});
+
+	it("accepts healthScore at both boundaries (1 and 10)", () => {
+		expect(() =>
+			buildHealthcheckPayload({ ...validHealthcheck, healthScore: 1 }),
+		).not.toThrow();
+		expect(() =>
+			buildHealthcheckPayload({ ...validHealthcheck, healthScore: 10 }),
+		).not.toThrow();
+	});
+
+	it("rejects non-integer healthScore", () => {
+		expectInvalidInput(
+			() => buildHealthcheckPayload({ ...validHealthcheck, healthScore: 5.5 }),
 			"healthScore",
 		);
 	});

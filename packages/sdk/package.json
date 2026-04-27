@@ -3,6 +3,7 @@
 	"version": "0.2.0",
 	"description": "TypeScript SDK for OpenGarden Protocol — blockchain-verified urban gardening impact",
 	"type": "module",
+	"sideEffects": false,
 	"main": "./dist/index.cjs",
 	"module": "./dist/index.mjs",
 	"types": "./dist/index.d.ts",

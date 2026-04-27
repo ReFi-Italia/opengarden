@@ -1,57 +1,84 @@
-import { SchemaEncoder } from "@ethereum-attestation-service/eas-sdk";
+import type { SchemaEncoder as SchemaEncoderType } from "@ethereum-attestation-service/eas-sdk";
 import { ZERO_BYTES32 } from "../constants";
 import { type SponsorRef, serializeSponsorRef } from "../sponsor";
-import type { AreaType, InterventionType, MilestoneLevel } from "../types/enums";
 import type {
-	AdminValidationInput,
+	CheckinActivityPayload,
+	CheckoutActivityPayload,
+	HealthcheckActivityPayload,
+	ReportActivityPayload,
+	ScheduleActivityPayload,
+} from "../types/attestation";
+import type {
+	ActivityType,
+	AreaType,
+	InterventionType,
+	MilestoneLevel,
+} from "../types/enums";
+import type {
 	AreaRegistrationInput,
-	CitizenFeedbackInput,
-	GardenerCheckinInput,
-	GardenerCheckoutInput,
+	CheckinActivityInput,
+	CheckoutActivityInput,
 	GardenerMilestoneInput,
-	GardenerReportInput,
-	HealthcheckInput,
-	PublishedInterventionInput,
-	ScheduledInterventionInput,
+	HealthcheckActivityInput,
+	InterventionInput,
+	ReportActivityInput,
+	ScheduleActivityInput,
 } from "../types/schemas";
 import {
 	fromMicrodegrees,
+	hashActivityPayload,
+	hashBoundary,
 	hashIdentifier,
 	toMicrodegrees,
 	toUnixSeconds,
 } from "../utils";
 import { SCHEMA_STRINGS } from "./definitions";
 import {
-	validateAdminValidation,
 	validateAreaRegistration,
-	validateCitizenFeedback,
-	validateGardenerCheckin,
-	validateGardenerCheckout,
+	validateCheckinActivity,
+	validateCheckoutActivity,
 	validateGardenerMilestone,
-	validateGardenerReport,
-	validateHealthcheck,
-	validatePublishedIntervention,
-	validateScheduledIntervention,
+	validateHealthcheckActivity,
+	validateIntervention,
+	validateReportActivity,
+	validateScheduleActivity,
 } from "./validators";
 
-function hashOrZero(id: string | null): string {
-	return id === null ? ZERO_BYTES32 : hashIdentifier(id);
+let SchemaEncoderCtor: (new (schema: string) => SchemaEncoderType) | null =
+	null;
+
+/**
+ * Lazy-loads the `SchemaEncoder` class from `eas-sdk` and caches it.
+ * Idempotent. `createOpenGardenClient` calls it automatically; consumers
+ * calling the encode/decode helpers directly must await it first.
+ */
+export async function initEncoders(): Promise<void> {
+	if (SchemaEncoderCtor) return;
+	const mod = await import("@ethereum-attestation-service/eas-sdk");
+	SchemaEncoderCtor = mod.SchemaEncoder;
 }
 
-function hashCommissionIdOrZero(
-	id: string | SponsorRef | null,
-): string {
+export function newSchemaEncoder(schema: string): SchemaEncoderType {
+	if (!SchemaEncoderCtor) {
+		throw new Error(
+			"SchemaEncoder not initialised. Call `initEncoders()` (or use `createOpenGardenClient`) first.",
+		);
+	}
+	return new SchemaEncoderCtor(schema);
+}
+
+function hashCommissionIdOrZero(id: string | SponsorRef | null): string {
 	if (id === null) return ZERO_BYTES32;
 	if (typeof id === "string") return hashIdentifier(id);
 	const serialized = serializeSponsorRef(id);
 	return serialized === null ? ZERO_BYTES32 : hashIdentifier(serialized);
 }
 
-// --- Encoders ---
+// --- On-chain encoders ---
 
 export function encodeAreaRegistration(input: AreaRegistrationInput): string {
 	validateAreaRegistration(input);
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.AreaRegistration);
+	const encoder = newSchemaEncoder(SCHEMA_STRINGS.AreaRegistration);
 	return encoder.encodeData([
 		{ name: "areaId", value: input.areaId, type: "string" },
 		{ name: "latitude", value: toMicrodegrees(input.latitude), type: "int32" },
@@ -64,20 +91,19 @@ export function encodeAreaRegistration(input: AreaRegistrationInput): string {
 		{ name: "name", value: input.name, type: "string" },
 		{ name: "municipality", value: input.municipality, type: "string" },
 		{
-			name: "metadataHash",
-			value: input.metadataHash ?? ZERO_BYTES32,
+			name: "boundariesHash",
+			value:
+				input.boundary === null ? ZERO_BYTES32 : hashBoundary(input.boundary),
 			type: "bytes32",
 		},
+		{ name: "metadata", value: input.metadata, type: "string" },
 	]);
 }
 
-export function encodePublishedIntervention(
-	input: PublishedInterventionInput,
-): string {
-	validatePublishedIntervention(input);
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.PublishedIntervention);
+export function encodeIntervention(input: InterventionInput): string {
+	validateIntervention(input);
+	const encoder = newSchemaEncoder(SCHEMA_STRINGS.Intervention);
 	return encoder.encodeData([
-		{ name: "areaUID", value: input.areaUID, type: "bytes32" },
 		{ name: "interventionId", value: input.interventionId, type: "string" },
 		{ name: "interventionType", value: input.interventionType, type: "uint8" },
 		{
@@ -85,26 +111,22 @@ export function encodePublishedIntervention(
 			value: toUnixSeconds(input.executionDate),
 			type: "uint64",
 		},
-		{ name: "healthBefore", value: input.healthBefore, type: "uint8" },
-		{ name: "healthAfter", value: input.healthAfter, type: "uint8" },
-		{
-			name: "commissionRef",
-			value: hashCommissionIdOrZero(input.commissionId),
-			type: "bytes32",
-		},
 		{
 			name: "evidenceBundleHash",
 			value: input.evidenceBundleHash,
 			type: "bytes32",
 		},
-		{ name: "offchainCount", value: input.offchainCount, type: "uint8" },
-		{ name: "crewSize", value: input.crewSize, type: "uint8" },
+		{
+			name: "commissionRef",
+			value: hashCommissionIdOrZero(input.commissionId),
+			type: "bytes32",
+		},
 	]);
 }
 
 export function encodeGardenerMilestone(input: GardenerMilestoneInput): string {
 	validateGardenerMilestone(input);
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.GardenerMilestone);
+	const encoder = newSchemaEncoder(SCHEMA_STRINGS.GardenerMilestone);
 	return encoder.encodeData([
 		{ name: "milestoneLevel", value: input.milestoneLevel, type: "uint8" },
 		{
@@ -118,7 +140,6 @@ export function encodeGardenerMilestone(input: GardenerMilestoneInput): string {
 			value: input.avgHealthImprovement,
 			type: "uint8",
 		},
-		{ name: "skillTier", value: input.skillTier, type: "string" },
 		{
 			name: "achievedAt",
 			value: toUnixSeconds(input.achievedAt),
@@ -128,125 +149,104 @@ export function encodeGardenerMilestone(input: GardenerMilestoneInput): string {
 	]);
 }
 
-export function encodeScheduledIntervention(
-	input: ScheduledInterventionInput,
+// --- Activity ABI encoder (schema: `uint8 activityType, bytes32 payloadHash`) ---
+
+export function encodeActivityData(
+	activityType: ActivityType,
+	payloadHash: string,
 ): string {
-	validateScheduledIntervention(input);
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.ScheduledIntervention);
+	const encoder = newSchemaEncoder(SCHEMA_STRINGS.Activity);
 	return encoder.encodeData([
-		{ name: "areaUID", value: input.areaUID, type: "bytes32" },
-		{ name: "interventionId", value: input.interventionId, type: "string" },
-		{ name: "interventionType", value: input.interventionType, type: "uint8" },
-		{
-			name: "scheduledDate",
-			value: toUnixSeconds(input.scheduledDate),
-			type: "uint64",
-		},
-		{ name: "estimatedMinutes", value: input.estimatedMinutes, type: "uint16" },
-		{ name: "description", value: input.description, type: "string" },
-		{
-			name: "commissionRef",
-			value: hashCommissionIdOrZero(input.commissionId),
-			type: "bytes32",
-		},
-		{ name: "crewSize", value: input.crewSize, type: "uint8" },
+		{ name: "activityType", value: activityType, type: "uint8" },
+		{ name: "payloadHash", value: payloadHash, type: "bytes32" },
 	]);
 }
 
-export function encodeGardenerCheckin(input: GardenerCheckinInput): string {
-	validateGardenerCheckin(input);
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.GardenerCheckin);
-	return encoder.encodeData([
-		{ name: "interventionUID", value: input.interventionUID, type: "bytes32" },
-		{ name: "latitude", value: toMicrodegrees(input.latitude), type: "int32" },
-		{
-			name: "longitude",
-			value: toMicrodegrees(input.longitude),
-			type: "int32",
-		},
-		{
-			name: "timestamp",
-			value: toUnixSeconds(input.timestamp),
-			type: "uint64",
-		},
-		{ name: "photoHash", value: input.photoHash, type: "bytes32" },
-	]);
+// --- Per-type payload builders (typed Input → canonical Payload) ---
+
+export function buildSchedulePayload(
+	input: ScheduleActivityInput,
+): ScheduleActivityPayload {
+	validateScheduleActivity(input);
+	return {
+		interventionId: input.interventionId,
+		areaUID: input.areaUID,
+		interventionType: input.interventionType,
+		scheduledDate: Number(toUnixSeconds(input.scheduledDate)),
+		plannedDuration: input.plannedDuration,
+		tasksPlanned: input.tasksPlanned,
+		description: input.description,
+		commissionRef: hashCommissionIdOrZero(input.commissionId),
+		crewSize: input.crewSize,
+	};
 }
 
-export function encodeGardenerCheckout(input: GardenerCheckoutInput): string {
-	validateGardenerCheckout(input);
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.GardenerCheckout);
-	return encoder.encodeData([
-		{ name: "checkinUID", value: input.checkinUID, type: "bytes32" },
-		{
-			name: "timestamp",
-			value: toUnixSeconds(input.timestamp),
-			type: "uint64",
-		},
-		{ name: "actualMinutes", value: input.actualMinutes, type: "uint16" },
-	]);
+export function buildCheckinPayload(
+	input: CheckinActivityInput,
+): CheckinActivityPayload {
+	validateCheckinActivity(input);
+	const payload: CheckinActivityPayload = {};
+	if (input.latitude !== undefined && input.longitude !== undefined) {
+		payload.latitude = toMicrodegrees(input.latitude);
+		payload.longitude = toMicrodegrees(input.longitude);
+	}
+	return payload;
 }
 
-export function encodeGardenerReport(input: GardenerReportInput): string {
-	validateGardenerReport(input);
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.GardenerReport);
-	return encoder.encodeData([
-		{ name: "interventionUID", value: input.interventionUID, type: "bytes32" },
-		{ name: "checkoutUID", value: input.checkoutUID, type: "bytes32" },
-		{ name: "tasksCompleted", value: input.tasksCompleted, type: "string" },
-		{ name: "taskCount", value: input.taskCount, type: "uint8" },
-		{ name: "photosHash", value: input.photosHash, type: "bytes32" },
-		{ name: "notes", value: input.notes, type: "string" },
-	]);
+export function buildCheckoutPayload(
+	input: CheckoutActivityInput,
+): CheckoutActivityPayload {
+	validateCheckoutActivity(input);
+	const payload: CheckoutActivityPayload = {};
+	if (input.latitude !== undefined && input.longitude !== undefined) {
+		payload.latitude = toMicrodegrees(input.latitude);
+		payload.longitude = toMicrodegrees(input.longitude);
+	}
+	return payload;
 }
 
-export function encodeAdminValidation(input: AdminValidationInput): string {
-	validateAdminValidation(input);
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.AdminValidation);
-	return encoder.encodeData([
-		{ name: "scheduleUID", value: input.scheduleUID, type: "bytes32" },
-		{ name: "approved", value: input.approved, type: "bool" },
-		{ name: "qualityScore", value: input.qualityScore, type: "uint8" },
-		{ name: "feedback", value: input.feedback, type: "string" },
-		{
-			name: "validatorId",
-			value: hashOrZero(input.validatorId),
-			type: "bytes32",
-		},
-	]);
+export function buildReportPayload(
+	input: ReportActivityInput,
+): ReportActivityPayload {
+	validateReportActivity(input);
+	return {
+		tasksCompleted: input.tasksCompleted,
+		reportedEffort: input.reportedEffort,
+		mediaHash: input.mediaHash,
+		notes: input.notes,
+	};
 }
 
-export function encodeCitizenFeedback(input: CitizenFeedbackInput): string {
-	validateCitizenFeedback(input);
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.CitizenFeedback);
-	return encoder.encodeData([
-		{ name: "areaUID", value: input.areaUID, type: "bytes32" },
-		{ name: "rating", value: input.rating, type: "uint8" },
-		{ name: "comment", value: input.comment, type: "string" },
-		{ name: "photoHash", value: input.photoHash, type: "bytes32" },
-	]);
+export function buildHealthcheckPayload(
+	input: HealthcheckActivityInput,
+): HealthcheckActivityPayload {
+	validateHealthcheckActivity(input);
+	const payload: HealthcheckActivityPayload = {
+		healthScore: input.healthScore,
+		mediaHash: input.mediaHash,
+		notes: input.notes,
+	};
+	if (input.metadata !== undefined && input.metadata !== null) {
+		payload.metadata = input.metadata;
+	}
+	return payload;
 }
 
-export function encodeHealthcheck(input: HealthcheckInput): string {
-	validateHealthcheck(input);
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.Healthcheck);
-	return encoder.encodeData([
-		{ name: "areaUID", value: input.areaUID, type: "bytes32" },
-		{ name: "interventionUID", value: input.interventionUID, type: "bytes32" },
-		{ name: "healthScore", value: input.healthScore, type: "uint8" },
-		{ name: "photoHash", value: input.photoHash, type: "bytes32" },
-		{ name: "assessorNotes", value: input.assessorNotes, type: "string" },
-		{
-			name: "interventionNeeded",
-			value: input.interventionNeeded,
-			type: "bool",
-		},
-		{
-			name: "assessorId",
-			value: hashOrZero(input.assessorId),
-			type: "bytes32",
-		},
-	]);
+/**
+ * Convenience: build a payload and compute its `payloadHash` in one call. The
+ * hash is taken over the canonical-JSON serialization of the payload per
+ * spec §9.8 (`hashActivityPayload` in `utils.ts`).
+ *
+ * Accepts `unknown` so callers can pass typed payload interfaces (e.g.
+ * `ScheduleActivityPayload`) without an intermediate cast.
+ */
+export function encodeActivityFromPayload(
+	type: ActivityType,
+	payload: unknown,
+): { data: string; payloadHash: string } {
+	const payloadHash = hashActivityPayload(payload);
+	const data = encodeActivityData(type, payloadHash);
+	return { data, payloadHash };
 }
 
 // --- Decoders ---
@@ -266,9 +266,14 @@ function getFieldValue(decoded: DecodedField[], name: string): unknown {
 		: val;
 }
 
+function decodeSchema(schemaString: string, data: string): DecodedField[] {
+	return newSchemaEncoder(schemaString).decodeData(
+		data,
+	) as unknown as DecodedField[];
+}
+
 export function decodeAreaRegistration(data: string) {
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.AreaRegistration);
-	const decoded = encoder.decodeData(data) as unknown as DecodedField[];
+	const decoded = decodeSchema(SCHEMA_STRINGS.AreaRegistration, data);
 	return {
 		areaId: getFieldValue(decoded, "areaId") as string,
 		latitude: fromMicrodegrees(Number(getFieldValue(decoded, "latitude"))),
@@ -276,32 +281,26 @@ export function decodeAreaRegistration(data: string) {
 		areaType: Number(getFieldValue(decoded, "areaType")) as AreaType,
 		name: getFieldValue(decoded, "name") as string,
 		municipality: getFieldValue(decoded, "municipality") as string,
-		metadataHash: String(getFieldValue(decoded, "metadataHash")),
+		boundariesHash: String(getFieldValue(decoded, "boundariesHash")),
+		metadata: getFieldValue(decoded, "metadata") as string,
 	};
 }
 
-export function decodePublishedIntervention(data: string) {
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.PublishedIntervention);
-	const decoded = encoder.decodeData(data) as unknown as DecodedField[];
+export function decodeIntervention(data: string) {
+	const decoded = decodeSchema(SCHEMA_STRINGS.Intervention, data);
 	return {
-		areaUID: String(getFieldValue(decoded, "areaUID")),
 		interventionId: getFieldValue(decoded, "interventionId") as string,
 		interventionType: Number(
 			getFieldValue(decoded, "interventionType"),
 		) as InterventionType,
 		executionDate: BigInt(String(getFieldValue(decoded, "executionDate"))),
-		healthBefore: Number(getFieldValue(decoded, "healthBefore")),
-		healthAfter: Number(getFieldValue(decoded, "healthAfter")),
-		commissionRef: String(getFieldValue(decoded, "commissionRef")),
 		evidenceBundleHash: String(getFieldValue(decoded, "evidenceBundleHash")),
-		offchainCount: Number(getFieldValue(decoded, "offchainCount")),
-		crewSize: Number(getFieldValue(decoded, "crewSize")),
+		commissionRef: String(getFieldValue(decoded, "commissionRef")),
 	};
 }
 
 export function decodeGardenerMilestone(data: string) {
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.GardenerMilestone);
-	const decoded = encoder.decodeData(data) as unknown as DecodedField[];
+	const decoded = decodeSchema(SCHEMA_STRINGS.GardenerMilestone, data);
 	return {
 		milestoneLevel: Number(
 			getFieldValue(decoded, "milestoneLevel"),
@@ -311,50 +310,62 @@ export function decodeGardenerMilestone(data: string) {
 		avgHealthImprovement: Number(
 			getFieldValue(decoded, "avgHealthImprovement"),
 		),
-		skillTier: getFieldValue(decoded, "skillTier") as string,
 		achievedAt: BigInt(String(getFieldValue(decoded, "achievedAt"))),
 		evidenceRoot: String(getFieldValue(decoded, "evidenceRoot")),
 	};
 }
 
-export function decodeScheduledIntervention(data: string) {
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.ScheduledIntervention);
-	const decoded = encoder.decodeData(data) as unknown as DecodedField[];
+export function decodeActivityData(data: string): {
+	activityType: ActivityType;
+	payloadHash: string;
+} {
+	const decoded = decodeSchema(SCHEMA_STRINGS.Activity, data);
 	return {
-		areaUID: String(getFieldValue(decoded, "areaUID")),
-		interventionId: getFieldValue(decoded, "interventionId") as string,
-		interventionType: Number(
-			getFieldValue(decoded, "interventionType"),
-		) as InterventionType,
-		scheduledDate: BigInt(String(getFieldValue(decoded, "scheduledDate"))),
-		estimatedMinutes: Number(getFieldValue(decoded, "estimatedMinutes")),
-		description: getFieldValue(decoded, "description") as string,
-		commissionRef: String(getFieldValue(decoded, "commissionRef")),
-		crewSize: Number(getFieldValue(decoded, "crewSize")),
+		activityType: Number(
+			getFieldValue(decoded, "activityType"),
+		) as ActivityType,
+		payloadHash: String(getFieldValue(decoded, "payloadHash")),
 	};
 }
 
-export function decodeHealthcheck(data: string) {
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.Healthcheck);
-	const decoded = encoder.decodeData(data) as unknown as DecodedField[];
+/**
+ * Parse easscan's `decodedDataJson` field (available on both on-chain and
+ * off-chain attestations in the `attestations` GraphQL query) into the
+ * Activity schema's typed fields.
+ *
+ * easscan emits `decodedDataJson` as a JSON string shaped like:
+ * ```
+ * [
+ *   { "name": "activityType", "type": "uint8",
+ *     "value": { "name": "activityType", "type": "uint8", "value": "1" } },
+ *   { "name": "payloadHash", "type": "bytes32",
+ *     "value": { "name": "payloadHash", "type": "bytes32", "value": "0x…" } },
+ * ]
+ * ```
+ *
+ * Using this over raw `data` lets the SDK treat on-chain and off-chain
+ * activities uniformly: on-chain `data` is hex ABI bytes, while off-chain
+ * `data` is the full offchain envelope JSON. `decodedDataJson` is always the
+ * decoded ABI regardless of origin.
+ */
+export function parseActivityDecodedDataJson(decodedDataJson: string): {
+	activityType: ActivityType;
+	payloadHash: string;
+} {
+	const entries = JSON.parse(decodedDataJson) as Array<{
+		name: string;
+		value: { value: unknown };
+	}>;
+	const byName = new Map(entries.map((e) => [e.name, e.value.value]));
+	const rawType = byName.get("activityType");
+	const rawHash = byName.get("payloadHash");
+	if (rawType === undefined || rawHash === undefined) {
+		throw new Error(
+			"decodedDataJson does not carry activityType + payloadHash",
+		);
+	}
 	return {
-		areaUID: String(getFieldValue(decoded, "areaUID")),
-		interventionUID: String(getFieldValue(decoded, "interventionUID")),
-		healthScore: Number(getFieldValue(decoded, "healthScore")),
-		photoHash: String(getFieldValue(decoded, "photoHash")),
-		assessorNotes: getFieldValue(decoded, "assessorNotes") as string,
-		interventionNeeded: Boolean(getFieldValue(decoded, "interventionNeeded")),
-		assessorId: String(getFieldValue(decoded, "assessorId")),
-	};
-}
-
-export function decodeCitizenFeedback(data: string) {
-	const encoder = new SchemaEncoder(SCHEMA_STRINGS.CitizenFeedback);
-	const decoded = encoder.decodeData(data) as unknown as DecodedField[];
-	return {
-		areaUID: String(getFieldValue(decoded, "areaUID")),
-		rating: Number(getFieldValue(decoded, "rating")),
-		comment: getFieldValue(decoded, "comment") as string,
-		photoHash: String(getFieldValue(decoded, "photoHash")),
+		activityType: Number(rawType) as ActivityType,
+		payloadHash: String(rawHash),
 	};
 }

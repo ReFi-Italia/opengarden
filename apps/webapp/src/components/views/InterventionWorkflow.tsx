@@ -1,0 +1,775 @@
+import type {
+	ClientField,
+	DocumentViewServerProps,
+	Field,
+	FormState,
+	Payload,
+} from "payload";
+import { createClientFields } from "payload";
+import { importMap } from "@/app/(payload)/admin/importMap.js";
+import type { Intervention } from "@/payload-types";
+import { RecordActivityForm } from "./RecordActivityForm";
+import { SetupForm } from "./SetupForm";
+import { StageForm } from "./StageForm";
+import "./InterventionWorkflow.scss";
+
+// Every activity-form subset. The form renders only these plus `type` +
+// parent reference keys that are pre-filled in initialState.
+const CHECKIN_FORM_FIELDS: readonly string[] = [
+	"gardener",
+	"claimedTimestamp",
+	"photo",
+	"data",
+];
+
+const CHECKOUT_FORM_FIELDS: readonly string[] = [
+	"gardener",
+	"claimedTimestamp",
+	"data",
+];
+
+const REPORT_FORM_FIELDS: readonly string[] = [
+	"gardener",
+	"claimedTimestamp",
+	"photo",
+	"data",
+];
+
+const HEALTHCHECK_FORM_FIELDS: readonly string[] = [
+	"claimedTimestamp",
+	"assessor",
+	"photo",
+	"data",
+];
+
+// Which field names inside each group are operator-editable per stage. Mirrors
+// `STAGE_INPUT_RULES` in the Interventions collection so the custom form only
+// exposes fields the server-side guard will actually accept.
+const STAGE_INPUTS: Record<string, readonly string[]> = {
+	scheduling: ["scheduledDate", "plannedDuration"],
+	completion: ["reviewer", "approved", "qualityScore", "feedback"],
+};
+
+async function findLatestHealthcheckActivity(
+	payload: Payload,
+	where: Record<string, { equals: string }>,
+): Promise<Array<Record<string, unknown>>> {
+	const result = await payload
+		.find({
+			collection: "activities",
+			where: {
+				and: [{ type: { equals: "healthcheck" } }, ...Object.entries(where).map(([k, v]) => ({ [k]: v }))],
+			},
+			depth: 1,
+			limit: 1,
+			sort: "-claimedTimestamp",
+			overrideAccess: true,
+		})
+		.catch(() => ({ docs: [] as Array<Record<string, unknown>> }));
+	return result.docs as Array<Record<string, unknown>>;
+}
+
+function makeCrewFormState(
+	type: string,
+	interventionId: string | number,
+	gardenerId: string | null,
+	nowISO: string,
+	data: Record<string, unknown>,
+): FormState {
+	return {
+		type: { value: type, initialValue: type },
+		intervention: { value: String(interventionId), initialValue: String(interventionId) },
+		gardener: { value: gardenerId, initialValue: gardenerId },
+		claimedTimestamp: { value: nowISO, initialValue: nowISO },
+		data: { value: data, initialValue: data },
+	} as FormState;
+}
+
+function findGroupFields(
+	fields: readonly Field[],
+	groupName: string,
+): Field[] | undefined {
+	for (const field of fields) {
+		if (
+			"type" in field &&
+			field.type === "group" &&
+			"name" in field &&
+			field.name === groupName
+		) {
+			return field.fields;
+		}
+	}
+	return undefined;
+}
+
+const STAGE_FORM_TITLES: Record<string, string> = {
+	draft: "Scheduling",
+	scheduled: "Ready to start",
+	in_progress: "Execution & completion review",
+	completed: "Ready to publish",
+	published: "Lifecycle complete",
+	cancelled: "Cancelled",
+};
+
+const INTERVENTION_TYPE_LABELS: Record<string, string> = {
+	"0": "Unspecified",
+	"1": "Routine maintenance",
+	"2": "Restoration",
+	"3": "Emergency",
+	"4": "Seasonal",
+	"5": "New planting",
+};
+
+const MAIN_PATH = [
+	"draft",
+	"scheduled",
+	"in_progress",
+	"completed",
+	"published",
+] as const;
+
+const STAGE_LABELS: Record<string, string> = {
+	draft: "Drafted",
+	scheduled: "Scheduled",
+	in_progress: "In progress",
+	completed: "Completed",
+	published: "Published",
+	cancelled: "Cancelled",
+};
+
+async function InterventionWorkflow(props: DocumentViewServerProps) {
+	const { doc, payload, initPageResult } = props;
+	const id = (doc as { id?: string | number })?.id;
+
+	// Collection fields are used in both create and edit paths below.
+	const collectionFields =
+		payload.collections.interventions?.config.fields ?? [];
+
+	// ─── Create mode ──────────────────────────────────────────────────
+	// The custom view handles both /create and /:id. When there's no doc
+	// id, defer to Payload's stock `DefaultEditView` (wrapped via
+	// `SetupForm`) so the create flow gets the fully-wired collection
+	// form — relationship pickers, crew array, validation, save, and the
+	// post-create redirect — for free. Stage groups (scheduling/validation
+	// /execution/revocation) are hidden via `admin.condition` in the
+	// collection config, so create mode shows only identity fields.
+	if (id === undefined) {
+		return (
+			<SetupForm
+				documentSubViewType={props.documentSubViewType}
+				formState={props.formState}
+				viewType={props.viewType}
+			/>
+		);
+	}
+
+	// ─── Edit mode ────────────────────────────────────────────────────
+	// Repopulate at depth 2 so area/sponsor/crew-gardener relationships render as
+	// objects instead of bare IDs.
+	const intervention =
+		id !== undefined
+			? await payload
+					.findByID({
+						collection: "interventions",
+						id: String(id),
+						depth: 2,
+						overrideAccess: false,
+						user: initPageResult?.req?.user ?? undefined,
+					})
+					.catch(() => doc as unknown as Intervention)
+			: (doc as unknown as Intervention);
+
+	const inv = intervention as Intervention | undefined;
+	const status = (inv?.lifecycleStatus ?? "draft") as keyof typeof STAGE_LABELS;
+	const typeLabel =
+		INTERVENTION_TYPE_LABELS[String(inv?.interventionType ?? "")] ?? "—";
+
+	const area = inv?.area;
+	const areaName =
+		area && typeof area === "object"
+			? ((area as { name?: string }).name ?? "—")
+			: "—";
+
+	const commissioning = inv?.commissioning as
+		| { sponsor?: unknown }
+		| undefined;
+	const sponsor = commissioning?.sponsor;
+	const sponsorName =
+		sponsor && typeof sponsor === "object"
+			? ((sponsor as { displayName?: string }).displayName ?? "—")
+			: "—";
+
+	const crew = Array.isArray(inv?.crew) ? inv.crew : [];
+	const currentIdx = (MAIN_PATH as readonly string[]).indexOf(status);
+	const isTerminal = status === "cancelled";
+
+	// Extract the editable ClientField[] for each stage group. We pass the group
+	// children directly (not the wrapping group) so the group's readOnly admin
+	// flag doesn't cascade to our form, and render them under `parentPath` so
+	// their form-state keys match the doc shape (`scheduling.scheduledDate`).
+	const buildStageFields = (groupName: string): ClientField[] => {
+		const allowed = STAGE_INPUTS[groupName];
+		const groupFields = findGroupFields(collectionFields, groupName);
+		if (!allowed || !groupFields) return [];
+		const editable = groupFields.filter(
+			(f): f is Field & { name: string } =>
+				"name" in f && typeof f.name === "string" && allowed.includes(f.name),
+		);
+		return createClientFields({
+			fields: editable,
+			defaultIDType: payload.db.defaultIDType ?? "text",
+			i18n: props.i18n,
+			importMap,
+		});
+	};
+
+	const stageFieldsByGroup: Record<string, ClientField[]> = {
+		scheduling: buildStageFields("scheduling"),
+		completion: buildStageFields("completion"),
+	};
+
+	const stageParentPath = status === "draft" ? "scheduling" : "";
+
+	const stageClientFields = stageParentPath
+		? (stageFieldsByGroup[stageParentPath] ?? [])
+		: [];
+
+	const showCrewActivity = status === "in_progress";
+	const taskCodes = Array.isArray(inv?.tasks)
+		? (inv.tasks as Array<{ code?: string; label?: string }>)
+				.filter((t) => t.code && t.label)
+				.map((t) => ({ code: t.code as string, label: t.label as string }))
+		: [];
+
+	// Derived execution summary — populated when in_progress
+	let derivedExecutionDate: string | null = null;
+	let derivedHealthBefore: number | null = null;
+	let derivedHealthAfter: number | null = null;
+
+	if (showCrewActivity) {
+		const [latestCheckout, latestHealthcheck] = await Promise.all([
+			payload
+				.find({
+					collection: "activities",
+					where: {
+						and: [
+							{ intervention: { equals: String(id) } },
+							{ type: { equals: "checkout" } },
+						],
+					},
+					depth: 0,
+					limit: 1,
+					sort: "-claimedTimestamp",
+					overrideAccess: true,
+				})
+				.catch(() => ({ docs: [] as Array<{ claimedTimestamp?: string }> })),
+			payload
+				.find({
+					collection: "activities",
+					where: {
+						and: [
+							{ intervention: { equals: String(id) } },
+							{ type: { equals: "healthcheck" } },
+						],
+					},
+					depth: 0,
+					limit: 1,
+					overrideAccess: true,
+				})
+				.catch(() => ({
+					docs: [] as Array<{
+						healthScore?: number;
+						metadata?: Record<string, unknown> | null;
+					}>,
+				})),
+		]);
+
+		derivedExecutionDate =
+			(latestCheckout.docs[0] as { claimedTimestamp?: string })
+				?.claimedTimestamp ?? null;
+		const hc = latestHealthcheck.docs[0] as {
+			data?: { healthScore?: number; metadata?: Record<string, unknown> | null } | null;
+		} | undefined;
+		if (hc) {
+			derivedHealthAfter = hc.data?.healthScore ?? null;
+			const baseline = (hc.data?.metadata as { baseline?: { score?: number } } | null)
+				?.baseline;
+			derivedHealthBefore = baseline?.score ?? null;
+		}
+	}
+
+	let checkinClientFields: ClientField[] = [];
+	let checkinInitialState: FormState = {};
+	let checkoutClientFields: ClientField[] = [];
+	let checkoutInitialState: FormState = {};
+	let reportClientFields: ClientField[] = [];
+	let reportInitialState: FormState = {};
+	let healthcheckClientFields: ClientField[] = [];
+	let healthcheckInitialState: FormState = {};
+	let healthcheckCanRender = false;
+
+	if (showCrewActivity) {
+		// All activity form fields come from a single polymorphic collection
+		// now. Each sub-form renders the subset relevant to its `type` +
+		// carries the `type` + `intervention` + parent keys in form state.
+		const activityFields =
+			payload.collections.activities?.config.fields ?? [];
+		const pickFields = (names: readonly string[]) =>
+			createClientFields({
+				fields: activityFields.filter(
+					(f): f is Field & { name: string } =>
+						"name" in f &&
+						typeof f.name === "string" &&
+						names.includes(f.name),
+				),
+				defaultIDType: payload.db.defaultIDType ?? "text",
+				i18n: props.i18n,
+				importMap,
+			});
+
+		checkinClientFields = pickFields(CHECKIN_FORM_FIELDS);
+
+		// ─── Checkin defaults (gardener + lat/lng from area) ──────────
+		const areaObj = inv?.area;
+		const areaCoords =
+			areaObj && typeof areaObj === "object"
+				? (areaObj as { coordinates?: [number, number] | null }).coordinates
+				: undefined;
+		const areaLat = areaCoords?.[1];
+		const areaLng = areaCoords?.[0];
+
+		const firstCrew = crew[0];
+		const firstGardener = (firstCrew as { gardener?: unknown })?.gardener;
+		const firstGardenerId =
+			firstGardener && typeof firstGardener === "object"
+				? String((firstGardener as { id?: string | number }).id ?? "")
+				: firstGardener
+					? String(firstGardener)
+					: "";
+
+		const nowISO = new Date().toISOString();
+
+		checkinInitialState = makeCrewFormState(
+			"checkin",
+			id,
+			firstGardenerId || null,
+			nowISO,
+			{ latitude: areaLat ?? 0, longitude: areaLng ?? 0 },
+		);
+
+		// ─── Checkout defaults ──────────────────────────────────────────
+		// parentActivity auto-linked by autoLinkParentActivity hook server-side.
+		// Derive actualMinutes from the open checkin's timestamp if available.
+		const openCheckinResult = await payload
+			.find({
+				collection: "activities",
+				where: {
+					and: [
+						{ intervention: { equals: String(id) } },
+						{ type: { equals: "checkin" } },
+						...(firstGardenerId
+							? [{ gardener: { equals: firstGardenerId } }]
+							: []),
+					],
+				},
+				depth: 0,
+				limit: 1,
+				sort: "-claimedTimestamp",
+				overrideAccess: true,
+			})
+			.catch(() => ({
+				docs: [] as Array<{ claimedTimestamp?: string }>,
+			}));
+
+		const openCheckin = openCheckinResult.docs[0];
+		let defaultActualMinutes = 60;
+		if (openCheckin?.claimedTimestamp) {
+			const startMs = new Date(openCheckin.claimedTimestamp).getTime();
+			if (startMs > 0) {
+				defaultActualMinutes = Math.max(
+					1,
+					Math.round((Date.now() - startMs) / 60000),
+				);
+			}
+		}
+
+		checkoutClientFields = pickFields(CHECKOUT_FORM_FIELDS);
+		checkoutInitialState = makeCrewFormState(
+			"checkout",
+			id,
+			firstGardenerId || null,
+			nowISO,
+			{ actualMinutes: defaultActualMinutes },
+		);
+
+		// ─── Report defaults ─────────────────────────────────────────────
+		// parentActivity auto-linked by autoLinkParentActivity hook server-side.
+		reportClientFields = pickFields(REPORT_FORM_FIELDS);
+		reportInitialState = makeCrewFormState(
+			"report",
+			id,
+			firstGardenerId || null,
+			nowISO,
+			{ completedTaskCodes: [], notes: "" },
+		);
+
+		// ─── Healthcheck defaults (single assessment, hide once recorded) ──
+		healthcheckClientFields = pickFields(HEALTHCHECK_FORM_FIELDS);
+
+		const existingHcDocs = await findLatestHealthcheckActivity(payload, {
+			intervention: { equals: String(id) },
+		});
+
+		// Render only if no healthcheck recorded for this intervention yet
+		healthcheckCanRender = existingHcDocs.length === 0;
+
+		// Pre-fill baseline from the latest committed healthcheck for this area
+		let baselineMetadata: Record<string, unknown> | null = null;
+		if (healthcheckCanRender) {
+			const areaId = typeof inv?.area === "object" && inv.area !== null
+				? (inv.area as { id?: string | number }).id
+				: inv?.area;
+			if (areaId) {
+				const priorHcDocs = await findLatestHealthcheckActivity(payload, {
+					area: { equals: String(areaId) },
+				});
+				const priorHc = priorHcDocs[0];
+				if (priorHc) {
+					const priorAtt = priorHc.attestation as { uid?: string } | null;
+					const priorData = priorHc.data as { healthScore?: number } | null;
+					baselineMetadata = {
+						version: 1,
+						baseline: {
+							score: priorData?.healthScore,
+							...(priorAtt?.uid ? { sourceUID: priorAtt.uid } : {}),
+						},
+					};
+				}
+			}
+		}
+
+		healthcheckInitialState = {
+			type: { value: "healthcheck", initialValue: "healthcheck" },
+			intervention: {
+				value: String(id),
+				initialValue: String(id),
+			},
+			claimedTimestamp: {
+				value: nowISO,
+				initialValue: nowISO,
+			},
+			data: {
+				value: { healthScore: 7, ...(baselineMetadata ? { metadata: baselineMetadata } : {}) },
+				initialValue: { healthScore: 7, ...(baselineMetadata ? { metadata: baselineMetadata } : {}) },
+			},
+		} as FormState;
+	}
+
+	return (
+		<div className="iw">
+			<header className="iw__header">
+				<div className="iw__eyebrow">
+					<span className="iw__eyebrow-dot" />
+					<span>
+						{typeLabel} · {areaName}
+					</span>
+				</div>
+				{inv?.description ? (
+					<p className="iw__description">{inv.description}</p>
+				) : null}
+				<div className="iw__meta-row">
+					<span className={`iw__pill iw__pill--${status}`}>
+						{STAGE_LABELS[status] ?? status}
+					</span>
+					<span className="iw__tag">{typeLabel}</span>
+					<span className="iw__tag">
+						{crew.length} {crew.length === 1 ? "crew member" : "crew"}
+					</span>
+				</div>
+			</header>
+
+			<section className="iw__rail-section">
+				<div className="iw__section-label">Lifecycle</div>
+				<div className="iw__rail">
+					{MAIN_PATH.map((stage, idx) => {
+						const state = isTerminal
+							? idx <= currentIdx
+								? "done"
+								: "blocked"
+							: idx < currentIdx
+								? "done"
+								: idx === currentIdx
+									? "active"
+									: "future";
+						return (
+							<div key={stage} className={`iw__stage iw__stage--${state}`}>
+								<div className="iw__stage-head">
+									<span className="iw__stage-num">
+										{String(idx + 1).padStart(2, "0")}
+									</span>
+									<span className="iw__stage-dot" />
+								</div>
+								<div className="iw__stage-name">{STAGE_LABELS[stage]}</div>
+								<div className="iw__stage-sub">
+									{state === "done"
+										? "done"
+										: state === "active"
+											? "current"
+											: state === "blocked"
+												? "blocked"
+												: "pending"}
+								</div>
+							</div>
+						);
+					})}
+				</div>
+				{isTerminal ? (
+					<div className={`iw__terminal iw__terminal--${status}`}>
+						This intervention is <strong>{STAGE_LABELS[status]}</strong>. Later
+						stages won't run.
+					</div>
+				) : null}
+			</section>
+
+			<section className="iw__action">
+				<div className="iw__action-eyebrow">
+					Current stage · awaiting next transition
+				</div>
+				<h2 className="iw__action-title">
+					Stage is <em>{STAGE_LABELS[status] ?? status}</em>
+				</h2>
+				<p className="iw__action-sub">
+					Use the panels below to record activities and advance the intervention
+					through its lifecycle.
+				</p>
+			</section>
+
+			<div className="iw__grid">
+				<aside className="iw__col iw__col--identity">
+					<div className="iw__block">
+						<div className="iw__block-label">Site</div>
+						<div className="iw__block-value">
+							<span className="iw__block-strong">{areaName}</span>
+						</div>
+					</div>
+
+					{inv?.description ? (
+						<div className="iw__block">
+							<div className="iw__block-label">Brief</div>
+							<div className="iw__block-value iw__block-value--prose">
+								{inv.description}
+							</div>
+						</div>
+					) : null}
+
+					<div className="iw__block">
+						<div className="iw__block-label">Sponsor</div>
+						<div className="iw__block-value">
+							<span className="iw__block-strong">{sponsorName}</span>
+						</div>
+					</div>
+
+					<div className="iw__block">
+						<div className="iw__block-label">Crew · {crew.length}</div>
+						{crew.length === 0 ? (
+							<div className="iw__block-value iw__block-value--muted">
+								No crew assigned
+							</div>
+						) : (
+							<ul className="iw__crew">
+								{crew.map((member, i) => {
+									const g = (member as { gardener?: unknown }).gardener;
+									const lead = Boolean(
+										(member as { isCrewLead?: boolean }).isCrewLead,
+									);
+									const name =
+										g && typeof g === "object"
+											? ((g as { displayName?: string }).displayName ?? "—")
+											: "—";
+									return (
+										<li
+											// biome-ignore lint/suspicious/noArrayIndexKey: stable order from server
+											key={i}
+											className={`iw__crew-row${lead ? " iw__crew-row--lead" : ""}`}
+										>
+											<span className="iw__crew-name">{name}</span>
+											<span className="iw__crew-role">
+												{lead ? "Lead" : "Gardener"}
+											</span>
+										</li>
+									);
+								})}
+							</ul>
+						)}
+					</div>
+				</aside>
+
+				<div className="iw__col iw__col--main">
+					{status === "in_progress" ? (
+						<>
+							<div className="iw__panel">
+								<div className="iw__panel-head">
+									<div className="iw__panel-title">Execution summary</div>
+									<div className="iw__panel-meta">
+										stage {String(currentIdx + 1).padStart(2, "0")} · derived from activities
+									</div>
+								</div>
+								<div className="iw__panel-body">
+									<div className="iw__derived-row">
+										<span className="iw__derived-label">Execution date</span>
+										<span className="iw__derived-value">
+											{derivedExecutionDate
+												? new Date(derivedExecutionDate).toLocaleDateString()
+												: "—"}
+										</span>
+									</div>
+									<div className="iw__derived-row">
+										<span className="iw__derived-label">Health before</span>
+										<span className="iw__derived-value">
+											{derivedHealthBefore !== null ? derivedHealthBefore : "—"}
+										</span>
+									</div>
+									<div className="iw__derived-row">
+										<span className="iw__derived-label">Health after</span>
+										<span className="iw__derived-value">
+											{derivedHealthAfter !== null ? derivedHealthAfter : "—"}
+										</span>
+									</div>
+								</div>
+							</div>
+							<div className="iw__panel">
+								<div className="iw__panel-head">
+									<div className="iw__panel-title">Validation</div>
+									<div className="iw__panel-meta">
+										stage {String(currentIdx + 1).padStart(2, "0")} · review
+										&amp; approve
+									</div>
+								</div>
+								<div className="iw__panel-body">
+									<StageForm
+										interventionId={String(id)}
+										status={status}
+										formState={props.formState}
+										stageClientFields={stageFieldsByGroup.validation ?? []}
+										stageParentPath="validation"
+									/>
+								</div>
+							</div>
+						</>
+					) : (
+						<div className="iw__panel">
+							<div className="iw__panel-head">
+								<div className="iw__panel-title">
+									{STAGE_FORM_TITLES[status] ?? "Stage form"}
+								</div>
+								<div className="iw__panel-meta">
+									stage {String(currentIdx + 1).padStart(2, "0")} ·{" "}
+									{STAGE_LABELS[status] ?? status}
+								</div>
+							</div>
+							<div className="iw__panel-body">
+								<StageForm
+									interventionId={String(id)}
+									status={status}
+									formState={props.formState}
+									stageClientFields={stageClientFields}
+									stageParentPath={stageParentPath}
+								/>
+							</div>
+						</div>
+					)}
+
+					{showCrewActivity ? (
+						<div className="iw__panel">
+							<div className="iw__panel-head">
+								<div className="iw__panel-title">Crew activity</div>
+								<div className="iw__panel-meta">
+									check-in · check-out · report · healthcheck
+								</div>
+							</div>
+							<div className="iw__panel-body">
+								<div className="iw-form__section-label">Check-in</div>
+								<RecordActivityForm
+									label="Record check-in"
+									doneLabel="Check-in recorded ✓"
+									clientFields={checkinClientFields}
+									formState={checkinInitialState}
+									activityType="checkin"
+								/>
+								<div
+									className="iw-form__section-label"
+									style={{ marginTop: 24 }}
+								>
+									Check-out
+								</div>
+								<RecordActivityForm
+									label="Record check-out"
+									doneLabel="Check-out recorded ✓"
+									clientFields={checkoutClientFields}
+									formState={checkoutInitialState}
+									activityType="checkout"
+								/>
+								<div
+									className="iw-form__section-label"
+									style={{ marginTop: 24 }}
+								>
+									Report
+								</div>
+								<RecordActivityForm
+									label="Record report"
+									doneLabel="Report recorded ✓"
+									clientFields={reportClientFields}
+									formState={reportInitialState}
+									activityType="report"
+									taskCodes={taskCodes}
+								/>
+								{healthcheckCanRender ? (
+									<>
+										<div
+											className="iw-form__section-label"
+											style={{ marginTop: 24 }}
+										>
+											Healthcheck
+										</div>
+										<RecordActivityForm
+											label="Record healthcheck"
+											doneLabel="Healthcheck recorded ✓"
+											clientFields={healthcheckClientFields}
+											formState={healthcheckInitialState}
+											activityType="healthcheck"
+										/>
+									</>
+								) : null}
+							</div>
+						</div>
+					) : null}
+
+					<div className="iw__panel">
+						<div className="iw__panel-head">
+							<div className="iw__panel-title">Evidence bundle</div>
+							<div className="iw__panel-meta">NOT YET BUILT</div>
+						</div>
+						<div className="iw__panel-body">
+							<p className="iw__placeholder">
+								Photos, verification checks, and the bundle fingerprint will
+								embed here once the execution stage produces a bundle.
+							</p>
+						</div>
+					</div>
+				</div>
+
+				<aside className="iw__col iw__col--ledger">
+					<div className="iw__ledger-head">
+						<div className="iw__ledger-title">Chain ledger</div>
+						<div className="iw__ledger-sub">Base Sepolia · EAS</div>
+					</div>
+					<p className="iw__placeholder">
+						Chain events timeline will render here.
+					</p>
+				</aside>
+			</div>
+		</div>
+	);
+}
+
+export default InterventionWorkflow;

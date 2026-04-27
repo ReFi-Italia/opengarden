@@ -1,20 +1,14 @@
 import { OpenGardenError, OpenGardenErrorCode } from "../errors";
-import {
-	AreaType,
-	InterventionType,
-	MilestoneLevel,
-} from "../types/enums";
+import { AreaType, InterventionType, MilestoneLevel } from "../types/enums";
 import type {
-	AdminValidationInput,
 	AreaRegistrationInput,
-	CitizenFeedbackInput,
-	GardenerCheckinInput,
-	GardenerCheckoutInput,
+	CheckinActivityInput,
+	CheckoutActivityInput,
 	GardenerMilestoneInput,
-	GardenerReportInput,
-	HealthcheckInput,
-	PublishedInterventionInput,
-	ScheduledInterventionInput,
+	HealthcheckActivityInput,
+	InterventionInput,
+	ReportActivityInput,
+	ScheduleActivityInput,
 } from "../types/schemas";
 
 const UINT8_MAX = 255;
@@ -75,6 +69,12 @@ function assertLongitude(value: number, field: string): void {
 	}
 }
 
+function assertNonEmptyString(value: string, field: string): void {
+	if (typeof value !== "string" || value.length === 0) {
+		fail(field, `expected non-empty string`);
+	}
+}
+
 const AREA_TYPES = Object.values(AreaType).filter(
 	(v): v is AreaType => typeof v === "number",
 );
@@ -85,20 +85,17 @@ const MILESTONE_LEVELS = Object.values(MilestoneLevel).filter(
 	(v): v is MilestoneLevel => typeof v === "number",
 );
 
+// --- On-chain schema validators ---
+
 export function validateAreaRegistration(input: AreaRegistrationInput): void {
 	assertEnum(input.areaType, AREA_TYPES, "areaType");
 	assertLatitude(input.latitude, "latitude");
 	assertLongitude(input.longitude, "longitude");
 }
 
-export function validatePublishedIntervention(
-	input: PublishedInterventionInput,
-): void {
+export function validateIntervention(input: InterventionInput): void {
 	assertEnum(input.interventionType, INTERVENTION_TYPES, "interventionType");
-	assertRange(input.healthBefore, 0, 10, "healthBefore");
-	assertRange(input.healthAfter, 0, 10, "healthAfter");
-	assertUint8(input.offchainCount, "offchainCount");
-	assertUint8(input.crewSize, "crewSize");
+	assertNonEmptyString(input.interventionId, "interventionId");
 }
 
 export function validateGardenerMilestone(input: GardenerMilestoneInput): void {
@@ -108,35 +105,56 @@ export function validateGardenerMilestone(input: GardenerMilestoneInput): void {
 	assertUint8(input.avgHealthImprovement, "avgHealthImprovement");
 }
 
-export function validateScheduledIntervention(
-	input: ScheduledInterventionInput,
-): void {
+// --- Activity payload validators (per-type) ---
+
+export function validateScheduleActivity(input: ScheduleActivityInput): void {
+	assertNonEmptyString(input.interventionId, "interventionId");
 	assertEnum(input.interventionType, INTERVENTION_TYPES, "interventionType");
 	assertUint8(input.crewSize, "crewSize");
-	assertUint16(input.estimatedMinutes, "estimatedMinutes");
+	assertUint16(input.plannedDuration, "plannedDuration");
+	if (!Array.isArray(input.tasksPlanned)) {
+		fail("tasksPlanned", "expected array of task code strings");
+	}
 }
 
-export function validateGardenerCheckin(input: GardenerCheckinInput): void {
-	assertLatitude(input.latitude, "latitude");
-	assertLongitude(input.longitude, "longitude");
+function assertOptionalCoordinatePair(
+	latitude: number | undefined,
+	longitude: number | undefined,
+): void {
+	const hasLat = latitude !== undefined;
+	const hasLng = longitude !== undefined;
+	if (hasLat !== hasLng) {
+		fail(
+			hasLat ? "longitude" : "latitude",
+			"latitude and longitude must be both present or both absent",
+		);
+	}
+	if (hasLat && hasLng) {
+		assertLatitude(latitude as number, "latitude");
+		assertLongitude(longitude as number, "longitude");
+	}
 }
 
-export function validateGardenerCheckout(input: GardenerCheckoutInput): void {
-	assertUint16(input.actualMinutes, "actualMinutes");
+export function validateCheckinActivity(input: CheckinActivityInput): void {
+	assertNonEmptyString(input.interventionId, "interventionId");
+	assertOptionalCoordinatePair(input.latitude, input.longitude);
 }
 
-export function validateGardenerReport(input: GardenerReportInput): void {
-	assertUint8(input.taskCount, "taskCount");
+export function validateCheckoutActivity(input: CheckoutActivityInput): void {
+	assertNonEmptyString(input.interventionId, "interventionId");
+	assertOptionalCoordinatePair(input.latitude, input.longitude);
 }
 
-export function validateAdminValidation(input: AdminValidationInput): void {
-	assertRange(input.qualityScore, 0, 10, "qualityScore");
+export function validateReportActivity(input: ReportActivityInput): void {
+	assertNonEmptyString(input.interventionId, "interventionId");
+	if (!Array.isArray(input.tasksCompleted)) {
+		fail("tasksCompleted", "expected array of task code strings");
+	}
+	assertUint16(input.reportedEffort, "reportedEffort");
 }
 
-export function validateCitizenFeedback(input: CitizenFeedbackInput): void {
-	assertRange(input.rating, 0, 5, "rating");
-}
-
-export function validateHealthcheck(input: HealthcheckInput): void {
+export function validateHealthcheckActivity(
+	input: HealthcheckActivityInput,
+): void {
 	assertRange(input.healthScore, 1, 10, "healthScore");
 }

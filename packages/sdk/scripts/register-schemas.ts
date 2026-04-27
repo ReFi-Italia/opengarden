@@ -1,18 +1,22 @@
 /**
- * Register all OpenGarden schemas on a testnet and print the UIDs.
+ * Register all OpenGarden schemas on a chain and persist the resulting
+ * UIDs into `src/chains/schemas.json`.
  *
  * Run once per chain. UIDs are deterministic — if schemas are already
  * registered, the tx will revert but the UID is still valid.
  *
  * Usage:  pnpm register-schemas
- * Output: JSON map of schema name → UID (paste into .env as OPENGARDEN_SCHEMA_UIDS)
+ * After a successful run, commit the updated `src/chains/schemas.json`.
  */
 import "dotenv/config";
+import { readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { ethers } from "ethers";
 import { BASE_SEPOLIA, OPTIMISM_SEPOLIA, ZERO_ADDRESS } from "../src/constants";
 import { SCHEMA_DEFINITIONS } from "../src/schemas/definitions";
-import type { ChainConfig } from "../src/types/config";
+import type { ChainConfig, SchemaUIDs } from "../src/types/config";
 import type { SchemaName } from "../src/types/enums";
 
 // Force CJS resolution — the EAS SDK ESM build has extensionless imports
@@ -29,6 +33,11 @@ const CHAINS: Record<string, ChainConfig> = {
 	"optimism-sepolia": OPTIMISM_SEPOLIA,
 	"base-sepolia": BASE_SEPOLIA,
 };
+
+const SCHEMAS_JSON_PATH = resolve(
+	dirname(fileURLToPath(import.meta.url)),
+	"../src/chains/schemas.json",
+);
 
 if (!PRIVATE_KEY) {
 	console.error("Set OPENGARDEN_TEST_PRIVATE_KEY in .env");
@@ -47,7 +56,7 @@ const signer = new ethers.Wallet(PRIVATE_KEY, provider);
 const registry = new SchemaRegistry(chain.schemaRegistryAddress);
 registry.connect(signer);
 
-const uids: Record<string, string> = {};
+const uids: Partial<SchemaUIDs> = {};
 const names = Object.keys(SCHEMA_DEFINITIONS) as SchemaName[];
 
 console.log(`Registering schemas on ${CHAIN_NAME}...\n`);
@@ -104,7 +113,18 @@ for (const name of names) {
 	await new Promise((r) => setTimeout(r, 1_500));
 }
 
-console.log("\n--- Copy this into your .env ---\n");
-console.log(`OPENGARDEN_SCHEMA_UIDS='${JSON.stringify(uids)}'`);
-console.log("\n--- Or use in code ---\n");
-console.log(JSON.stringify(uids, null, 2));
+// Merge the newly registered UIDs back into src/chains/schemas.json so the
+// next SDK build ships them automatically.
+const existing = JSON.parse(readFileSync(SCHEMAS_JSON_PATH, "utf8")) as Record<
+	string,
+	Partial<SchemaUIDs>
+>;
+existing[CHAIN_NAME] = { ...existing[CHAIN_NAME], ...uids };
+writeFileSync(
+	SCHEMAS_JSON_PATH,
+	`${JSON.stringify(existing, null, 2)}\n`,
+	"utf8",
+);
+
+console.log(`\nPersisted UIDs to ${SCHEMAS_JSON_PATH}`);
+console.log("Next: run `pnpm name-schemas` to label them on easscan.");

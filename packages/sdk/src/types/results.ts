@@ -1,4 +1,5 @@
 import type { TransactionReceipt } from "ethers";
+import type { ActivityTypeName } from "./enums";
 
 export interface OnChainAttestationResult {
 	uid: string;
@@ -8,15 +9,17 @@ export interface OnChainAttestationResult {
 
 export interface TimestampedOffChainResult {
 	uid: string;
+	/** Activity discriminator. */
+	type: ActivityTypeName;
+	/** Ethereum address of the wallet that signed this attestation. */
+	attester: string;
+	/** Plaintext payload — travels alongside the signed envelope into the evidence bundle. Shape depends on `type` (see spec §3.2). */
+	payload: Record<string, unknown>;
+	/** Full EIP-712 signed attestation from `Offchain.signOffchainAttestation`, with `signer` injected. */
 	signedAttestation: Record<string, unknown>;
 	timestampTxHash: string;
 	onchainTimestamp: bigint;
 	timestampReceipt: TransactionReceipt;
-}
-
-export interface OffChainAttestationResult {
-	uid: string;
-	signedAttestation: Record<string, unknown>;
 }
 
 export interface SchemaRegistrationResult {
@@ -31,18 +34,12 @@ export interface IndexerSubmissionResult {
 	error?: string;
 }
 
-export type BundleIndexingRole =
-	| "scheduled"
-	| "checkin"
-	| "checkout"
-	| "report"
-	| "validation"
-	| "healthcheckBefore"
-	| "healthcheckAfter";
+/** Role tag used by the indexer submission routine. Matches `ActivityTypeName` minus `unspecified`. */
+export type BundleIndexingRole = "schedule" | "checkin" | "checkout" | "report";
 
 export interface BundleIndexingResult extends IndexerSubmissionResult {
 	uid: string;
 	role: BundleIndexingRole;
-	/** 0-based crew member index for per-member roles (`checkin` / `checkout` / `report`). */
-	crewIndex?: number;
+	/** 0-based index in the flat activities array. */
+	activityIndex?: number;
 }

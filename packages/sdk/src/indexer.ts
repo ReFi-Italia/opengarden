@@ -1,3 +1,4 @@
+import { bundleJsonReplacer } from "./evidence";
 import type { IndexerSubmissionResult } from "./types/results";
 
 const EASSCAN_GRAPHQL_URLS: Record<string, string> = {
@@ -32,7 +33,7 @@ export async function submitToIndexer(
 	try {
 		const pkg = JSON.stringify(
 			{ sig: signedAttestation, signer: signerAddress },
-			(_key, value) => (typeof value === "bigint" ? value.toString() : value),
+			bundleJsonReplacer,
 		);
 		const response = await fetch(storeUrl, {
 			method: "POST",

@@ -1,28 +1,37 @@
 import { SchemaEncoder } from "@ethereum-attestation-service/eas-sdk";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { ZERO_BYTES32 } from "../src/constants";
 import { SCHEMA_STRINGS } from "../src/schemas/definitions";
 import {
+	buildCheckinPayload,
+	buildCheckoutPayload,
+	buildHealthcheckPayload,
+	buildReportPayload,
+	buildSchedulePayload,
+	decodeActivityData,
 	decodeAreaRegistration,
-	decodeCitizenFeedback,
 	decodeGardenerMilestone,
-	decodeHealthcheck,
-	decodePublishedIntervention,
-	decodeScheduledIntervention,
-	encodeAdminValidation,
+	decodeIntervention,
+	encodeActivityData,
+	encodeActivityFromPayload,
 	encodeAreaRegistration,
-	encodeCitizenFeedback,
-	encodeGardenerCheckin,
-	encodeGardenerCheckout,
 	encodeGardenerMilestone,
-	encodeGardenerReport,
-	encodeHealthcheck,
-	encodePublishedIntervention,
-	encodeScheduledIntervention,
+	encodeIntervention,
+	initEncoders,
 } from "../src/schemas/encoders";
-import { AreaType, InterventionType } from "../src/types/enums";
-import { hashIdentifier } from "../src/utils";
+import {
+	ActivityType,
+	AreaType,
+	InterventionType,
+} from "../src/types/enums";
+import { hashActivityPayload, hashBoundary, hashIdentifier } from "../src/utils";
 import { MOCK_SIGNER_ADDRESS } from "./_helpers";
+
+beforeAll(async () => {
+	await initEncoders();
+});
+
+// --- AreaRegistration ---
 
 describe("AreaRegistration encoder", () => {
 	const input = {
@@ -32,13 +41,12 @@ describe("AreaRegistration encoder", () => {
 		areaType: AreaType.PublicGreenSpace,
 		name: "Giardino Via Appia 12",
 		municipality: "RM-I",
-		metadataHash: null,
+		boundary: null,
+		metadata: "",
 	};
 
 	it("encodes and decodes roundtrip", () => {
 		const encoded = encodeAreaRegistration(input);
-		expect(encoded).toBeTruthy();
-		expect(typeof encoded).toBe("string");
 		expect(encoded.startsWith("0x")).toBe(true);
 
 		const decoded = decodeAreaRegistration(encoded);
@@ -48,6 +56,33 @@ describe("AreaRegistration encoder", () => {
 		expect(decoded.areaType).toBe(AreaType.PublicGreenSpace);
 		expect(decoded.name).toBe("Giardino Via Appia 12");
 		expect(decoded.municipality).toBe("RM-I");
+		expect(decoded.boundariesHash).toBe(ZERO_BYTES32);
+		expect(decoded.metadata).toBe("");
+	});
+
+	it("hashes boundary blob and preserves inline metadata roundtrip", () => {
+		const boundary = {
+			type: "Polygon",
+			coordinates: [
+				[
+					[12.4964, 41.89],
+					[12.4974, 41.89],
+					[12.4974, 41.891],
+					[12.4964, 41.891],
+					[12.4964, 41.89],
+				],
+			],
+		};
+		const encoded = encodeAreaRegistration({
+			...input,
+			boundary,
+			metadata: '{"v":1,"surfaceM2":420,"accessHours":"dawn-dusk"}',
+		});
+		const decoded = decodeAreaRegistration(encoded);
+		expect(decoded.boundariesHash).toBe(hashBoundary(boundary));
+		expect(decoded.metadata).toBe(
+			'{"v":1,"surfaceM2":420,"accessHours":"dawn-dusk"}',
+		);
 	});
 
 	it("produces valid ABI-encoded data", () => {
@@ -57,46 +92,49 @@ describe("AreaRegistration encoder", () => {
 	});
 });
 
-describe("PublishedIntervention encoder", () => {
+// --- Intervention (renamed from PublishedIntervention) ---
+
+describe("Intervention encoder", () => {
 	const input = {
 		areaUID: ZERO_BYTES32,
 		interventionId: "INT-2026-0001",
 		interventionType: InterventionType.RoutineMaintenance,
 		executionDate: 1709251200n,
-		healthBefore: 3,
-		healthAfter: 8,
 		commissionId: "sponsor-acme-001",
 		evidenceBundleHash: ZERO_BYTES32,
-		offchainCount: 8,
-		crewSize: 2,
 	};
 
 	it("encodes and decodes roundtrip", () => {
-		const encoded = encodePublishedIntervention(input);
-		const decoded = decodePublishedIntervention(encoded);
+		const encoded = encodeIntervention(input);
+		const decoded = decodeIntervention(encoded);
 		expect(decoded.interventionId).toBe("INT-2026-0001");
 		expect(decoded.interventionType).toBe(InterventionType.RoutineMaintenance);
 		expect(decoded.executionDate).toBe(1709251200n);
-		expect(decoded.healthBefore).toBe(3);
-		expect(decoded.healthAfter).toBe(8);
 		expect(decoded.commissionRef).toBe(hashIdentifier("sponsor-acme-001"));
-		expect(decoded.offchainCount).toBe(8);
-		expect(decoded.crewSize).toBe(2);
+		expect(decoded.evidenceBundleHash).toBe(ZERO_BYTES32);
 	});
 
 	it("encodes a volunteer intervention with ZERO_BYTES32 commissionRef", () => {
-		const encoded = encodePublishedIntervention({ ...input, commissionId: null });
-		const decoded = decodePublishedIntervention(encoded);
+		const encoded = encodeIntervention({ ...input, commissionId: null });
+		const decoded = decodeIntervention(encoded);
 		expect(decoded.commissionRef).toBe(ZERO_BYTES32);
 	});
 
 	it("accepts a Date for executionDate and normalizes to Unix seconds", () => {
 		const executionDate = new Date("2024-03-01T00:00:00.000Z");
-		const encoded = encodePublishedIntervention({ ...input, executionDate });
-		const decoded = decodePublishedIntervention(encoded);
+		const encoded = encodeIntervention({ ...input, executionDate });
+		const decoded = decodeIntervention(encoded);
 		expect(decoded.executionDate).toBe(1709251200n);
 	});
+
+	it("produces valid ABI-encoded data", () => {
+		const encoded = encodeIntervention(input);
+		const encoder = new SchemaEncoder(SCHEMA_STRINGS.Intervention);
+		expect(encoder.isEncodedDataValid(encoded)).toBe(true);
+	});
 });
+
+// --- GardenerMilestone ---
 
 describe("GardenerMilestone encoder", () => {
 	const input = {
@@ -105,7 +143,6 @@ describe("GardenerMilestone encoder", () => {
 		totalInterventions: 15,
 		totalValidated: 14,
 		avgHealthImprovement: 4,
-		skillTier: "Certified Urban Gardener — Level 2",
 		achievedAt: 1709424000n,
 		evidenceRoot: ZERO_BYTES32,
 	};
@@ -117,170 +154,371 @@ describe("GardenerMilestone encoder", () => {
 		expect(decoded.totalInterventions).toBe(15);
 		expect(decoded.totalValidated).toBe(14);
 		expect(decoded.avgHealthImprovement).toBe(4);
-		expect(decoded.skillTier).toBe("Certified Urban Gardener — Level 2");
 		expect(decoded.achievedAt).toBe(1709424000n);
+		expect(decoded.evidenceRoot).toBe(ZERO_BYTES32);
 	});
-});
 
-describe("ScheduledIntervention encoder", () => {
-	it("encodes and decodes roundtrip", () => {
-		const encoded = encodeScheduledIntervention({
-			areaUID: ZERO_BYTES32,
-			interventionId: "INT-2026-0002",
-			interventionType: InterventionType.Restoration,
-			crewLead: MOCK_SIGNER_ADDRESS,
-			crewSize: 3,
-			scheduledDate: 1709337600n,
-			estimatedMinutes: 120,
-			description: "Restoration of flower beds",
-			commissionId: "sponsor-city-hall",
-		});
-		expect(encoded).toBeTruthy();
-		const encoder = new SchemaEncoder(SCHEMA_STRINGS.ScheduledIntervention);
+	it("produces valid ABI-encoded data", () => {
+		const encoded = encodeGardenerMilestone(input);
+		const encoder = new SchemaEncoder(SCHEMA_STRINGS.GardenerMilestone);
 		expect(encoder.isEncodedDataValid(encoded)).toBe(true);
-
-		const decoded = decodeScheduledIntervention(encoded);
-		expect(decoded.interventionId).toBe("INT-2026-0002");
-		expect(decoded.interventionType).toBe(InterventionType.Restoration);
-		expect(decoded.scheduledDate).toBe(1709337600n);
-		expect(decoded.estimatedMinutes).toBe(120);
-		expect(decoded.description).toBe("Restoration of flower beds");
-		expect(decoded.commissionRef).toBe(hashIdentifier("sponsor-city-hall"));
-		expect(decoded.crewSize).toBe(3);
 	});
 });
 
-describe("GardenerCheckin encoder", () => {
-	it("encodes with coordinate conversion", () => {
-		const encoded = encodeGardenerCheckin({
-			interventionUID: ZERO_BYTES32,
+// --- Activity ABI (uint8 activityType, bytes32 payloadHash) ---
+
+describe("Activity ABI encoder", () => {
+	const samplePayloadHash =
+		"0x1111111111111111111111111111111111111111111111111111111111111111";
+
+	it("encodeActivityData + decodeActivityData roundtrip", () => {
+		const data = encodeActivityData(ActivityType.Checkin, samplePayloadHash);
+		expect(data.startsWith("0x")).toBe(true);
+
+		const decoded = decodeActivityData(data);
+		expect(decoded.activityType).toBe(ActivityType.Checkin);
+		expect(decoded.payloadHash.toLowerCase()).toBe(
+			samplePayloadHash.toLowerCase(),
+		);
+	});
+
+	it("encodes every ActivityType value without loss", () => {
+		for (const type of [
+			ActivityType.Schedule,
+			ActivityType.Checkin,
+			ActivityType.Checkout,
+			ActivityType.Report,
+			ActivityType.Healthcheck,
+		]) {
+			const data = encodeActivityData(type, samplePayloadHash);
+			const decoded = decodeActivityData(data);
+			expect(decoded.activityType).toBe(type);
+		}
+	});
+
+	it("produces valid ABI-encoded data", () => {
+		const data = encodeActivityData(ActivityType.Report, samplePayloadHash);
+		const encoder = new SchemaEncoder(SCHEMA_STRINGS.Activity);
+		expect(encoder.isEncodedDataValid(data)).toBe(true);
+	});
+
+	it("encodes consistent widths: 2 + 64 + 64 hex chars for uint8 + bytes32", () => {
+		const data = encodeActivityData(ActivityType.Schedule, samplePayloadHash);
+		expect(data.length).toBe(2 + 64 + 64);
+	});
+});
+
+describe("encodeActivityFromPayload", () => {
+	it("returns data + payloadHash that agree with each other", () => {
+		const payload = { latitude: 41890000, longitude: 12492000 };
+		const { data, payloadHash } = encodeActivityFromPayload(
+			ActivityType.Checkout,
+			payload,
+		);
+		expect(payloadHash).toBe(hashActivityPayload(payload));
+		const decoded = decodeActivityData(data);
+		expect(decoded.activityType).toBe(ActivityType.Checkout);
+		expect(decoded.payloadHash.toLowerCase()).toBe(payloadHash.toLowerCase());
+	});
+
+	it("produces the same hash regardless of key insertion order in the payload", () => {
+		const a = encodeActivityFromPayload(ActivityType.Checkin, {
+			latitude: 1,
+			longitude: 2,
+		});
+		const b = encodeActivityFromPayload(ActivityType.Checkin, {
+			longitude: 2,
+			latitude: 1,
+		});
+		expect(a.payloadHash).toBe(b.payloadHash);
+		expect(a.data).toBe(b.data);
+	});
+});
+
+// --- Payload builders ---
+
+describe("buildSchedulePayload", () => {
+	const base = {
+		interventionId: "INT-2026-0001",
+		areaUID:
+			"0x00000000000000000000000000000000000000000000000000000000000000a1",
+		interventionType: InterventionType.RoutineMaintenance,
+		crewLead: MOCK_SIGNER_ADDRESS,
+		crewSize: 2,
+		scheduledDate: 1709251200n,
+		plannedDuration: 180,
+		tasksPlanned: ["PRUNE", "CLEAN"],
+		description: "Trim hedges",
+		commissionId: "sponsor-acme",
+	};
+
+	it("produces the canonical payload shape with resolved commissionRef", () => {
+		const payload = buildSchedulePayload(base);
+		expect(payload).toEqual({
+			interventionId: "INT-2026-0001",
+			areaUID:
+				"0x00000000000000000000000000000000000000000000000000000000000000a1",
+			interventionType: InterventionType.RoutineMaintenance,
+			scheduledDate: 1709251200,
+			plannedDuration: 180,
+			tasksPlanned: ["PRUNE", "CLEAN"],
+			description: "Trim hedges",
+			commissionRef: hashIdentifier("sponsor-acme"),
+			crewSize: 2,
+		});
+	});
+
+	it("normalizes Date to Unix seconds", () => {
+		const payload = buildSchedulePayload({
+			...base,
+			scheduledDate: new Date("2024-03-01T00:00:00.000Z"),
+		});
+		expect(payload.scheduledDate).toBe(1709251200);
+	});
+
+	it("emits ZERO_BYTES32 commissionRef for volunteer schedules", () => {
+		const payload = buildSchedulePayload({ ...base, commissionId: null });
+		expect(payload.commissionRef).toBe(ZERO_BYTES32);
+	});
+
+	it("fails validation on invalid crewSize", () => {
+		expect(() =>
+			buildSchedulePayload({ ...base, crewSize: -1 }),
+		).toThrow();
+		expect(() =>
+			buildSchedulePayload({ ...base, crewSize: 256 }),
+		).toThrow();
+	});
+
+	it("fails validation on empty interventionId", () => {
+		expect(() =>
+			buildSchedulePayload({ ...base, interventionId: "" }),
+		).toThrow();
+	});
+});
+
+describe("buildCheckinPayload", () => {
+	const base = {
+		interventionId: "INT-2026-0001",
+		latitude: 41.89,
+		longitude: 12.4964,
+	};
+
+	it("converts lat/lng to microdegrees when both present", () => {
+		const payload = buildCheckinPayload(base);
+		expect(payload.latitude).toBe(41890000);
+		expect(payload.longitude).toBe(12496400);
+	});
+
+	it("truncates extra decimals rather than rounding", () => {
+		const payload = buildCheckinPayload({
+			...base,
+			latitude: 41.8901239,
+			longitude: 12.1234569,
+		});
+		expect(payload.latitude).toBe(41890123);
+		expect(payload.longitude).toBe(12123456);
+	});
+
+	it("omits lat/lng when both absent", () => {
+		const payload = buildCheckinPayload({
+			interventionId: "INT-2026-0001",
+		});
+		expect(payload).toEqual({});
+	});
+
+	it("rejects lat without lng or vice versa", () => {
+		expect(() =>
+			buildCheckinPayload({ interventionId: "INT-2026-0001", latitude: 1 }),
+		).toThrow();
+		expect(() =>
+			buildCheckinPayload({ interventionId: "INT-2026-0001", longitude: 1 }),
+		).toThrow();
+	});
+
+	it("rejects out-of-range latitude", () => {
+		expect(() => buildCheckinPayload({ ...base, latitude: 95 })).toThrow();
+		expect(() => buildCheckinPayload({ ...base, latitude: -91 })).toThrow();
+	});
+
+	it("rejects out-of-range longitude", () => {
+		expect(() => buildCheckinPayload({ ...base, longitude: 181 })).toThrow();
+		expect(() => buildCheckinPayload({ ...base, longitude: -181 })).toThrow();
+	});
+});
+
+describe("buildCheckoutPayload", () => {
+	it("converts lat/lng to microdegrees when both present", () => {
+		const payload = buildCheckoutPayload({
+			interventionId: "INT-2026-0001",
 			latitude: 41.89,
 			longitude: 12.4964,
-			timestamp: 1709337600n,
-			photoHash: ZERO_BYTES32,
 		});
-		expect(encoded).toBeTruthy();
-		const encoder = new SchemaEncoder(SCHEMA_STRINGS.GardenerCheckin);
-		expect(encoder.isEncodedDataValid(encoded)).toBe(true);
+		expect(payload).toEqual({ latitude: 41890000, longitude: 12496400 });
+	});
+
+	it("omits lat/lng when both absent", () => {
+		const payload = buildCheckoutPayload({
+			interventionId: "INT-2026-0001",
+		});
+		expect(payload).toEqual({});
+	});
+
+	it("rejects lat without lng", () => {
+		expect(() =>
+			buildCheckoutPayload({ interventionId: "INT-2026-0001", latitude: 1 }),
+		).toThrow();
 	});
 });
 
-describe("GardenerCheckout encoder", () => {
-	it("encodes without error", () => {
-		const encoded = encodeGardenerCheckout({
-			checkinUID: ZERO_BYTES32,
-			timestamp: 1709344800n,
-			actualMinutes: 90,
+describe("buildReportPayload", () => {
+	it("keeps tasksCompleted as an array and preserves order", () => {
+		const payload = buildReportPayload({
+			interventionId: "INT-2026-0001",
+			tasksCompleted: ["PRUNE", "CLEAN", "WATER"],
+			reportedEffort: 120,
+			mediaHash: "0x00000000000000000000000000000000000000000000000000000000000000aa",
+			notes: "all good",
 		});
-		expect(encoded).toBeTruthy();
-		const encoder = new SchemaEncoder(SCHEMA_STRINGS.GardenerCheckout);
-		expect(encoder.isEncodedDataValid(encoded)).toBe(true);
+		expect(payload.tasksCompleted).toEqual(["PRUNE", "CLEAN", "WATER"]);
+		expect(payload.reportedEffort).toBe(120);
+		expect(payload.mediaHash).toBe(
+			"0x00000000000000000000000000000000000000000000000000000000000000aa",
+		);
+		expect(payload.notes).toBe("all good");
+	});
+
+	it("accepts an empty tasksCompleted array and zero effort", () => {
+		const payload = buildReportPayload({
+			interventionId: "INT-2026-0001",
+			tasksCompleted: [],
+			reportedEffort: 0,
+			mediaHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
+			notes: "",
+		});
+		expect(payload.tasksCompleted).toEqual([]);
+		expect(payload.reportedEffort).toBe(0);
+	});
+
+	it("rejects non-array tasksCompleted", () => {
+		expect(() =>
+			buildReportPayload({
+				interventionId: "INT-2026-0001",
+				// biome-ignore lint/suspicious/noExplicitAny: intentional bad input
+				tasksCompleted: "PRUNE" as any,
+				reportedEffort: 0,
+				mediaHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
+				notes: "",
+			}),
+		).toThrow();
+	});
+
+	it("rejects out-of-range reportedEffort", () => {
+		expect(() =>
+			buildReportPayload({
+				interventionId: "INT-2026-0001",
+				tasksCompleted: [],
+				reportedEffort: -1,
+				mediaHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
+				notes: "",
+			}),
+		).toThrow();
+		expect(() =>
+			buildReportPayload({
+				interventionId: "INT-2026-0001",
+				tasksCompleted: [],
+				reportedEffort: 65_536,
+				mediaHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
+				notes: "",
+			}),
+		).toThrow();
 	});
 });
 
-describe("GardenerReport encoder", () => {
-	it("encodes without error", () => {
-		const encoded = encodeGardenerReport({
-			interventionUID: ZERO_BYTES32,
-			checkoutUID: ZERO_BYTES32,
-			tasksCompleted: "PRUNE,CLEAN,WATER",
-			taskCount: 3,
-			photosHash: ZERO_BYTES32,
-			notes: "All tasks completed. Rose beds pruned.",
+describe("buildHealthcheckPayload", () => {
+	const base = {
+		areaUID:
+			"0x000000000000000000000000000000000000000000000000000000000000cafe",
+		healthScore: 8,
+		mediaHash: "0x00000000000000000000000000000000000000000000000000000000000000bb",
+		notes: "Hedge trimmed.",
+	};
+
+	it("produces the canonical payload shape", () => {
+		const payload = buildHealthcheckPayload(base);
+		expect(payload).toEqual({
+			healthScore: 8,
+			mediaHash: "0x00000000000000000000000000000000000000000000000000000000000000bb",
+			notes: "Hedge trimmed.",
 		});
-		expect(encoded).toBeTruthy();
-		const encoder = new SchemaEncoder(SCHEMA_STRINGS.GardenerReport);
-		expect(encoder.isEncodedDataValid(encoded)).toBe(true);
+	});
+
+	it("includes metadata when provided", () => {
+		const payload = buildHealthcheckPayload({
+			...base,
+			metadata: { v: 1, weather: "sunny" },
+		});
+		expect(payload.metadata).toEqual({ v: 1, weather: "sunny" });
+	});
+
+	it("omits metadata when null or undefined", () => {
+		const a = buildHealthcheckPayload({ ...base, metadata: null });
+		const b = buildHealthcheckPayload({ ...base, metadata: undefined });
+		expect("metadata" in a).toBe(false);
+		expect("metadata" in b).toBe(false);
+	});
+
+	it("rejects healthScore outside 1-10", () => {
+		expect(() =>
+			buildHealthcheckPayload({ ...base, healthScore: 0 }),
+		).toThrow();
+		expect(() =>
+			buildHealthcheckPayload({ ...base, healthScore: 11 }),
+		).toThrow();
 	});
 });
 
-describe("AdminValidation encoder", () => {
-	it("encodes without error", () => {
-		const encoded = encodeAdminValidation({
-			scheduleUID: ZERO_BYTES32,
-			approved: true,
-			qualityScore: 8,
-			feedback: "Good work.",
-			validatorId: null,
+// --- Hash-stability cross-check ---
+
+describe("payload → ABI data → decode roundtrip", () => {
+	it("is stable across canonical payload rebuilds", () => {
+		const firstBuild = buildCheckoutPayload({
+			interventionId: "INT-2026-0001",
+			latitude: 41.89,
+			longitude: 12.4964,
 		});
-		expect(encoded).toBeTruthy();
-		const encoder = new SchemaEncoder(SCHEMA_STRINGS.AdminValidation);
-		expect(encoder.isEncodedDataValid(encoded)).toBe(true);
-	});
-});
-
-describe("CitizenFeedback encoder", () => {
-	it("encodes and decodes roundtrip", () => {
-		const encoded = encodeCitizenFeedback({
-			areaUID: ZERO_BYTES32,
-			rating: 4,
-			comment: "The park looks much better now!",
-			photoHash: ZERO_BYTES32,
+		const secondBuild = buildCheckoutPayload({
+			interventionId: "INT-2026-0001",
+			latitude: 41.89,
+			longitude: 12.4964,
 		});
-		expect(encoded).toBeTruthy();
-		const encoder = new SchemaEncoder(SCHEMA_STRINGS.CitizenFeedback);
-		expect(encoder.isEncodedDataValid(encoded)).toBe(true);
-
-		const decoded = decodeCitizenFeedback(encoded);
-		expect(decoded.rating).toBe(4);
-		expect(decoded.comment).toBe("The park looks much better now!");
-		expect(decoded.photoHash).toBe(ZERO_BYTES32);
-	});
-});
-
-describe("Healthcheck encoder", () => {
-	const ASSESSOR_STAFF_ID = "staff-cafe";
-
-	it("encodes a standalone healthcheck (no linked intervention)", () => {
-		const encoded = encodeHealthcheck({
-			areaUID: ZERO_BYTES32,
-			interventionUID: ZERO_BYTES32,
-			healthScore: 7,
-			photoHash: ZERO_BYTES32,
-			assessorNotes: "Good condition overall, minor weeding needed",
-			interventionNeeded: false,
-			assessorId: ASSESSOR_STAFF_ID,
-		});
-		expect(encoded).toBeTruthy();
-		const encoder = new SchemaEncoder(SCHEMA_STRINGS.Healthcheck);
-		expect(encoder.isEncodedDataValid(encoded)).toBe(true);
+		expect(hashActivityPayload(firstBuild)).toBe(
+			hashActivityPayload(secondBuild),
+		);
 	});
 
-	it("encodes and decodes a healthcheck linked to an intervention", () => {
-		const linkedInterventionUID =
-			"0x000000000000000000000000000000000000000000000000000000000000beef";
-		const encoded = encodeHealthcheck({
-			areaUID: ZERO_BYTES32,
-			interventionUID: linkedInterventionUID,
-			healthScore: 3,
-			photoHash: ZERO_BYTES32,
-			assessorNotes: "Pre-intervention assessment",
-			interventionNeeded: true,
-			assessorId: ASSESSOR_STAFF_ID,
+	it("commits the payload hash into ABI data that decodes back to the same hash", () => {
+		const payload = buildSchedulePayload({
+			interventionId: "INT-2026-0001",
+			areaUID:
+				"0x00000000000000000000000000000000000000000000000000000000000000a1",
+			interventionType: InterventionType.RoutineMaintenance,
+			crewLead: MOCK_SIGNER_ADDRESS,
+			crewSize: 1,
+			scheduledDate: 1709251200n,
+			plannedDuration: 120,
+			tasksPlanned: [],
+			description: "",
+			commissionId: null,
 		});
-		expect(encoded).toBeTruthy();
-		const encoder = new SchemaEncoder(SCHEMA_STRINGS.Healthcheck);
-		expect(encoder.isEncodedDataValid(encoded)).toBe(true);
-
-		const decoded = decodeHealthcheck(encoded);
-		expect(decoded.interventionUID).toBe(linkedInterventionUID);
-		expect(decoded.healthScore).toBe(3);
-		expect(decoded.assessorNotes).toBe("Pre-intervention assessment");
-		expect(decoded.interventionNeeded).toBe(true);
-		expect(decoded.assessorId).toBe(hashIdentifier(ASSESSOR_STAFF_ID));
-	});
-
-	it("encodes ZERO_BYTES32 when assessorId is null", () => {
-		const encoded = encodeHealthcheck({
-			areaUID: ZERO_BYTES32,
-			interventionUID: ZERO_BYTES32,
-			healthScore: 7,
-			photoHash: ZERO_BYTES32,
-			assessorNotes: "Organizational assessment",
-			interventionNeeded: false,
-			assessorId: null,
-		});
-		const decoded = decodeHealthcheck(encoded);
-		expect(decoded.assessorId).toBe(ZERO_BYTES32);
+		const { data, payloadHash } = encodeActivityFromPayload(
+			ActivityType.Schedule,
+			payload,
+		);
+		const decoded = decodeActivityData(data);
+		expect(decoded.payloadHash.toLowerCase()).toBe(payloadHash.toLowerCase());
+		expect(decoded.payloadHash.toLowerCase()).toBe(
+			hashActivityPayload(payload).toLowerCase(),
+		);
 	});
 });
