@@ -1,8 +1,8 @@
 {
-  "optimism-sepolia": {
-    "AreaRegistration": "0x62eb21be69e030fd0649a253ab50ef14027adc83dd59d6b6165704e6f9166cfb",
-    "Intervention": "0xdd878a5f30778556539f95ad707687ad882348add80f264aa613cec830a0a9cc",
-    "GardenerMilestone": "0x1e1868f8b8c840c251ad532bdb80cddf8bcf88e047a1d72ccc9589b282d23b8b",
-    "Activity": "0xafd600618ac1772efecccd377ba38f56b14b26b04def331ea2e99d7a23c473a6"
-  }
+	"optimism-sepolia": {
+		"AreaRegistration": "0x62eb21be69e030fd0649a253ab50ef14027adc83dd59d6b6165704e6f9166cfb",
+		"Intervention": "0xdd878a5f30778556539f95ad707687ad882348add80f264aa613cec830a0a9cc",
+		"GardenerMilestone": "0x1e1868f8b8c840c251ad532bdb80cddf8bcf88e047a1d72ccc9589b282d23b8b",
+		"Activity": "0xafd600618ac1772efecccd377ba38f56b14b26b04def331ea2e99d7a23c473a6"
+	}
 }

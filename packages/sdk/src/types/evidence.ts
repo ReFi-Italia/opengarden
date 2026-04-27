@@ -100,10 +100,7 @@ export interface EvidenceBundleBuilderInput {
 }
 
 export type FinalizeInterventionInput = EvidenceBundleBuilderInput &
-	Omit<
-		InterventionInput,
-		"areaUID" | "interventionId" | "evidenceBundleHash"
-	>;
+	Omit<InterventionInput, "areaUID" | "interventionId" | "evidenceBundleHash">;
 
 export interface FinalizeInterventionResult {
 	bundle: EvidenceBundle;

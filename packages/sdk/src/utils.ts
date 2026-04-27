@@ -49,10 +49,17 @@ export function hashIdentifier(id: string): string {
  * identifier hashes.
  */
 export function hashInterventionScope(interventionId: string): string {
-	if (!interventionId) {
-		throw new Error("Cannot hash an empty interventionId");
-	}
-	return keccak256(toUtf8Bytes(interventionId));
+	return hashIdentifier(interventionId);
+}
+
+/** Case-insensitive comparison for EVM addresses. */
+export function sameAddress(a: string, b: string): boolean {
+	return a.toLowerCase() === b.toLowerCase();
+}
+
+/** Case-insensitive comparison for bytes32 hex strings. */
+export function sameBytes32(a: string, b: string): boolean {
+	return a.toLowerCase() === b.toLowerCase();
 }
 
 export interface MediaManifestItem {
@@ -78,13 +85,16 @@ export function hashMediaFile(bytes: Uint8Array | string): string {
  * payload's `mediaHash`. Items are sorted by `hash` so the result is
  * deterministic regardless of caller-side order.
  */
-export function buildMediaManifest(
-	items: ReadonlyArray<MediaManifestItem>,
-): { bytes: Uint8Array; hash: string } {
+export function buildMediaManifest(items: ReadonlyArray<MediaManifestItem>): {
+	bytes: Uint8Array;
+	hash: string;
+} {
 	if (items.length === 0) {
 		throw new Error("Cannot build an empty media manifest");
 	}
-	const sorted = [...items].sort((a, b) => (a.hash < b.hash ? -1 : a.hash > b.hash ? 1 : 0));
+	const sorted = [...items].sort((a, b) =>
+		a.hash < b.hash ? -1 : a.hash > b.hash ? 1 : 0,
+	);
 	const manifest = {
 		v: 1,
 		items: sorted.map((item) =>

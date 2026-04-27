@@ -1,4 +1,5 @@
 import schemasJson from "./chains/schemas.json";
+import { OpenGardenError, OpenGardenErrorCode } from "./errors";
 import type { ChainConfig, SchemaUIDs } from "./types/config";
 
 export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
@@ -89,4 +90,23 @@ export type ChainName = keyof typeof CHAIN_CONFIGS;
 
 export function getChainConfig(name: ChainName): ChainConfig {
 	return CHAIN_CONFIGS[name];
+}
+
+/**
+ * Accepts either a known chain name or a `ChainConfig` object and returns the
+ * resolved config. Throws `OpenGardenError(INVALID_INPUT)` on unknown names.
+ */
+export function resolveChain(chain: ChainName | ChainConfig): ChainConfig {
+	if (typeof chain === "string") {
+		if (!Object.hasOwn(CHAIN_CONFIGS, chain)) {
+			throw new OpenGardenError(
+				OpenGardenErrorCode.INVALID_INPUT,
+				`Unknown chain name "${chain}". Known chains: ${Object.keys(
+					CHAIN_CONFIGS,
+				).join(", ")}. Pass a ChainConfig object for custom deployments.`,
+			);
+		}
+		return CHAIN_CONFIGS[chain];
+	}
+	return chain;
 }

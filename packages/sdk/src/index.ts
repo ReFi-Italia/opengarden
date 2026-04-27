@@ -108,8 +108,8 @@ export type { ActivityTypeName, SchemaName } from "./types/enums";
 export {
 	ACTIVITY_TYPE_NAMES,
 	ActivityType,
-	activityTypeFromName,
 	AreaType,
+	activityTypeFromName,
 	InterventionType,
 	MilestoneLevel,
 } from "./types/enums";

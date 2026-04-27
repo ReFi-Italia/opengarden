@@ -8,11 +8,11 @@ import type {
 	ReportActivityPayload,
 	ScheduleActivityPayload,
 } from "../types/attestation";
-import {
+import type {
 	ActivityType,
-	type AreaType,
-	type InterventionType,
-	type MilestoneLevel,
+	AreaType,
+	InterventionType,
+	MilestoneLevel,
 } from "../types/enums";
 import type {
 	AreaRegistrationInput,
@@ -92,7 +92,8 @@ export function encodeAreaRegistration(input: AreaRegistrationInput): string {
 		{ name: "municipality", value: input.municipality, type: "string" },
 		{
 			name: "boundariesHash",
-			value: input.boundary === null ? ZERO_BYTES32 : hashBoundary(input.boundary),
+			value:
+				input.boundary === null ? ZERO_BYTES32 : hashBoundary(input.boundary),
 			type: "bytes32",
 		},
 		{ name: "metadata", value: input.metadata, type: "string" },

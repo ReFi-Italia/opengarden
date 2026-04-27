@@ -1,9 +1,5 @@
 import { OpenGardenError, OpenGardenErrorCode } from "../errors";
-import {
-	AreaType,
-	InterventionType,
-	MilestoneLevel,
-} from "../types/enums";
+import { AreaType, InterventionType, MilestoneLevel } from "../types/enums";
 import type {
 	AreaRegistrationInput,
 	CheckinActivityInput,

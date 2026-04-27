@@ -1,5 +1,5 @@
 import { OpenGardenClient } from "./client";
-import { CHAIN_CONFIGS } from "./constants";
+import { resolveChain } from "./constants";
 import { OpenGardenError, OpenGardenErrorCode } from "./errors";
 import { initEncoders } from "./schemas/encoders";
 import type { OpenGardenConfig } from "./types/config";
@@ -26,10 +26,7 @@ export async function createOpenGardenClient(
 		);
 	}
 
-	const chain =
-		typeof config.chain === "string"
-			? resolveChainByName(config.chain)
-			: config.chain;
+	const chain = resolveChain(config.chain);
 
 	const { EAS, SchemaRegistry } = await import(
 		"@ethereum-attestation-service/eas-sdk"
@@ -43,16 +40,4 @@ export async function createOpenGardenClient(
 	registry.connect(config.signer);
 
 	return new OpenGardenClient({ ...config, chain, eas, registry });
-}
-
-function resolveChainByName(name: string) {
-	if (!Object.hasOwn(CHAIN_CONFIGS, name)) {
-		throw new OpenGardenError(
-			OpenGardenErrorCode.INVALID_INPUT,
-			`Unknown chain name "${name}". Known chains: ${Object.keys(
-				CHAIN_CONFIGS,
-			).join(", ")}. Pass a ChainConfig object for custom deployments.`,
-		);
-	}
-	return CHAIN_CONFIGS[name as keyof typeof CHAIN_CONFIGS];
 }

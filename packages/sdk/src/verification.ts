@@ -1,12 +1,14 @@
 import type { EAS } from "@ethereum-attestation-service/eas-sdk";
 import { EVIDENCE_BUNDLE_VERSION } from "./constants";
 import { decodeActivityData } from "./schemas/encoders";
-import type {
-	BundleActivity,
-	EvidenceBundle,
-} from "./types/evidence";
-import { ActivityType, type ActivityTypeName } from "./types/enums";
-import { hashActivityPayload, hashInterventionScope } from "./utils";
+import { ACTIVITY_TYPE_NAMES, type ActivityType } from "./types/enums";
+import type { BundleActivity, EvidenceBundle } from "./types/evidence";
+import {
+	hashActivityPayload,
+	hashInterventionScope,
+	sameAddress,
+	sameBytes32,
+} from "./utils";
 
 /**
  * Verification checks split into two tiers — see spec §5 and §7.
@@ -80,9 +82,7 @@ export async function verifyBundleOnChainTimestamps(
 	fetchTimestamp: TimestampFetcher,
 ): Promise<VerificationCheck> {
 	const results = await Promise.all(
-		bundle.activities.map((a) =>
-			fetchTimestamp(a.uid).catch(() => null),
-		),
+		bundle.activities.map((a) => fetchTimestamp(a.uid).catch(() => null)),
 	);
 
 	for (let i = 0; i < bundle.activities.length; i++) {
@@ -145,7 +145,7 @@ export async function verifyBundleSignatures(
 				message: `activity[${i}] (uid=${entry.uid}, type=${entry.type}) signature did not recover to signer ${embeddedSigner}`,
 			};
 		}
-		if (entry.signer.toLowerCase() !== embeddedSigner.toLowerCase()) {
+		if (!sameAddress(entry.signer, embeddedSigner)) {
 			return {
 				code: VerificationCheckCode.SIGNATURES,
 				valid: false,
@@ -192,7 +192,7 @@ export function verifyBundlePayloadIntegrity(
 			};
 		}
 
-		const expectedTypeName = activityTypeEnumToName(activityType);
+		const expectedTypeName = ACTIVITY_TYPE_NAMES[activityType];
 		if (expectedTypeName !== entry.type) {
 			return {
 				code: VerificationCheckCode.PAYLOAD_INTEGRITY,
@@ -204,7 +204,7 @@ export function verifyBundlePayloadIntegrity(
 		const computed = hashActivityPayload(
 			entry.payload as unknown as Record<string, unknown>,
 		);
-		if (computed.toLowerCase() !== payloadHash.toLowerCase()) {
+		if (!sameBytes32(computed, payloadHash)) {
 			return {
 				code: VerificationCheckCode.PAYLOAD_INTEGRITY,
 				valid: false,
@@ -214,23 +214,6 @@ export function verifyBundlePayloadIntegrity(
 	}
 
 	return { code: VerificationCheckCode.PAYLOAD_INTEGRITY, valid: true };
-}
-
-function activityTypeEnumToName(t: ActivityType): ActivityTypeName {
-	switch (t) {
-		case ActivityType.Unspecified:
-			return "unspecified";
-		case ActivityType.Schedule:
-			return "schedule";
-		case ActivityType.Checkin:
-			return "checkin";
-		case ActivityType.Checkout:
-			return "checkout";
-		case ActivityType.Report:
-			return "report";
-		case ActivityType.Healthcheck:
-			return "healthcheck";
-	}
 }
 
 // --- Policy tier ---
@@ -251,7 +234,7 @@ export function verifyBundleInterventionScope(
 			| Record<string, unknown>
 			| undefined;
 		const refUID = (message?.refUID as string | undefined) ?? "";
-		if (refUID.toLowerCase() !== expected.toLowerCase()) {
+		if (!sameBytes32(refUID, expected)) {
 			return {
 				code: VerificationCheckCode.INTERVENTION_SCOPE,
 				valid: false,

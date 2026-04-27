@@ -114,9 +114,10 @@ export function bundleJsonReplacer(_key: string, value: unknown): unknown {
  * storage they expose; verifiers fetch those bytes and recompute the hash to
  * verify integrity (spec §5.4 step 2).
  */
-export function serializeEvidenceBundle(
-	bundle: EvidenceBundle,
-): { bytes: Uint8Array; hash: string } {
+export function serializeEvidenceBundle(bundle: EvidenceBundle): {
+	bytes: Uint8Array;
+	hash: string;
+} {
 	const bytes = toUtf8Bytes(JSON.stringify(bundle, bundleJsonReplacer));
 	return { bytes, hash: keccak256(bytes) };
 }

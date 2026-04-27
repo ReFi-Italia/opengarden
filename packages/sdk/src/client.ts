@@ -4,7 +4,7 @@ import type {
 } from "@ethereum-attestation-service/eas-sdk";
 import { keccak256, type Signer } from "ethers";
 import {
-	CHAIN_CONFIGS,
+	resolveChain,
 	SCHEMA_NAME_UID,
 	ZERO_ADDRESS,
 	ZERO_BYTES32,
@@ -42,11 +42,7 @@ import type {
 	Intervention,
 	Milestone,
 } from "./types/attestation";
-import type {
-	ChainConfig,
-	OpenGardenConfig,
-	SchemaUIDs,
-} from "./types/config";
+import type { OpenGardenConfig, SchemaUIDs } from "./types/config";
 import {
 	ActivityType,
 	type ActivityTypeName,
@@ -76,7 +72,12 @@ import type {
 	ReportActivityInput,
 	ScheduleActivityInput,
 } from "./types/schemas";
-import { hashActivityPayload, hashInterventionScope, toUnixSeconds } from "./utils";
+import {
+	hashActivityPayload,
+	hashInterventionScope,
+	sameBytes32,
+	toUnixSeconds,
+} from "./utils";
 import {
 	type VerificationCheck,
 	verifyBundleExecutionDateBracket,
@@ -88,21 +89,6 @@ import {
 	verifyBundleVersion,
 } from "./verification";
 
-function resolveChain(chain: OpenGardenConfig["chain"]): ChainConfig {
-	if (typeof chain === "string") {
-		if (!Object.hasOwn(CHAIN_CONFIGS, chain)) {
-			throw new OpenGardenError(
-				OpenGardenErrorCode.INVALID_INPUT,
-				`Unknown chain name "${chain}". Known chains: ${Object.keys(
-					CHAIN_CONFIGS,
-				).join(", ")}. Pass a ChainConfig object for custom deployments.`,
-			);
-		}
-		return CHAIN_CONFIGS[chain];
-	}
-	return chain;
-}
-
 export class OpenGardenClient {
 	private readonly eas: EAS;
 	private readonly registry: SchemaRegistry;
@@ -111,6 +97,7 @@ export class OpenGardenClient {
 	private readonly graphqlUrl: string | undefined;
 	private readonly chainId: bigint;
 	private readonly storeUrl: string | undefined;
+	private cachedSignerAddress: string | undefined;
 
 	constructor(config: OpenGardenConfig) {
 		if (!config.signer) {
@@ -200,6 +187,13 @@ export class OpenGardenClient {
 
 	getSchemaUIDs(): Partial<SchemaUIDs> {
 		return { ...this.schemaUIDs };
+	}
+
+	private async getSignerAddress(): Promise<string> {
+		if (this.cachedSignerAddress === undefined) {
+			this.cachedSignerAddress = await this.signer.getAddress();
+		}
+		return this.cachedSignerAddress;
 	}
 
 	private requireSchemaUID(name: SchemaName): string {
@@ -331,10 +325,7 @@ export class OpenGardenClient {
 			{
 				schema: schemaUID,
 				recipient,
-				time:
-					timeOverride !== undefined
-						? toUnixSeconds(timeOverride)
-						: BigInt(Math.floor(Date.now() / 1000)),
+				time: toUnixSeconds(timeOverride ?? new Date()),
 				expirationTime: 0n,
 				// Activity schema is registered `revocable: true` — at call-time all
 				// types are signed `true`. Non-schedule types are simply never revoked
@@ -356,7 +347,7 @@ export class OpenGardenClient {
 			);
 		}
 
-		const attester = await this.signer.getAddress();
+		const attester = await this.getSignerAddress();
 
 		// EAS SDK's `SignedOffchainAttestation` may not carry the signer address
 		// as a top-level field — inject it so bundles are self-verifying without
@@ -457,7 +448,7 @@ export class OpenGardenClient {
 	): Promise<BundleIndexingResult[]> {
 		if (!this.storeUrl) return [];
 
-		const signerAddress = await this.signer.getAddress();
+		const signerAddress = await this.getSignerAddress();
 		const entries: Array<{
 			uid: string;
 			sig: Record<string, unknown>;
@@ -764,9 +755,10 @@ export class OpenGardenClient {
 	 * SDK does not upload anywhere — storage is the publisher's concern per
 	 * the Storage-Agnostic Commitments principle (spec §1).
 	 */
-	serializeEvidenceBundle(
-		bundle: EvidenceBundle,
-	): { bytes: Uint8Array; hash: string } {
+	serializeEvidenceBundle(bundle: EvidenceBundle): {
+		bytes: Uint8Array;
+		hash: string;
+	} {
 		return serializeEvidenceBundle(bundle);
 	}
 
@@ -786,13 +778,7 @@ export class OpenGardenClient {
 	): Promise<EvidenceBundleVerification> {
 		const policy = options?.policy ?? STRICT_VERIFY_POLICY;
 
-		const intervention = await this.getIntervention(uid);
-
 		const computedHash = keccak256(bundleBytes);
-		const bundleHashValid =
-			computedHash.toLowerCase() ===
-			intervention.evidenceBundleHash.toLowerCase();
-
 		const bundle = restoreBundleBigInts(
 			JSON.parse(new TextDecoder().decode(bundleBytes)) as EvidenceBundle,
 		);
@@ -805,11 +791,18 @@ export class OpenGardenClient {
 			);
 		}
 
-		const signatures = await verifyBundleSignatures(bundle, this.eas);
-		const payloads = verifyBundlePayloadIntegrity(bundle);
-		const timestamps = await verifyBundleOnChainTimestamps(bundle, (u) =>
-			this.eas.getTimestamp(u),
+		// All three are network-bound and independent — overlap their RTTs.
+		const [intervention, signatures, timestamps] = await Promise.all([
+			this.getIntervention(uid),
+			verifyBundleSignatures(bundle, this.eas),
+			verifyBundleOnChainTimestamps(bundle, (u) => this.eas.getTimestamp(u)),
+		]);
+
+		const bundleHashValid = sameBytes32(
+			computedHash,
+			intervention.evidenceBundleHash,
 		);
+		const payloads = verifyBundlePayloadIntegrity(bundle);
 		const scope = verifyBundleInterventionScope(bundle, intervention);
 		const temporal = verifyBundleTemporalOrder(bundle);
 		const executionBracket = verifyBundleExecutionDateBracket(

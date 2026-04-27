@@ -35,11 +35,7 @@ export interface IndexerSubmissionResult {
 }
 
 /** Role tag used by the indexer submission routine. Matches `ActivityTypeName` minus `unspecified`. */
-export type BundleIndexingRole =
-	| "schedule"
-	| "checkin"
-	| "checkout"
-	| "report";
+export type BundleIndexingRole = "schedule" | "checkin" | "checkout" | "report";
 
 export interface BundleIndexingResult extends IndexerSubmissionResult {
 	uid: string;

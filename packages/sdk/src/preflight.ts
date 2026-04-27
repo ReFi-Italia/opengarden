@@ -6,6 +6,8 @@ import type { TimestampedOffChainResult } from "./types/results";
 import {
 	hashActivityPayload,
 	hashInterventionScope,
+	sameAddress,
+	sameBytes32,
 	toUnixSeconds,
 } from "./utils";
 
@@ -41,14 +43,6 @@ export function extractAttestationMetadata(
 		claimedTime: message.time != null ? Number(message.time) : 0,
 		onchainTimestamp: Number(result.onchainTimestamp),
 	};
-}
-
-function sameAddress(a: string, b: string): boolean {
-	return a.toLowerCase() === b.toLowerCase();
-}
-
-function sameBytes32(a: string, b: string): boolean {
-	return a.toLowerCase() === b.toLowerCase();
 }
 
 // --- Per-step pre-flight primitives ---
@@ -160,12 +154,6 @@ function groupCrewActivities(
 	return groups;
 }
 
-function activityPayloadForHash(
-	result: TimestampedOffChainResult,
-): Record<string, unknown> {
-	return result.payload;
-}
-
 /**
  * Pure, side-effect-free validator for a `FinalizeInterventionInput`. Runs
  * the full spec §4.2 temporal-integrity check plus wiring / payload-integrity
@@ -207,10 +195,7 @@ export function validateFinalizeInput(
 		});
 	}
 
-	if (
-		scheduleMeta.refUID &&
-		!sameBytes32(scheduleMeta.refUID, expectedScope)
-	) {
+	if (scheduleMeta.refUID && !sameBytes32(scheduleMeta.refUID, expectedScope)) {
 		issues.push({
 			code: FinalizeInputIssueCode.SCHEDULE_SCOPE_MISMATCH,
 			message: `Schedule activity refUID (${scheduleMeta.refUID}) does not match interventionScopeHash (${expectedScope})`,
@@ -270,7 +255,8 @@ export function validateFinalizeInput(
 	if (crew.size === 0) {
 		issues.push({
 			code: FinalizeInputIssueCode.CREW_CHAIN_INCOMPLETE,
-			message: "No crew members found (need at least one checkin/checkout/report triple)",
+			message:
+				"No crew members found (need at least one checkin/checkout/report triple)",
 		});
 	}
 	for (const [signerKey, group] of crew) {
@@ -352,4 +338,3 @@ function assertPayloadHash(
 		});
 	}
 }
-

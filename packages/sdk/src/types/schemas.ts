@@ -6,11 +6,7 @@ import type {
 	ReportActivityPayload,
 	ScheduleActivityPayload,
 } from "./attestation";
-import type {
-	AreaType,
-	InterventionType,
-	MilestoneLevel,
-} from "./enums";
+import type { AreaType, InterventionType, MilestoneLevel } from "./enums";
 
 export interface AreaRegistrationInput {
 	areaId: string;
