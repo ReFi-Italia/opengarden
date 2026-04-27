@@ -1,0 +1,902 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dashboard — Studio (asymmetric)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:         #fafaf8;
+    --bg-1:       #f4f4f1;
+    --bg-2:       #eeeee9;
+    --bg-card:    #ffffff;
+    --rule:       #e8e8e4;
+    --rule-2:     #d6d6d1;
+    --ink:        #1a1c19;
+    --ink-1:      #3a3d38;
+    --ink-2:      #5d605a;
+    --ink-3:      #82857f;
+    --ink-4:      #a8aba4;
+    --ink-5:      #c8cbc4;
+    --accent:     #2d5240;
+    --accent-hi:  #3a6650;
+    --accent-soft:#e3ece7;
+    --ok:         #2d5240;
+    --warn:       #a8530c;
+    --warn-soft:  #f4e6d6;
+    --fail:       #8a2424;
+    --fail-soft:  #f2dede;
+
+    --sans: "DM Sans", system-ui, -apple-system, sans-serif;
+    --mono: "JetBrains Mono", "SF Mono", monospace;
+
+    --r-s: 6px;
+    --r-m: 10px;
+    --r-l: 14px;
+    --r-xl: 18px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { font-size: 15px; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-weight: 400;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "ss01", "cv11";
+    letter-spacing: -0.002em;
+    min-height: 100vh;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(1200px 600px at 18% -120px, rgba(168, 83, 12, 0.04), transparent 60%),
+      radial-gradient(900px 500px at 82% -80px,  rgba(45, 82, 64, 0.05), transparent 60%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  a { color: inherit; text-decoration: none; }
+  button { font-family: inherit; }
+
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+  /* ─── topbar ─── */
+  .topbar {
+    height: 60px;
+    border-bottom: 1px solid var(--rule);
+    display: flex; align-items: center;
+    padding: 0 36px; gap: 36px;
+    background: rgba(250, 250, 248, 0.82);
+    position: sticky; top: 0; z-index: 20;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+  .brand {
+    font-size: 14px; font-weight: 600; color: var(--ink);
+    letter-spacing: -0.01em;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .brand::before {
+    content: "";
+    width: 18px; height: 18px;
+    background: var(--accent); border-radius: 50%;
+  }
+  .breadcrumb { flex: 1; font-size: 13px; color: var(--ink-3); }
+  .breadcrumb .here { color: var(--ink); font-weight: 500; }
+  .topbar-right { display: flex; gap: 8px; align-items: center; }
+  .pill-btn {
+    border: 1px solid var(--rule); background: transparent;
+    padding: 8px 14px; font-size: 12px; color: var(--ink-2);
+    cursor: pointer; border-radius: var(--r-s); transition: all .15s;
+  }
+  .pill-btn:hover { background: var(--bg-1); color: var(--ink); }
+  .user-chip {
+    display: flex; align-items: center; gap: 10px;
+    padding: 6px 14px 6px 6px;
+    background: var(--bg-1); border-radius: 999px; margin-left: 4px;
+  }
+  .user-chip .av {
+    width: 24px; height: 24px;
+    background: var(--accent); color: white;
+    font-size: 11px; font-weight: 600;
+    display: grid; place-items: center; border-radius: 50%;
+  }
+  .user-chip .name { font-size: 12px; color: var(--ink-1); }
+
+  /* ─── page ─── */
+  .page {
+    max-width: 1480px;
+    margin: 0 auto;
+    padding: 40px 48px 96px;
+    position: relative; z-index: 1;
+  }
+
+  /* ─── greeting ─── */
+  .greet {
+    display: flex; align-items: baseline;
+    justify-content: space-between; gap: 36px;
+    margin-bottom: 28px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--rule);
+    flex-wrap: wrap;
+  }
+  .greet-meta {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--ink-3); letter-spacing: 0.04em;
+    margin-bottom: 6px; text-transform: uppercase;
+  }
+  .greet-meta .sep {
+    display: inline-block; width: 4px; height: 4px;
+    background: var(--ink-4); border-radius: 50%;
+    margin: 0 10px 2px; vertical-align: middle;
+  }
+  .greet-name {
+    font-size: 26px; font-weight: 500;
+    letter-spacing: -0.02em; line-height: 1.2; color: var(--ink);
+  }
+  .greet-name .u { color: var(--accent); }
+  .greet-sub {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--ink-3); letter-spacing: 0.02em;
+    text-transform: uppercase; text-align: right; flex-shrink: 0;
+  }
+  .greet-sub .v { color: var(--ink-1); font-weight: 500; }
+
+  /* ─── asymmetric grid ─── */
+  .asym {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr);
+    gap: 32px;
+    align-items: start;
+  }
+
+  /* ─── panels (shared) ─── */
+  .panel {
+    background: var(--bg-card);
+    border: 1px solid var(--rule);
+    border-radius: var(--r-xl);
+    padding: 20px 24px;
+    margin-bottom: 16px;
+  }
+  .panel:last-child { margin-bottom: 0; }
+  .panel-header {
+    display: flex; align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 20px; gap: 16px;
+  }
+  .panel-title {
+    font-size: 16px; font-weight: 500; color: var(--ink);
+    letter-spacing: -0.015em;
+  }
+  .panel-title small { color: var(--ink-3); font-size: 12px; font-weight: 400; margin-left: 8px; }
+  .panel-meta { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+  .panel-meta a { color: var(--accent); }
+
+  .section-label {
+    font-size: 11px; color: var(--ink-3);
+    text-transform: uppercase; letter-spacing: 0.1em;
+    margin-bottom: 14px; font-weight: 500;
+  }
+
+  /* ─── focus hero ─── */
+  .focus-hero {
+    background: var(--accent); color: white;
+    padding: 30px 34px; border-radius: var(--r-xl);
+    margin-bottom: 20px;
+    position: relative; overflow: hidden;
+  }
+  .focus-hero::before {
+    content: "";
+    position: absolute; top: -60%; right: -8%;
+    width: 56%; height: 220%;
+    background: radial-gradient(ellipse, rgba(255,255,255,0.09), transparent 60%);
+    pointer-events: none;
+  }
+  .focus-hero::after {
+    content: "";
+    position: absolute; inset: 0;
+    background-image:
+      radial-gradient(circle at 1px 1px, rgba(255,255,255,0.04) 1px, transparent 0);
+    background-size: 18px 18px;
+    pointer-events: none;
+    mask-image: linear-gradient(to right, black 20%, transparent 80%);
+    -webkit-mask-image: linear-gradient(to right, black 20%, transparent 80%);
+  }
+  .focus-hero > * { position: relative; }
+  .fh-meta {
+    font-family: var(--mono); font-size: 10px;
+    color: rgba(255,255,255,0.55);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    margin-bottom: 10px;
+  }
+  .fh-title {
+    font-size: 22px; font-weight: 500;
+    letter-spacing: -0.02em; line-height: 1.25;
+    margin-bottom: 10px;
+  }
+  .fh-title .u {
+    text-decoration: underline;
+    text-decoration-color: rgba(255,255,255,0.3);
+    text-underline-offset: 4px;
+  }
+  .fh-sub {
+    font-size: 13px; color: rgba(255,255,255,0.65);
+    max-width: 54ch; line-height: 1.55;
+    margin-bottom: 18px;
+  }
+  .fh-actions { display: flex; gap: 10px; }
+  .btn-primary {
+    padding: 12px 22px; background: white; color: var(--accent);
+    border: none; border-radius: var(--r-m);
+    font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: transform .15s;
+  }
+  .btn-primary:hover { transform: translateY(-1px); }
+  .btn-primary::after { content: " →"; }
+  .btn-secondary {
+    padding: 12px 18px; background: transparent;
+    color: rgba(255,255,255,0.85);
+    border: 1px solid rgba(255,255,255,0.28);
+    border-radius: var(--r-m); font-size: 12px; font-weight: 500;
+    cursor: pointer;
+  }
+  .btn-secondary:hover { color: white; border-color: rgba(255,255,255,0.55); }
+
+  /* ─── focus list ─── */
+  .focus-list { list-style: none; }
+  .focus-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 16px; align-items: center;
+    padding: 16px 0;
+    border-top: 1px solid var(--rule);
+    cursor: pointer; transition: background .15s;
+    margin: 0 -10px; padding-left: 10px; padding-right: 10px;
+    border-radius: var(--r-s);
+  }
+  .focus-row:first-child { border-top: none; }
+  .focus-row:hover { background: var(--bg-1); }
+  .fr-body .title {
+    font-size: 14px; font-weight: 500; color: var(--ink);
+    letter-spacing: -0.005em; margin-bottom: 2px;
+  }
+  .fr-body .area { font-size: 12px; color: var(--ink-3); }
+  .fr-body .area strong { color: var(--ink-2); font-weight: 500; }
+  .fr-code {
+    font-family: var(--mono); font-size: 10px;
+    color: var(--ink-4); margin-top: 2px;
+  }
+  .fr-stage {
+    padding: 5px 11px; border-radius: 999px;
+    font-size: 11px; font-weight: 500; white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .fr-stage::before { content: ""; width: 6px; height: 6px; border-radius: 50%; }
+  .fr-stage.urgent { background: var(--warn-soft); color: var(--warn); }
+  .fr-stage.urgent::before { background: var(--warn); animation: pulse 2s ease-in-out infinite; }
+  .fr-stage.starting { background: var(--accent-soft); color: var(--accent); }
+  .fr-stage.starting::before { background: var(--accent); }
+  .fr-stage.stalled { background: var(--bg-1); color: var(--ink-2); border: 1px dashed var(--rule-2); }
+  .fr-stage.stalled::before { background: var(--ink-4); }
+
+  /* ─── calendar ─── */
+  .cal-week {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+    border: 1px solid var(--rule);
+    border-radius: var(--r-m);
+    padding: 8px;
+    background: var(--bg);
+  }
+  .cal-day {
+    min-height: 140px;
+    background: var(--bg-card);
+    border: 1px solid var(--rule);
+    border-radius: var(--r-s);
+    padding: 10px 8px 8px;
+    display: flex; flex-direction: column; gap: 6px;
+    transition: border-color .15s;
+  }
+  .cal-day:hover { border-color: var(--rule-2); }
+  .cal-day.weekend { background: transparent; border-style: dashed; }
+  .cal-day.weekend .day-name, .cal-day.weekend .day-num { color: var(--ink-4); }
+  .cal-day.today {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    box-shadow: 0 2px 10px -4px rgba(45, 82, 64, 0.22);
+  }
+  .cal-day.today .day-num { color: var(--accent); font-weight: 600; }
+  .cal-day.past { background: var(--bg); }
+  .cal-day.past .day-name, .cal-day.past .day-num { color: var(--ink-3); }
+  .day-head { display: flex; align-items: baseline; justify-content: space-between; }
+  .day-name {
+    font-size: 10px; color: var(--ink-3);
+    text-transform: uppercase; letter-spacing: 0.1em; font-weight: 500;
+  }
+  .day-num { font-family: var(--mono); font-size: 12px; color: var(--ink-1); font-weight: 500; }
+  .day-items { display: flex; flex-direction: column; gap: 4px; }
+  .day-item {
+    font-size: 10px; padding: 4px 6px; border-radius: 3px;
+    background: var(--bg-1); color: var(--ink-1);
+    line-height: 1.3; border-left: 2px solid var(--ink-4);
+    cursor: pointer; transition: background .15s;
+  }
+  .day-item:hover { background: var(--bg-2); }
+  .day-item .it-area { font-weight: 500; color: var(--ink); }
+  .day-item .it-lead {
+    font-family: var(--mono); font-size: 9px;
+    color: var(--ink-3); letter-spacing: 0.03em;
+    text-transform: uppercase; margin-top: 1px;
+  }
+  .day-item.done { border-left-color: var(--accent); }
+  .day-item.done .it-area { color: var(--ink-2); }
+  .day-item.progress { border-left-color: var(--warn); background: var(--warn-soft); }
+  .day-item.progress .it-area { color: var(--warn); }
+  .day-item.scheduled { border-left-color: var(--accent); background: var(--bg-card); border: 1px solid var(--rule); border-left-width: 2px; }
+
+  /* ─── RIGHT COL: pipeline strip ─── */
+  .pipe-bar-wrap { margin-bottom: 18px; }
+  .pipe-bar {
+    display: flex;
+    height: 10px;
+    border-radius: 999px;
+    overflow: hidden;
+    gap: 2px;
+  }
+  .pipe-bar span {
+    transition: flex-grow .3s;
+    border-radius: 2px;
+  }
+  .pipe-bar .b-draft     { flex-grow: 4;  background: var(--ink-5); }
+  .pipe-bar .b-scheduled { flex-grow: 7;  background: var(--ink-3); }
+  .pipe-bar .b-progress  { flex-grow: 3;  background: var(--warn); }
+  .pipe-bar .b-pending   { flex-grow: 1;  background: var(--warn); opacity: 0.6; }
+  .pipe-bar .b-validated { flex-grow: 2;  background: var(--accent-soft); }
+  .pipe-bar .b-published { flex-grow: 28; background: var(--accent); }
+
+  .pipe-list { list-style: none; }
+  .pipe-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 0;
+    border-top: 1px solid var(--rule);
+    font-size: 13px;
+  }
+  .pipe-row:first-child { border-top: none; }
+  .pipe-row .pr-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .pipe-row.draft     .pr-dot { background: var(--ink-5); }
+  .pipe-row.scheduled .pr-dot { background: var(--ink-3); }
+  .pipe-row.progress  .pr-dot { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); animation: pulse 2s ease-in-out infinite; }
+  .pipe-row.pending   .pr-dot { background: var(--warn); }
+  .pipe-row.validated .pr-dot { background: var(--accent); opacity: 0.5; }
+  .pipe-row.published .pr-dot { background: var(--accent); }
+  .pipe-row .pr-name { flex: 1; color: var(--ink-1); }
+  .pipe-row .pr-count {
+    font-family: var(--mono); font-size: 14px; font-weight: 500;
+    color: var(--ink); min-width: 30px; text-align: right;
+    font-feature-settings: "tnum";
+  }
+  .pipe-row .pr-delta {
+    font-family: var(--mono); font-size: 10px;
+    padding: 2px 7px; border-radius: 999px;
+    white-space: nowrap;
+  }
+  .pipe-row .pr-delta.warn { color: var(--warn); background: var(--warn-soft); }
+  .pipe-row .pr-delta.alert { color: var(--warn); background: var(--warn-soft); animation: pulse 2s ease-in-out infinite; }
+  .pipe-row .pr-delta.ok { color: var(--accent); background: var(--accent-soft); }
+  .pipe-bar-total {
+    margin-top: 12px; padding-top: 12px;
+    border-top: 1px solid var(--rule);
+    display: flex; justify-content: space-between;
+    font-family: var(--mono); font-size: 11px; color: var(--ink-3);
+  }
+  .pipe-bar-total .v { color: var(--ink); font-weight: 500; }
+  .pipe-bar-total .fail { color: var(--fail); }
+
+  /* ─── today pulse (inside pipeline panel) ─── */
+  .pulse-divider {
+    margin-top: 16px; padding-top: 16px;
+    border-top: 1px solid var(--rule);
+  }
+  .pulse-divider .section-label { margin-bottom: 12px; }
+  .pulse-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+  .pulse-cell {
+    padding: 10px 8px;
+    background: var(--bg);
+    border: 1px solid var(--rule);
+    border-radius: var(--r-s);
+    text-align: center;
+  }
+  .pulse-cell .pc-num {
+    font-size: 18px; font-weight: 500; color: var(--ink);
+    font-feature-settings: "tnum"; letter-spacing: -0.02em;
+    line-height: 1;
+    margin-bottom: 3px;
+  }
+  .pulse-cell .pc-label {
+    font-size: 9px; color: var(--ink-3);
+    text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .pulse-cell.ok .pc-num { color: var(--accent); }
+  .pulse-cell.warn .pc-num { color: var(--warn); }
+  .pulse-cell.zero .pc-num { color: var(--ink-4); }
+
+  /* ─── RIGHT COL: team list ─── */
+  .team-list { list-style: none; }
+  .team-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 0;
+    border-top: 1px solid var(--rule);
+  }
+  .team-row:first-child { border-top: none; }
+  .team-av {
+    width: 30px; height: 30px;
+    background: var(--bg-1); color: var(--ink-2);
+    font-size: 11px; font-weight: 600;
+    border-radius: 50%; display: grid; place-items: center;
+    flex-shrink: 0; position: relative;
+  }
+  .team-row.lead .team-av { background: var(--accent); color: white; }
+  .team-av .live {
+    position: absolute; bottom: -1px; right: -1px;
+    width: 9px; height: 9px;
+    background: var(--warn); border: 2px solid var(--bg-card);
+    border-radius: 50%;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  .team-info { flex: 1; min-width: 0; }
+  .team-name {
+    font-size: 13px; color: var(--ink); font-weight: 500;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .team-detail {
+    font-size: 11px; color: var(--ink-3);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .team-row.lead .team-detail { color: var(--accent); }
+  .team-ts {
+    font-family: var(--mono); font-size: 10px;
+    color: var(--ink-4); text-align: right; flex-shrink: 0;
+  }
+  .team-ts .live-ts { color: var(--warn); }
+  .team-inactive {
+    margin-top: 10px; padding: 10px;
+    border: 1px dashed var(--rule);
+    border-radius: var(--r-m);
+    font-size: 11px; color: var(--ink-4);
+    text-align: center; cursor: pointer;
+  }
+
+  /* ─── RIGHT COL: activity ledger ─── */
+  .ledger-list { list-style: none; }
+  .ledger-row {
+    display: grid;
+    grid-template-columns: 52px 1fr;
+    gap: 12px;
+    padding: 12px 0 13px 18px;
+    position: relative;
+    border-left: 1px solid var(--rule);
+    margin-left: 4px;
+  }
+  .ledger-row:last-child { border-left-color: transparent; padding-bottom: 0; }
+  .ledger-row::before {
+    content: "";
+    position: absolute; left: -4px; top: 16px;
+    width: 7px; height: 7px;
+    background: var(--accent); border-radius: 50%;
+    box-shadow: 0 0 0 3px var(--bg-card);
+  }
+  .ledger-row.checkin::before { background: var(--warn); }
+  .ledger-row.publish::before { background: var(--accent); }
+  .ledger-row.validation::before { background: var(--accent-hi); }
+  .ledger-row.schedule::before { background: var(--ink-3); }
+  .ledger-time {
+    font-family: var(--mono); font-size: 10px;
+    color: var(--ink-3); letter-spacing: 0.03em;
+    padding-top: 1px;
+  }
+  .ledger-body .act {
+    font-size: 12px; color: var(--ink); line-height: 1.45;
+  }
+  .ledger-body .act strong { font-weight: 500; }
+  .ledger-body .act a { color: var(--accent); }
+  .ledger-body .sub {
+    font-size: 10px; color: var(--ink-3); margin-top: 1px;
+  }
+  .ledger-body .sub .code {
+    font-family: var(--mono); font-size: 10px;
+    color: var(--ink-2); background: var(--bg-1);
+    padding: 1px 5px; border-radius: 3px;
+  }
+  .ledger-daybreak {
+    margin: 14px 0 4px; padding-left: 18px;
+    font-family: var(--mono); font-size: 10px;
+    color: var(--ink-4); letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  /* ─── responsive ─── */
+  @media (max-width: 1200px) {
+    .asym { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 900px) {
+    .page { padding: 28px 20px 64px; }
+    .greet { flex-direction: column; align-items: flex-start; }
+    .greet-sub { text-align: left; }
+    .greet-name { font-size: 24px; }
+    .focus-hero { padding: 24px; }
+    .fh-actions { flex-direction: column-reverse; align-items: stretch; }
+    .cal-week { grid-template-columns: 1fr; }
+    .cal-day { min-height: auto; }
+    .pulse-grid { grid-template-columns: repeat(4, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+  <div class="topbar">
+    <div class="brand">Ridaje</div>
+    <nav class="breadcrumb"><span class="here">Dashboard</span></nav>
+    <div class="topbar-right">
+      <button class="pill-btn">Today</button>
+      <button class="pill-btn">Export</button>
+      <div class="user-chip">
+        <div class="av">RB</div>
+        <div class="name">Raffaele</div>
+      </div>
+    </div>
+  </div>
+
+  <main class="page">
+
+    <header class="greet">
+      <div>
+        <div class="greet-meta">
+          Wed · 15 Apr 2026 <span class="sep"></span> Week 16 <span class="sep"></span> Primavera
+        </div>
+        <h1 class="greet-name">Good morning, <span class="u">Raffaele</span>.</h1>
+      </div>
+      <div class="greet-sub">
+        <span class="v">3</span> crews on site <span class="sep"></span> <span class="v">Roma</span> · <span class="v">Milano</span>
+      </div>
+    </header>
+
+    <div class="asym">
+
+      <!-- ═══ LEFT: act-now flow ═══ -->
+      <div>
+
+        <section class="focus-hero">
+          <div>
+            <div class="fh-meta">Awaiting your input · validator queue</div>
+            <h2 class="fh-title">
+              <span class="u">1 intervention</span> has been waiting for your sign-off since Monday.
+            </h2>
+            <p class="fh-sub">
+              The holm oak restoration at Parco Sempione completed execution on 12 Apr. Evidence bundle built and verified — crew attestations, health checks, timestamps all pass. Approving seals the bundle and publishes on chain.
+            </p>
+            <div class="fh-actions">
+              <button class="btn-secondary">See queue</button>
+              <button class="btn-primary">Open validation</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- focus list -->
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Needs attention <small>3 items</small></div>
+            <div class="panel-meta"><a href="#">Open list →</a></div>
+          </div>
+          <ul class="focus-list">
+            <li class="focus-row">
+              <div class="fr-body">
+                <div class="title">Centennial holm oak — western lawn</div>
+                <div class="area"><strong>Parco Sempione</strong> · Milano · crew lead Giulia Marchetti</div>
+                <div class="fr-code">INT-2026-0412-MIL-0034</div>
+              </div>
+              <div class="fr-stage urgent">Validation · 2d</div>
+            </li>
+            <li class="focus-row">
+              <div class="fr-body">
+                <div class="title">Spring cleanup — southern plots</div>
+                <div class="area"><strong>Giardino Testaccio</strong> · Roma · crew lead Elena Rinaldi</div>
+                <div class="fr-code">INT-2026-0415-ROM-0018</div>
+              </div>
+              <div class="fr-stage starting">Starts 09:00</div>
+            </li>
+            <li class="focus-row">
+              <div class="fr-body">
+                <div class="title">Replacement planting — east border</div>
+                <div class="area"><strong>Villa Torlonia</strong> · Roma · no crew assigned</div>
+                <div class="fr-code">INT-2026-0407-ROM-0012</div>
+              </div>
+              <div class="fr-stage stalled">Draft · 8d stalled</div>
+            </li>
+          </ul>
+        </div>
+
+        <!-- calendar -->
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Week schedule <small>13 – 19 Apr</small></div>
+          </div>
+          <div class="cal-week">
+            <div class="cal-day past">
+              <div class="day-head"><div class="day-name">Mon</div><div class="day-num">13</div></div>
+              <div class="day-items">
+                <div class="day-item done"><div class="it-area">Parco Monteverde</div><div class="it-lead">pruning · GM</div></div>
+              </div>
+            </div>
+            <div class="cal-day past">
+              <div class="day-head"><div class="day-name">Tue</div><div class="day-num">14</div></div>
+              <div class="day-items">
+                <div class="day-item done"><div class="it-area">Villa Borghese</div><div class="it-lead">mulching · LB</div></div>
+                <div class="day-item done"><div class="it-area">G. del Pincio</div><div class="it-lead">bed prep · AR</div></div>
+              </div>
+            </div>
+            <div class="cal-day today">
+              <div class="day-head"><div class="day-name">Wed</div><div class="day-num">15</div></div>
+              <div class="day-items">
+                <div class="day-item progress"><div class="it-area">P. Sempione</div><div class="it-lead">restoration · GM</div></div>
+                <div class="day-item progress"><div class="it-area">Testaccio</div><div class="it-lead">cleanup · ER</div></div>
+                <div class="day-item progress"><div class="it-area">Prati Verdi</div><div class="it-lead">irrigation · LF</div></div>
+              </div>
+            </div>
+            <div class="cal-day">
+              <div class="day-head"><div class="day-name">Thu</div><div class="day-num">16</div></div>
+              <div class="day-items">
+                <div class="day-item scheduled"><div class="it-area">Villa Ada</div><div class="it-lead">seasonal · SF</div></div>
+                <div class="day-item scheduled"><div class="it-area">Caffarella</div><div class="it-lead">pruning · LR</div></div>
+              </div>
+            </div>
+            <div class="cal-day">
+              <div class="day-head"><div class="day-name">Fri</div><div class="day-num">17</div></div>
+              <div class="day-items">
+                <div class="day-item scheduled"><div class="it-area">V. Torlonia</div><div class="it-lead">planting · AD</div></div>
+              </div>
+            </div>
+            <div class="cal-day weekend">
+              <div class="day-head"><div class="day-name">Sat</div><div class="day-num">18</div></div>
+            </div>
+            <div class="cal-day weekend">
+              <div class="day-head"><div class="day-name">Sun</div><div class="day-num">19</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ RIGHT: context rail ═══ -->
+      <div>
+
+        <!-- pipeline strip -->
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Pipeline</div>
+            <div class="panel-meta"><span style="color:var(--ink)">45</span> in motion</div>
+          </div>
+          <div class="pipe-bar-wrap">
+            <div class="pipe-bar">
+              <span class="b-draft"></span>
+              <span class="b-scheduled"></span>
+              <span class="b-progress"></span>
+              <span class="b-pending"></span>
+              <span class="b-validated"></span>
+              <span class="b-published"></span>
+            </div>
+          </div>
+          <ul class="pipe-list">
+            <li class="pipe-row draft">
+              <span class="pr-dot"></span>
+              <span class="pr-name">Draft</span>
+              <span class="pr-count">4</span>
+            </li>
+            <li class="pipe-row scheduled">
+              <span class="pr-dot"></span>
+              <span class="pr-name">Scheduled</span>
+              <span class="pr-count">7</span>
+            </li>
+            <li class="pipe-row progress">
+              <span class="pr-dot"></span>
+              <span class="pr-name">In progress</span>
+              <span class="pr-count">3</span>
+              <span class="pr-delta warn">on site</span>
+            </li>
+            <li class="pipe-row pending">
+              <span class="pr-dot"></span>
+              <span class="pr-name">Pending validation</span>
+              <span class="pr-count">1</span>
+              <span class="pr-delta alert">2d</span>
+            </li>
+            <li class="pipe-row validated">
+              <span class="pr-dot"></span>
+              <span class="pr-name">Validated</span>
+              <span class="pr-count">2</span>
+            </li>
+            <li class="pipe-row published">
+              <span class="pr-dot"></span>
+              <span class="pr-name">Published</span>
+              <span class="pr-count">28</span>
+              <span class="pr-delta ok">+2 today</span>
+            </li>
+          </ul>
+          <div class="pipe-bar-total">
+            <span><span class="v">28</span> published Q2</span>
+            <span class="fail"><span class="v">1</span> revoked</span>
+          </div>
+          <div class="pulse-divider">
+            <div class="section-label">Today · 15 Apr</div>
+            <div class="pulse-grid">
+              <div class="pulse-cell ok">
+                <div class="pc-num">7</div>
+                <div class="pc-label">Check-ins</div>
+              </div>
+              <div class="pulse-cell ok">
+                <div class="pc-num">2</div>
+                <div class="pc-label">Published</div>
+              </div>
+              <div class="pulse-cell warn">
+                <div class="pc-num">6</div>
+                <div class="pc-label">On site</div>
+              </div>
+              <div class="pulse-cell zero">
+                <div class="pc-num">0</div>
+                <div class="pc-label">Incidents</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- gardener team -->
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Gardeners <small>6 active</small></div>
+            <div class="panel-meta"><a href="#">All →</a></div>
+          </div>
+          <ul class="team-list">
+            <li class="team-row lead">
+              <div class="team-av">GM<span class="live"></span></div>
+              <div class="team-info">
+                <div class="team-name">Giulia Marchetti</div>
+                <div class="team-detail">Lead · Parco Sempione · INT-0034</div>
+              </div>
+              <div class="team-ts"><span class="live-ts">2h</span></div>
+            </li>
+            <li class="team-row">
+              <div class="team-av">LB<span class="live"></span></div>
+              <div class="team-info">
+                <div class="team-name">Luca Bianchi</div>
+                <div class="team-detail">Parco Sempione · INT-0034</div>
+              </div>
+              <div class="team-ts"><span class="live-ts">2h</span></div>
+            </li>
+            <li class="team-row lead">
+              <div class="team-av">ER<span class="live"></span></div>
+              <div class="team-info">
+                <div class="team-name">Elena Rinaldi</div>
+                <div class="team-detail">Lead · Testaccio · INT-0018</div>
+              </div>
+              <div class="team-ts"><span class="live-ts">45m</span></div>
+            </li>
+            <li class="team-row">
+              <div class="team-av">AR<span class="live"></span></div>
+              <div class="team-info">
+                <div class="team-name">Anna Rossi</div>
+                <div class="team-detail">Prati Verdi · INT-0019</div>
+              </div>
+              <div class="team-ts"><span class="live-ts">1h</span></div>
+            </li>
+            <li class="team-row">
+              <div class="team-av">SF</div>
+              <div class="team-info">
+                <div class="team-name">Sofia Ferrari</div>
+                <div class="team-detail">Villa Ada · tomorrow</div>
+              </div>
+              <div class="team-ts">yday</div>
+            </li>
+            <li class="team-row">
+              <div class="team-av">AD</div>
+              <div class="team-info">
+                <div class="team-name">Alessandro De Luca</div>
+                <div class="team-detail" style="color:var(--ink-4)">onboarding · pairing</div>
+              </div>
+              <div class="team-ts">11 Apr</div>
+            </li>
+          </ul>
+          <div class="team-inactive">+ 3 inactive</div>
+        </div>
+
+        <!-- activity -->
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Activity <small>last 24h</small></div>
+            <div class="panel-meta">EAS v2</div>
+          </div>
+          <div class="ledger-daybreak">Today</div>
+          <ul class="ledger-list">
+            <li class="ledger-row checkin">
+              <div class="ledger-time">11:42</div>
+              <div class="ledger-body">
+                <div class="act"><strong>Elena R.</strong> checked in at Testaccio</div>
+                <div class="sub"><span class="code">INT-0018</span> photo + health</div>
+              </div>
+            </li>
+            <li class="ledger-row publish">
+              <div class="ledger-time">10:18</div>
+              <div class="ledger-body">
+                <div class="act">Bundle <a href="#">published</a> on chain</div>
+                <div class="sub"><span class="code">INT-0031</span> Parco Monteverde</div>
+              </div>
+            </li>
+            <li class="ledger-row checkin">
+              <div class="ledger-time">09:47</div>
+              <div class="ledger-body">
+                <div class="act"><strong>Luca B.</strong> checked in at Sempione</div>
+                <div class="sub"><span class="code">INT-0034</span> photo</div>
+              </div>
+            </li>
+            <li class="ledger-row checkin">
+              <div class="ledger-time">09:15</div>
+              <div class="ledger-body">
+                <div class="act"><strong>Anna R.</strong> checked in at Prati Verdi</div>
+                <div class="sub"><span class="code">INT-0019</span> photo + crew report</div>
+              </div>
+            </li>
+            <li class="ledger-row schedule">
+              <div class="ledger-time">08:30</div>
+              <div class="ledger-body">
+                <div class="act">3 interventions started execution</div>
+                <div class="sub">INT-0018, INT-0019, INT-0020</div>
+              </div>
+            </li>
+          </ul>
+          <div class="ledger-daybreak">Yesterday</div>
+          <ul class="ledger-list">
+            <li class="ledger-row validation">
+              <div class="ledger-time">17:48</div>
+              <div class="ledger-body">
+                <div class="act"><strong>Marco C.</strong> validated <a href="#">INT-0031</a></div>
+                <div class="sub">score 9/10 · feedback published</div>
+              </div>
+            </li>
+            <li class="ledger-row schedule">
+              <div class="ledger-time">15:04</div>
+              <div class="ledger-body">
+                <div class="act">Intervention scheduled for Friday</div>
+                <div class="sub"><span class="code">INT-0023</span> Villa Torlonia</div>
+              </div>
+            </li>
+            <li class="ledger-row checkin">
+              <div class="ledger-time">09:22</div>
+              <div class="ledger-body">
+                <div class="act"><strong>Giulia M.</strong> opened check-out · Villa Borghese</div>
+                <div class="sub"><span class="code">INT-0017</span> ready for validation</div>
+              </div>
+            </li>
+          </ul>
+        </div>
+
+      </div>
+    </div>
+
+  </main>
+
+</body>
+</html>
